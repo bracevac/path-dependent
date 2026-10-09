@@ -44,14 +44,11 @@ store binders `x0`, `x1` and so on, outermost first.
 ## No round trip
 
 The output is the paper's notation for a reader.  It is not claimed to parse
-back through `dot%`.  Three things stand in the way.  A frozen object literal
-has no self type (`DotMNF.Value.obj`), so the printer of the frozen syntax
-writes `ν(x. d)`, which the grammar of `Notation.lean` does not have.  A binder
+back through `dot%`.  Two things stand in the way.  A binder
 of the de Bruijn syntax has lost the name it was resolved from, so the binding
 that let insertion inserts under the name `%` comes back as an ordinary short
-name.  A label outside the table prints as its sort and its number.  The
-annotated syntax of `Ann.lean` does carry the self type, and `ppATmWith` prints
-the full form.
+name.  A label outside the table prints as its sort and its number.
+`ppATmWith` prints an annotated term of `Ann.lean` with its self types.
 
 ## Recursion
 
@@ -299,9 +296,11 @@ mutual
 def ppSTmAt (p : Nat) (e : STm) : String :=
   match e with
   | .var x => x
-  | .lam x T t =>
+  | .lam x (some T) t =>
       parenIf (p > 1) ("λ(" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). " ++ ppSTmAt 0 t)
-  | .obj x T d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .lam x none t => parenIf (p > 1) ("λ" ++ x ++ ". " ++ ppSTmAt 0 t)
+  | .obj x (some T) d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .obj x none d => "ν(" ++ x ++ ". " ++ ppSDefsAt d ++ ")"
   | .app t u => parenIf (p > 70) (ppSTmAt 70 t ++ " " ++ ppSTmAt 71 u)
   | .proj t a => ppSTmAt 80 t ++ "." ++ a
   | .«let» x ann t u =>
@@ -311,12 +310,14 @@ def ppSTmAt (p : Nat) (e : STm) : String :=
         | some U => " : " ++ ppSTyAt 0 U
       parenIf (p > 0)
         ("let " ++ x ++ ann? ++ " = " ++ ppSTmAt 1 t ++ " in " ++ ppSTmAt 0 u)
+  | .asc t T => "(" ++ ppSTmAt 0 t ++ " : " ++ ppSTyAt 0 T ++ ")"
 termination_by structural e
 /-- A surface definition list in the paper's notation. -/
 def ppSDefsAt (d : SDefs) : String :=
   match d with
   | .typ A T => "{type " ++ A ++ " = " ++ ppSTyAt 0 T ++ "}"
-  | .trm a t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a none t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a (some T) t => "{" ++ a ++ " : " ++ ppSTyAt 0 T ++ " = " ++ ppSTmAt 0 t ++ "}"
   | .and d' e => ppSDefsAt d' ++ " ∧ " ++ ppSDefsAt e
 termination_by structural d
 end
@@ -481,6 +482,15 @@ example :
 
 /-- Nothing to print. -/
 example : ppRun exampleTable none = "did not compile" := rfl
+
+/-- A lambda with its domain left to inference prints without parentheses. -/
+example : ppSTm (dot% λx. x) = "λx. x" := rfl
+
+/-- A literal with its self type left to inference, and a written field type. -/
+example : ppSTm (dot% ν(x. {a : ⊤ = x})) = "ν(x. {a : ⊤ = x})" := rfl
+
+/-- An ascription prints in its own parentheses. -/
+example : ppSTm (dot% (λx. x : ⊤)) = "(λx. x : ⊤)" := rfl
 
 end Checks
 

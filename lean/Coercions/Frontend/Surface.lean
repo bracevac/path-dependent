@@ -58,12 +58,10 @@ insertion in `Resolve.lean` puts them into monadic normal form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
-  /-- `λ(x : T). t`. -/
-  | lam (x : String) (T : SType) (t : STm)
-  /-- `ν(x : T. d)`.  The self type is annotated because `HasTy.obj` types the
-  definitions against a context entry that carries it, and `Value.obj` has no
-  slot for it. -/
-  | obj (x : String) (T : SType) (d : SDefs)
+  /-- `λ(x : T). t`, or `λx. t` with the domain left to inference. -/
+  | lam (x : String) (T : Option SType) (t : STm)
+  /-- `ν(x : T. d)`, or `ν(x. d)` with the self type left to inference. -/
+  | obj (x : String) (T : Option SType) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
   /-- `t.a`, direct style. -/
@@ -71,12 +69,14 @@ inductive STm : Type where
   /-- `let x = t in u`, with an optional result type.  A written type is
   binding: the `let` is checked at it. -/
   | «let» (x : String) (ann : Option SType) (t u : STm)
+  /-- `(t : T)`, an ascription.  It resolves to `let % : T = t in %`. -/
+  | asc (t : STm) (T : SType)
 /-- Surface definition members. -/
 inductive SDefs : Type where
   /-- `{type A = T}`. -/
   | typ (A : String) (T : SType)
-  /-- `{a = t}`. -/
-  | trm (a : String) (t : STm)
+  /-- `{a = t}`, or `{a : T = t}` with a written type. -/
+  | trm (a : String) (T : Option SType) (t : STm)
   /-- `d ∧ e`. -/
   | and (d e : SDefs)
 end
@@ -134,24 +134,30 @@ def labelNamesTy : SType → List String
   | .all _ S T => labelNamesTy S ++ labelNamesTy T
   | .and S T => labelNamesTy S ++ labelNamesTy T
 
+/-- The names in label position of an optional type, none for an empty slot. -/
+def labelNamesOpt : Option SType → List String
+  | none => []
+  | some T => labelNamesTy T
+
 mutual
 /-- The names in label position of a surface term, with repetitions. -/
 def labelNamesTm (e : STm) : List String :=
   match e with
   | .var _ => []
-  | .lam _ T t => labelNamesTy T ++ labelNamesTm t
-  | .obj _ T d => labelNamesTy T ++ labelNamesDefs d
+  | .lam _ T t => labelNamesOpt T ++ labelNamesTm t
+  | .obj _ T d => labelNamesOpt T ++ labelNamesDefs d
   | .app t u => labelNamesTm t ++ labelNamesTm u
   | .proj t a => labelNamesTm t ++ [a]
   | .«let» _ ann t u =>
       (match ann with | none => [] | some U => labelNamesTy U)
         ++ labelNamesTm t ++ labelNamesTm u
+  | .asc t T => labelNamesTm t ++ labelNamesTy T
 termination_by structural e
 /-- The names in label position of surface definitions, with repetitions. -/
 def labelNamesDefs (d : SDefs) : List String :=
   match d with
   | .typ A T => A :: labelNamesTy T
-  | .trm a t => a :: labelNamesTm t
+  | .trm a T t => a :: (labelNamesOpt T ++ labelNamesTm t)
   | .and d e => labelNamesDefs d ++ labelNamesDefs e
 termination_by structural d
 end
@@ -196,24 +202,31 @@ def SType.Scoped : List String → SType → Bool
   | Γ, .all x S T => SType.Scoped Γ S && SType.Scoped (x :: Γ) T
   | Γ, .and S T => SType.Scoped Γ S && SType.Scoped Γ T
 
+/-- Every free name of an optional type is in the list.  An empty slot has
+none. -/
+def SType.ScopedOpt (Γ : List String) : Option SType → Bool
+  | none => true
+  | some T => SType.Scoped Γ T
+
 mutual
 /-- Every free name of a surface term is in the list. -/
 def STm.Scoped (Γ : List String) (e : STm) : Bool :=
   match e with
   | .var x => Γ.contains x
-  | .lam x T t => SType.Scoped Γ T && STm.Scoped (x :: Γ) t
-  | .obj x T d => SType.Scoped (x :: Γ) T && SDefs.Scoped (x :: Γ) d
+  | .lam x T t => SType.ScopedOpt Γ T && STm.Scoped (x :: Γ) t
+  | .obj x T d => SType.ScopedOpt (x :: Γ) T && SDefs.Scoped (x :: Γ) d
   | .app t u => STm.Scoped Γ t && STm.Scoped Γ u
   | .proj t _ => STm.Scoped Γ t
   | .«let» x ann t u =>
       (match ann with | none => true | some U => SType.Scoped Γ U)
         && STm.Scoped Γ t && STm.Scoped (x :: Γ) u
+  | .asc t T => STm.Scoped Γ t && SType.Scoped Γ T
 termination_by structural e
 /-- Every free name of surface definitions is in the list. -/
 def SDefs.Scoped (Γ : List String) (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.Scoped Γ T
-  | .trm _ t => STm.Scoped Γ t
+  | .trm _ T t => SType.ScopedOpt Γ T && STm.Scoped Γ t
   | .and d e => SDefs.Scoped Γ d && SDefs.Scoped Γ e
 termination_by structural d
 end
@@ -235,24 +248,31 @@ def SType.LabelsIn : LabelTable → SType → Bool
   | Λ, .all _ S T => SType.LabelsIn Λ S && SType.LabelsIn Λ T
   | Λ, .and S T => SType.LabelsIn Λ S && SType.LabelsIn Λ T
 
+/-- Every label of an optional type is in the table.  An empty slot has
+none. -/
+def SType.LabelsInOpt (Λ : LabelTable) : Option SType → Bool
+  | none => true
+  | some T => SType.LabelsIn Λ T
+
 mutual
 /-- Every label of a surface term is in the table at the right sort. -/
 def STm.LabelsIn (Λ : LabelTable) (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ T t => SType.LabelsIn Λ T && STm.LabelsIn Λ t
-  | .obj _ T d => SType.LabelsIn Λ T && SDefs.LabelsIn Λ d
+  | .lam _ T t => SType.LabelsInOpt Λ T && STm.LabelsIn Λ t
+  | .obj _ T d => SType.LabelsInOpt Λ T && SDefs.LabelsIn Λ d
   | .app t u => STm.LabelsIn Λ t && STm.LabelsIn Λ u
   | .proj t a => STm.LabelsIn Λ t && (labelTrm? Λ a).isSome
   | .«let» _ ann t u =>
       (match ann with | none => true | some U => SType.LabelsIn Λ U)
         && STm.LabelsIn Λ t && STm.LabelsIn Λ u
+  | .asc t T => STm.LabelsIn Λ t && SType.LabelsIn Λ T
 termination_by structural e
 /-- Every label of surface definitions is in the table at the right sort. -/
 def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
   match d with
   | .typ A T => (labelTyp? Λ A).isSome && SType.LabelsIn Λ T
-  | .trm a t => (labelTrm? Λ a).isSome && STm.LabelsIn Λ t
+  | .trm a T t => (labelTrm? Λ a).isSome && SType.LabelsInOpt Λ T && STm.LabelsIn Λ t
   | .and d e => SDefs.LabelsIn Λ d && SDefs.LabelsIn Λ e
 termination_by structural d
 end
@@ -274,9 +294,9 @@ These checks reduce in the kernel.  The program is
 
 /-- The sample program of the checks below. -/
 private def sampleProgram : STm :=
-  .lam "f" (.typ "A" .top .bot)
-    (.obj "s" (.and (.fld "a" .top) (.typ "B" .top .top))
-      (.and (.trm "a" (.var "f")) (.typ "B" .top)))
+  .lam "f" (some (.typ "A" .top .bot))
+    (.obj "s" (some (.and (.fld "a" .top) (.typ "B" .top .top)))
+      (.and (.trm "a" none (.var "f")) (.typ "B" .top)))
 
 /-- Names in label position, once each, in order of first appearance, each at the
 sort of its first character. -/
@@ -305,12 +325,26 @@ example : SType.Scoped ["x"] (.sel "x" "A") = true := by decide
 example : SType.Scoped [] (.sel "x" "A") = false := by decide
 
 /-- The self binder of `ν` scopes over its own annotation. -/
-example : STm.Scoped [] (.obj "s" (.sel "s" "A") (.typ "B" .top)) = true := by decide
+example : STm.Scoped [] (.obj "s" (some (.sel "s" "A")) (.typ "B" .top)) = true := by decide
 
 /-- The binder of a `let` does not scope over the `let`'s annotation. -/
 example :
     STm.Scoped [] (.«let» "x" (some (.sel "x" "A")) (.var "y") (.var "x")) = false := by
   decide
+
+/-- A lambda with its domain left to inference scopes its body. -/
+example : STm.Scoped [] (.lam "x" none (.var "x")) = true := by decide
+
+/-- The self binder of `ν(x. d)` scopes over a written field type. -/
+example : STm.Scoped [] (.obj "s" none (.trm "a" (some (.sel "s" "A")) (.var "s"))) = true := by
+  decide
+
+/-- An ascription scopes its term like any other position. -/
+example : STm.Scoped [] (.asc (.var "y") .top) = false := by decide
+
+/-- The labels of a written field type count, after the field's own label. -/
+example : labelsOfProgram (.obj "s" none (.trm "a" (some (.fld "b" .top)) (.var "s"))) =
+    [("a", .trm 0), ("b", .trm 1)] := by decide
 
 /-! ## `#assert_no_wf`
 
