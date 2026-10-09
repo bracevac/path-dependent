@@ -1,4 +1,5 @@
 import Coercions.Captures.FCdot.Consistency
+import Coercions.Captures.FCdot.Progress
 
 namespace Captures
 
@@ -18,8 +19,10 @@ subcapturing.  So one step never grows the roots of a state's use set:
 * `inspects_covered`: the root a state reads is in its use set.
 * `effect_safety`: from a typed state whose use set has no root `κ`, a run
   never reaches a state that reads a root with root `κ`.  A stored box has
-  the empty annotation, so reading a box is never flagged, and the unboxing
-  is charged to the use set through `capture_prediction`.
+  the empty annotation, so reading a box is never flagged.
+* `effect_safety_unbox`: the same for the atom an unboxing hands back.  From
+  a typed state whose use set has no root `κ`, a run never reaches a state
+  that unboxes a stored box `□ b` with `b` rooted at `κ`.
 * `returned_capture_bound`: an answer's annotation, and the root of a
   returned atom, are bounded by the capture set of the answer's type.
 
@@ -300,6 +303,52 @@ theorem effect_safety {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s}
   have h2 : Γ'.Root (CapAtom.cvar (ρ.var κ)) ((st.uses).rename ρ) :=
     hpred Γ' hσ' _ h1
   exact (hE.root_iff hσ hσ' (CapAtom.cvar κ) st.uses).mp h2
+
+/-- **Effect safety at an unboxing.**  Let a run from a typed state whose use
+set has no root `κ` reach a state that unboxes the atom `a`, and let the
+store hold the box `□ b` at the root of `a`.  Then `b`, the atom the unboxing
+hands back, is not rooted at the image of `κ` in a typing of that store.
+`effect_safety` does not say this.  The variable of a stored box has the
+empty annotation, so it is rooted nowhere.  The proof takes the unboxing step,
+which `progress` provides, and applies capture prediction to the run that
+ends in the state holding `b`. -/
+theorem effect_safety_unbox {s s' : Sig} {st : State s} {σ' : Store s'} {K' : Cont s'}
+    {Γ : Ctx s} {Γ' : Ctx s'} {U : Ty s} {κ : BVar s .cap}
+    {a b : Atom s'} {D : CaptureSet s'} {f : CapCo s'}
+    (hT : State.Typed st U) (hσ : ⊢ st.σ : Γ) (run : st ⟶* ⟨σ', K', .unbox a D f⟩)
+    (hκ : ¬ Γ.Root (CapAtom.cvar κ) st.uses)
+    (hx : σ'.lookup a.root = .box b) (hσ' : ⊢ σ' : Γ') :
+    ∃ ρ : Rename s s', Store.Ext st.σ σ' ρ ∧
+      ¬ Γ'.Root (CapAtom.cvar (ρ.var κ)) [CapAtom.var b.root] := by
+  obtain ⟨U', hT'⟩ := Steps.typed hT run
+  rcases progress hT' with hfin | ⟨s'', st'', step⟩
+  · rcases hfin with ⟨-, _, h⟩ | ⟨-, _, h⟩ <;> cases h
+  · have hrun' := run.tail step
+    -- A state over the same store whose term uses the root of `b`.
+    have hmem : ∀ {σ₁ : Store s'} {t : Tm s'},
+        (CapAtom.var b.root ∈ t.uses) →
+        (h : st ⟶* (⟨σ₁, K', t⟩ : State s')) → σ₁ = σ' →
+        ∃ ρ : Rename s s', Store.Ext st.σ σ' ρ ∧
+          ¬ Γ'.Root (CapAtom.cvar (ρ.var κ)) [CapAtom.var b.root] := by
+      intro σ₁ t hb h hσ₁
+      subst hσ₁
+      obtain ⟨ρ, hE, hpred⟩ := capture_prediction hT h
+      refine ⟨ρ, hE, fun hr => hκ ?_⟩
+      have h1 : Γ'.Root (CapAtom.cvar (ρ.var κ)) (State.uses ⟨σ₁, K', t⟩) :=
+        CapLe.mem (fun c hc => by
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+          subst hc
+          exact List.mem_append.mpr (Or.inl hb)) _ hr
+      exact (hE.root_iff hσ hσ' _ _).mp (hpred Γ' hσ' _ h1)
+    cases step with
+    | unboxRefl hx' _ _ =>
+        rw [hx] at hx'
+        cases hx'
+        exact hmem (by simp) hrun' rfl
+    | unboxCast hx' _ =>
+        rw [hx] at hx'
+        cases hx'
+        exact hmem (by simp [Atom.root]) hrun' rfl
 
 /-! ## The capture set of an answer -/
 
