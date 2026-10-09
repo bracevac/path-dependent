@@ -2,6 +2,7 @@ import Coercions.Classifiers.FCdot.Checker
 import Coercions.Classifiers.FCdot.LevelInversion
 import Coercions.Classifiers.FCdot.Erasure
 import Coercions.Classifiers.FCdot.Consistency
+import Coercions.Classifiers.FCdot.Runs
 import Coercions.Classifiers.FCdot.Prediction
 import Coercions.Classifiers.DotMNF.Examples
 import Coercions.Classifiers.DotMNF.Erasure
@@ -2009,28 +2010,23 @@ example : checkCap X2Ctx (.level (.cvar X2κ₂) ⊤ᶜ) [CapAtom.cvar X2κ₂] 
 
 /-! ### X3, nothing escapes a scope
 
-`no_inner_escape` applied at `κ₂` and `⊤ᶜ` on the context of X2: no closed
-evidence at all, and not only no `level` step, puts the binder introduced
-inside the scope below the enclosing root.
+`no_inner_escape` applied at `κ₂` and `⊤ᶜ` on the context of X2: no
+member-free evidence puts the binder introduced inside the scope below the
+enclosing root.  The three level premises are decided.
 
-The three level premises are decided.  The fourth premise is a typed store,
-and no store types this context: a store binds capabilities and never
-scopes, so a store context has no root binder (`Store.Typed.rootFree`), and
-X2's context has one.  That is the second part below, and it is why X3
-holds vacuously here.  The escape gets real content once a lambda body is a
-scope and a store slot can sit under a root the run itself provides, which
-is where this argument is reused. -/
+The statement needs no store, and this context could not have one: a store
+binds capabilities and never scopes, so a store context has no root binder
+(`Store.Typed.rootFree`), and X2's context has one.  That is `X3_no_store`. -/
 
-/-- **X3, nothing escapes a scope.**  Over any store that types the nested
-context, no capture evidence puts the rigid binder introduced inside the
-scope below the universal root. -/
-theorem X3_no_escape {σ : Store ([],c,c,c)} (hσ : ⊢ σ : X2Ctx) :
-    ¬ ∃ f : CapCo ([],c,c,c), X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ] :=
-  no_inner_escape hσ (by decide) (by decide) (by decide)
+/-- **X3, nothing escapes a scope.**  No member-free capture evidence puts
+the rigid binder introduced inside the scope below the universal root. -/
+theorem X3_no_escape :
+    ¬ ∃ f : CapCo ([],c,c,c), (X2Ctx ⊢ᶜ f : [CapAtom.cvar X2κ₂] ⊑ [⊤ᶜ]) ∧ f.MemberFree :=
+  no_inner_escape (by decide) (by decide) (by decide)
 
-/-- **X3, the second part.**  The hypothesis of `X3_no_escape` is
-unavailable for this context: a store context has no scope root, and X2's
-context opens one. -/
+/-- **X3, no store.**  No store types the context of X3: a store context has
+no scope root, and X2's context opens one.  So a form of `X3_no_escape` that
+assumed a typed store would hold here for want of a store. -/
 theorem X3_no_store : ¬ ∃ σ : Store ([],c,c,c), ⊢ σ : X2Ctx := by
   rintro ⟨σ, hσ⟩
   have h : X2Ctx.root? = none := hσ.rootFree
@@ -3593,8 +3589,8 @@ reads a classifier a binder *declares*, and this binder declares none.
 binder with no declaration would not survive `Ctx.Ren.instC`, which reads
 such a binder as an instance of an arbitrary set: the fact below is true
 here and false in the image of that map, so the kinding family would lose
-its renaming lemma.  The two rejections are machine checked below.  No theorem
-excludes the other rules. -/
+its renaming lemma.  The two rejections are machine checked below, and
+`K6x_no_kindCo` shows that no kinding evidence at all derives the fact. -/
 
 /-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_p ⊚`: a classified capability, then a rigid
 binder with no declared classifier. -/
@@ -3638,6 +3634,202 @@ theorem K6x_kcls_reject :
 admit every classifier. -/
 theorem K6x_kproj_reject :
     checkKindCo K6Ctx (.kproj K6p) [K6p] (Cls.except Cls.ThreadLocal) = false := by decide
+
+/-! The whole gap.  `Ctx.Ren.instC` reads the rigid binder as an instance of
+`{κ_tl}`, and the kinding family travels along that map
+(`KindCo.HasType.renameR`).  In the image the binder resolves to the
+thread-local capability, which `except ThreadLocal` excludes, and the image
+context is typed by a store, so `kind_canon` refutes every kinding there. -/
+
+/-- The image of K6x's context under `Ctx.Ren.instC`: the rigid binder
+becomes an instance of `{κ_tl}`. -/
+def K6InstCtx : Ctx ([],c,c) :=
+  Ctx.consC (Ctx.consC Ctx.nil (.cls Cls.ThreadLocal)) (.inst [CapAtom.cvar .here])
+
+/-- A store that types it: a store may hold an instance binder. -/
+def K6InstStore : Store ([],c,c) :=
+  Store.consC (Store.consC Store.nil (.cls Cls.ThreadLocal)) (.inst [CapAtom.cvar .here])
+
+theorem K6Inst_store : ⊢ K6InstStore : K6InstCtx := .consC (.consC .nil rfl) rfl
+
+/-- In the image the binder resolves to `κ_tl`. -/
+theorem K6Inst_caps : K6InstCtx.caps 1 [K6p] = [CapAtom.cvar (.there .here)] := by
+  simp [K6InstCtx, Ctx.capsAtom_cvar, Ctx.capsBound, CapBound.weaken,
+    CapBound.rename, CaptureSet.rename, CapAtom.rename]
+
+theorem K6Inst_roots : K6InstCtx.roots 1 [K6p] = [CapAtom.cvar (.there .here)] := by
+  rw [Ctx.roots_eq_expand_caps, K6Inst_caps]
+  decide
+
+/-- So in the image the binder is not kinded at `except ThreadLocal`. -/
+theorem K6Inst_not_kindLe : ¬ K6InstCtx.KindLe [K6p] (Cls.except Cls.ThreadLocal) := by
+  intro h
+  have hc := h (CapAtom.cvar (.there .here)) ⟨1, by rw [K6Inst_roots]; exact List.mem_cons_self ..⟩
+  revert hc
+  decide
+
+/-- **No kinding evidence derives K6x's fact.**  Whatever the evidence, the
+rigid binder with no declared classifier is not kinded at
+`except ThreadLocal` by a derivation, although its canonical form holds
+(`K6x_kindLe`). -/
+theorem K6x_no_kindCo (g : KindCo ([],c,c)) :
+    ¬ K6Ctx ⊢ᵏ g : [K6p] ⊑ᵏ Cls.except Cls.ThreadLocal := by
+  intro h
+  have h' := KindCo.HasType.renameR
+    (Ctx.Ren.instC (Γ := Ctx.consC Ctx.nil (.cls Cls.ThreadLocal))
+      (C := [CapAtom.cvar .here])).toRenR h
+  rw [CaptureSet.rename_id] at h'
+  exact K6Inst_not_kindLe (kind_canon K6Inst_store h')
+
+/-! ## Reading the run of a translated program
+
+The effect theorems for source programs conclude about the target state that
+the simulation matches to a source state, and they name that state only by
+what it satisfies: it is reached from the initial state of the translation, it
+is typed, and it has the erasure of the source state.  To say what that state
+holds, three facts suffice.  A run of the target machine is determined
+(`Steps.linear`), so every state it reaches at one signature has the store of
+any other (`Steps.store_of_reach`), and the store of one state at that
+signature can be read off a run written out by hand.  A variable in a typed
+store has the roots of the annotation of its literal (`Store.Typed.root_var_iff`).
+And the source run is short enough to list, so the variable a source state reads
+is known.
+
+The lemmas below unfold one clause of the translation at a time, so that a
+written out run can name the head of each translated term and leave the rest
+of it as it is. -/
+
+theorem tr_let {s : Sig} {Γ : DotMNF.Ctx s} {U : DotMNF.CaptureSet s} {t : DotMNF.Tm s}
+    {u : DotMNF.Tm (s,x)} {T T' : DotMNF.Ty s} (h₁ : DotMNF.HasTy U Γ t (.ty T))
+    (h₂ : DotMNF.HasTy (DotMNF.CaptureSet.weaken U) (Γ.cons T) u (.ty (DotMNF.Ty.weaken T')))
+    (w : DotMNF.Ty.Wf T') :
+    (DotMNF.HasTy.let h₁ h₂ w).translate =
+      .let h₁.translate h₂.translate U.translate h₂.translateUses := by
+  rw [DotMNF.HasTy.translate.eq_def]
+
+theorem tr_sub {s : Sig} {Γ : DotMNF.Ctx s} {U U' : DotMNF.CaptureSet s} {t : DotMNF.Tm s}
+    {E E' : DotMNF.ETy s} (h : DotMNF.HasTy U Γ t E) (d : DotMNF.ESub Γ E E')
+    (f : DotMNF.Subcap Γ U U') :
+    (DotMNF.HasTy.sub h d f).translate = .castE h.translate d.translate := by
+  rw [DotMNF.HasTy.translate.eq_def]
+
+theorem tr_lam {s : Sig} {Γ : DotMNF.Ctx s} {U : DotMNF.CaptureSet s} {T1 : DotMNF.Dom s}
+    {t : DotMNF.Tm (Sig.body s)} {T2 : DotMNF.Cod s}
+    (h : DotMNF.HasTy
+      (DotMNF.CaptureSet.weaken (DotMNF.CaptureSet.weaken (DotMNF.CaptureSet.weaken U)) ∪ [.var .here])
+      (Γ.body T1) t T2.underRoot) (w : DotMNF.Ty.Wf T1) :
+    (DotMNF.HasTy.lam h w).translate =
+      .val (.lam U.translate T1.translate h.translate h.translateUses) := by
+  rw [DotMNF.HasTy.translate.eq_def]
+
+theorem tr_refl_ty {s : Sig} {Γ : DotMNF.Ctx s} (T : DotMNF.Ty s) :
+    (DotMNF.ESub.refl (Γ := Γ) (.ty T)).translate =
+      .plain (DotMNF.Sub.refl (Γ := Γ) T).translate := by
+  unfold DotMNF.ESub.refl
+  rw [DotMNF.ESub.translate.eq_def]
+
+/-- The identity closure of E1, at the declared set `U` and the use set `V`,
+translates to a lambda annotated `⟦U⟧` under an answer cast. -/
+theorem tr_E1IdVal_widen {s : Sig} {Γ : DotMNF.Ctx s} (U V : DotMNF.CaptureSet s) :
+    ∃ (T : Dom s) (b : Tm (Sig.body s)) (g : CapCo (Sig.body s)) (e : LeCo s),
+      ((DotMNF.Examples.E1IdVal (Γ := Γ) U).widen V).translate =
+        .castE (.val (.lam U.translate T b g)) (.plain e) := by
+  have h : ((DotMNF.Examples.E1IdVal (Γ := Γ) U).widen V).translate =
+      ((DotMNF.Examples.E1IdVal (Γ := Γ) U).widen V).translate := rfl
+  conv at h =>
+    rhs
+    unfold DotMNF.HasTy.widen
+    rw [tr_sub]
+    unfold DotMNF.Examples.E1IdVal DotMNF.Examples.arrowS
+    rw [tr_lam, tr_refl_ty]
+  exact ⟨_, _, _, _, h⟩
+
+/-- The same for the identity closure of E2. -/
+theorem tr_E2IdVal_widen {s : Sig} {Γ : DotMNF.Ctx s} (U V : DotMNF.CaptureSet s) :
+    ∃ (T : Dom s) (b : Tm (Sig.body s)) (g : CapCo (Sig.body s)) (e : LeCo s),
+      ((DotMNF.Examples.E2IdVal (Γ := Γ) U).widen V).translate =
+        .castE (.val (.lam U.translate T b g)) (.plain e) := by
+  have h : ((DotMNF.Examples.E2IdVal (Γ := Γ) U).widen V).translate =
+      ((DotMNF.Examples.E2IdVal (Γ := Γ) U).widen V).translate := rfl
+  conv at h =>
+    rhs
+    unfold DotMNF.HasTy.widen
+    rw [tr_sub]
+    unfold DotMNF.Examples.E2IdVal DotMNF.Examples.arrowS
+    rw [tr_lam, tr_refl_ty]
+  exact ⟨_, _, _, _, h⟩
+
+/-- The source shape of E1 and E2: bind a value, bind a closure whose body is
+a value, call the closure on the value, and hand the result back. -/
+def callTm {s : Sig} (v₁ : DotMNF.Value s) (T : DotMNF.Dom (s,x))
+    (w : DotMNF.Value (Sig.body (s,x))) : DotMNF.Tm s :=
+  .let (.val v₁)
+    (.let (.val (.lam T (.val w))) (.let (.app .here (.there .here)) (.path (.var .here))))
+
+/-- The states a run of `callTm` passes through, each at its signature: two
+`let` frames and two allocations, the call, the closure's value, and the
+allocation of the result. -/
+def CallReach {s : Sig} (σ : DotMNF.Store s) (v₁ : DotMNF.Value s) (T : DotMNF.Dom (s,x))
+    (w : DotMNF.Value (Sig.body (s,x))) (p : (s : Sig) × DotMNF.State s) : Prop :=
+  p = ⟨s, ⟨σ, .nil, .let (.val v₁) (.let (.val (.lam T (.val w)))
+      (.let (.app .here (.there .here)) (.path (.var .here))))⟩⟩ ∨
+  p = ⟨s, ⟨σ, .cons .nil (.let (.val (.lam T (.val w)))
+      (.let (.app .here (.there .here)) (.path (.var .here)))), .val v₁⟩⟩ ∨
+  p = ⟨(s,x), ⟨σ.cons v₁, .nil, .let (.val (.lam T (.val w)))
+      (.let (.app .here (.there .here)) (.path (.var .here)))⟩⟩ ∨
+  p = ⟨(s,x), ⟨σ.cons v₁, .cons .nil (.let (.app .here (.there .here)) (.path (.var .here))),
+      .val (.lam T (.val w))⟩⟩ ∨
+  p = ⟨(s,x,x), ⟨(σ.cons v₁).cons (.lam T (.val w)), .nil,
+      .let (.app .here (.there .here)) (.path (.var .here))⟩⟩ ∨
+  p = ⟨(s,x,x), ⟨(σ.cons v₁).cons (.lam T (.val w)), .cons .nil (.path (.var .here)),
+      .app .here (.there .here)⟩⟩ ∨
+  (∃ v, p = ⟨(s,x,x), ⟨(σ.cons v₁).cons (.lam T (.val w)), .cons .nil (.path (.var .here)),
+      .val v⟩⟩) ∨
+  (∃ v, p = ⟨(s,x,x,x), ⟨((σ.cons v₁).cons (.lam T (.val w))).cons v, .nil,
+      .path (.var .here)⟩⟩)
+
+theorem CallReach.step {s : Sig} {σ : DotMNF.Store s} {v₁ : DotMNF.Value s}
+    {T : DotMNF.Dom (s,x)} {w : DotMNF.Value (Sig.body (s,x))} {s₁ s₂ : Sig}
+    {a : DotMNF.State s₁} {b : DotMNF.State s₂} (h : CallReach σ v₁ T w ⟨s₁, a⟩)
+    (step : DotMNF.Step a b) : CallReach σ v₁ T w ⟨s₂, b⟩ := by
+  unfold CallReach at h ⊢
+  rcases h with h | h | h | h | h | h | ⟨v, h⟩ | ⟨v, h⟩ <;>
+    obtain ⟨rfl, he⟩ := Sigma.mk.inj h <;> cases eq_of_heq he <;> cases step
+  all_goals first
+    | exact Or.inl rfl
+    | exact Or.inr (Or.inl rfl)
+    | exact Or.inr (Or.inr (Or.inl rfl))
+    | exact Or.inr (Or.inr (Or.inr (Or.inl rfl)))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, rfl⟩))))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨_, rfl⟩))))))
+    | (rename_i hl
+       simp only [DotMNF.Store.lookup, DotMNF.Value.weaken, DotMNF.Value.rename,
+         DotMNF.Value.lam.injEq] at hl
+       obtain ⟨-, rfl⟩ := hl
+       exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨_, rfl⟩)))))))
+
+/-- **A run of `callTm` reads one variable.**  Every state of a run of
+`callTm` that reads a variable is the call, after the two allocations, and it
+reads the closure, the innermost binder. -/
+theorem callTm_reads {s : Sig} (σ : DotMNF.Store s) (v₁ : DotMNF.Value s)
+    (T : DotMNF.Dom (s,x)) (w : DotMNF.Value (Sig.body (s,x))) {s' : Sig}
+    {st : DotMNF.State s'}
+    (run : DotMNF.Steps (⟨σ, .nil, callTm v₁ T w⟩ : DotMNF.State s) st)
+    {y : BVar s' .var} (hin : st.inspects = some y) :
+    (⟨s', y⟩ : (s : Sig) × BVar s .var) = ⟨(s,x,x), .here⟩ := by
+  have key : ∀ {s₀ s'} {st₀ : DotMNF.State s₀} {st : DotMNF.State s'},
+      DotMNF.Steps st₀ st → CallReach σ v₁ T w ⟨s₀, st₀⟩ → CallReach σ v₁ T w ⟨s', st⟩ := by
+    intro s₀ s' st₀ st h h0
+    induction h with
+    | refl => exact h0
+    | tail _ step ih => exact (ih h0).step step
+  have h := key run (Or.inl rfl)
+  unfold CallReach at h
+  rcases h with h | h | h | h | h | h | ⟨v, h⟩ | ⟨v, h⟩ <;>
+    obtain ⟨rfl, he⟩ := Sigma.mk.inj h <;> cases eq_of_heq he <;> cases hin
+  rfl
 
 /-! ## E1, only-control
 
@@ -3849,9 +4041,10 @@ theorem E1_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
     DotMNF.Examples.E1Plat.targetStore_typed E1_initial_kindLe run hin hσ'
 
 /-- **The run never reads `κ_io`.**  `only[Control]` does not contain `IO`, so
-no root of a read variable is classified `IO`.  The variable this program reads
-holds a closure with the empty capture set, so by inspection of the term (no
-theorem states it) it has no root and the statement holds for want of one. -/
+no root of a read variable is classified `IO`.  At E1 the variable a run reads
+has no root at the states `E1_reads_pure` covers, so the statement holds there
+for want of one.  `E1r_read_has_root` is a program whose read variable has a
+root. -/
 theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E1TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -3864,20 +4057,223 @@ theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var
 /-- **E1 at the source**, through `DotMNF.dot_classified_effect_safety'`: the
 source program, its own kinding evidence, and any source run.  The matched
 target state reads only capabilities `only[Control]` admits.  In the runs of this
-program the variable read holds the `Try.apply` closure, whose capture set is
-empty, so by inspection of the term (no theorem states it) the conclusion holds
-for want of a root. -/
+program the variable read holds the `Try.apply` closure, whose annotation is
+empty, so the conclusion holds for want of a root (`E1_reads_pure`).
+`E1r_effect_safety` is the same theorem at a program that reads a rooted
+variable. -/
 theorem E1_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1tm⟩ : DotMNF.State ([],c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
-      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
-        Store.Ext DotMNF.Examples.E1Plat.targetStore stt.σ ρ ∧
-          ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
-            (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
+      (E1TgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some x ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext DotMNF.Examples.E1Plat.targetStore stt.σ ρ ∧
+            ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+              (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
   DotMNF.dot_classified_effect_safety' DotMNF.Examples.E1Plat DotMNF.Examples.E1_typed
     DotMNF.Examples.E1_kind run hin
+
+/-! ### What the run of E1 reads
+
+The source run of E1 reads one variable, `f`, after allocating `b` and `f`
+(`callTm_reads`).  Every target state the run reaches at that signature has
+the store of the run written out below, and that store holds at `f` the
+translation of `Try.apply`, a lambda annotated with the empty set.  So the
+variable read has no root, at every matched state. -/
+
+/-- The translation of the body of E1 after `let b`: `Try.apply`, a lambda
+annotated with the empty set, bound under an answer cast, and the whole `let`
+under the answer cast of the result. -/
+theorem E1outer_tr : ∃ (T₂ : Dom ([],c,c,x)) (b₂ : Tm (Sig.body ([],c,c,x)))
+    (g₂ : CapCo (Sig.body ([],c,c,x))) (e₂ : LeCo ([],c,c,x)) (U₂ : CaptureSet ([],c,c,x))
+    (f₂ : CapCo ([],c,c,x,x)) (g : ELeCo ([],c,c,x)),
+    DotMNF.Examples.E1outer.translate =
+      .castE (.let (.castE (.val (.lam [] T₂ b₂ g₂)) (.plain e₂))
+        DotMNF.Examples.E1inner.translate U₂ f₂) g := by
+  have h : DotMNF.Examples.E1outer.translate = DotMNF.Examples.E1outer.translate := rfl
+  conv at h =>
+    rhs
+    unfold DotMNF.Examples.E1outer DotMNF.Examples.HasTy.captTo
+    rw [tr_sub, tr_let]
+    unfold DotMNF.HasTy.widen
+    rw [tr_sub]
+    unfold DotMNF.Examples.E1Try DotMNF.Examples.lam' DotMNF.Examples.E1TryTm
+      DotMNF.Examples.E1TryTy
+    rw [tr_lam, tr_refl_ty]
+  exact ⟨_, _, _, _, _, _, _, h⟩
+
+/-- The translation of E1: the `let` of the body closure `b`. -/
+theorem E1_tr : DotMNF.Examples.E1_typed.translate =
+    .let ((DotMNF.Examples.E1IdVal (Γ := DotMNF.Examples.E1PlatCtx) DotMNF.Examples.E1Filt).widen
+        DotMNF.Examples.E1Filt).translate
+      DotMNF.Examples.E1outer.translate DotMNF.Examples.E1Filt.translate
+      DotMNF.Examples.E1outer.translateUses := by
+  unfold DotMNF.Examples.E1_typed DotMNF.Examples.E1tm
+  rw [tr_let]
+  rfl
+
+/-- **The run of E1 to its second allocation.**  The translated program binds
+`b`, pushes the answer cast of its result, and binds `f`.  The state it
+reaches holds at `f` a literal with the empty annotation. -/
+theorem E1_prefix : ∃ L : State ([],c,c,x,x), (E1TgtInit ⟶* L) ∧ (L.σ.lookup .here).annot = [] := by
+  obtain ⟨T₁, b₁, g₁, e₁, h₁⟩ :=
+    tr_E1IdVal_widen (Γ := DotMNF.Examples.E1PlatCtx) DotMNF.Examples.E1Filt DotMNF.Examples.E1Filt
+  obtain ⟨T₂, b₂, g₂, e₂, U₂, f₂, g, h₂⟩ := E1outer_tr
+  have h0 : E1TgtInit = ⟨DotMNF.Examples.E1Plat.targetStore, .nil,
+      .let (.castE (.val (.lam DotMNF.Examples.E1Filt.translate T₁ b₁ g₁)) (.plain e₁))
+        (.castE (.let (.castE (.val (.lam [] T₂ b₂ g₂)) (.plain e₂))
+          DotMNF.Examples.E1inner.translate U₂ f₂) g)
+        DotMNF.Examples.E1Filt.translate DotMNF.Examples.E1outer.translateUses⟩ := by
+    show State.mk _ _ DotMNF.Examples.E1_typed.translate = _
+    rw [E1_tr, h₁, h₂]
+  rw [h0]
+  exact ⟨_, Steps.trans (Steps.trans Steps.letCastE (.tail .refl .castEPush)) Steps.letCastE, rfl⟩
+
+/-- **The variable E1 reads has no root.**  For every source run and every
+variable `x` the reached source state reads, every target state at the
+signature of that source state that a run of the translated program reaches,
+over any context typing its store, roots `x` nowhere.  This covers the state
+`E1_effect_safety` matches, so the conclusion of `E1_effect_safety` holds at E1
+for want of a root.  `root_var_pure` at the store of `E1_prefix`. -/
+theorem E1_reads_pure {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1tm⟩ : DotMNF.State ([],c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x)
+    {stt : State s} {Γ' : Ctx s} (hrun : E1TgtInit ⟶* stt) (hσ' : Store.Typed stt.σ Γ')
+    (a : CapAtom s) : ¬ Γ'.Root a [CapAtom.var x] := by
+  obtain ⟨rfl, he⟩ := Sigma.mk.inj (callTm_reads _ _ _ _ run hin)
+  cases eq_of_heq he
+  obtain ⟨L, hL, hann⟩ := E1_prefix
+  refine root_var_pure hσ' ?_ a
+  rw [Steps.store_of_reach hL hrun]
+  exact hann
+
+/-! ### E1r, a run that reads a filtered closure
+
+`DotMNF.Examples.E1r_typed` calls a closure `b` declared at the filtered
+platform set `{κ_ctl, κ_io} ↾ only[Control]`.  The variable its run reads is
+`b`, and `b` is rooted at `κ_ctl`: the filter keeps `κ_ctl` and drops `κ_io`.
+`E1r_read_has_root` is the conclusion of `E1r_effect_safety` at the call,
+together with that root, so the conclusion speaks of a capability that is
+there. -/
+
+/-- The initial target state of E1r's program. -/
+def E1rTgtInit : State ([],c,c) :=
+  ⟨DotMNF.Examples.E1Plat.targetStore, .nil, DotMNF.Examples.E1r_typed.translate⟩
+
+/-- The translation of E1r: the `let` of `u`. -/
+theorem E1r_tr : DotMNF.Examples.E1r_typed.translate =
+    .let ((DotMNF.Examples.E1IdVal (Γ := DotMNF.Examples.E1PlatCtx) []).widen
+        DotMNF.Examples.E1Filt).translate
+      DotMNF.Examples.E1rMid.translate DotMNF.Examples.E1Filt.translate
+      DotMNF.Examples.E1rMid.translateUses := by
+  unfold DotMNF.Examples.E1r_typed DotMNF.Examples.E1rtm
+  rw [tr_let]
+  rfl
+
+/-- And of its body: the `let` of `b`. -/
+theorem E1rMid_tr : DotMNF.Examples.E1rMid.translate =
+    .let ((DotMNF.Examples.E1IdVal (Γ := DotMNF.Examples.E1rCtx1)
+        (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt)).widen
+        (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt)).translate
+      DotMNF.Examples.E1rInner.translate (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt).translate
+      DotMNF.Examples.E1rInner.translateUses := by
+  unfold DotMNF.Examples.E1rMid
+  rw [tr_let]
+  rfl
+
+/-- The embedding of the platform into the store after the two allocations. -/
+abbrev E1rρ : Rename ([],c,c) ([],c,c,x,x) := (Rename.id.comp Rename.succ).comp Rename.succ
+
+/-- **The run of E1r to its second allocation.**  The state it reaches holds
+at `b` a literal annotated with the filtered platform set, carried into the
+store along the embedding. -/
+theorem E1r_prefix : ∃ L : State ([],c,c,x,x), (E1rTgtInit ⟶* L) ∧
+    Store.Ext DotMNF.Examples.E1Plat.targetStore L.σ E1rρ ∧
+    (L.σ.lookup .here).annot = DotMNF.Examples.E1Filt.translate.rename E1rρ := by
+  obtain ⟨T₁, b₁, g₁, e₁, h₁⟩ :=
+    tr_E1IdVal_widen (Γ := DotMNF.Examples.E1PlatCtx) [] DotMNF.Examples.E1Filt
+  obtain ⟨T₂, b₂, g₂, e₂, h₂⟩ :=
+    tr_E1IdVal_widen (Γ := DotMNF.Examples.E1rCtx1) (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt)
+      (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt)
+  have h0 : E1rTgtInit = ⟨DotMNF.Examples.E1Plat.targetStore, .nil,
+      .let (.castE (.val (.lam (DotMNF.CaptureSet.translate []) T₁ b₁ g₁)) (.plain e₁))
+        (.let (.castE (.val (.lam (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt).translate
+            T₂ b₂ g₂)) (.plain e₂)) DotMNF.Examples.E1rInner.translate
+          (DotMNF.CaptureSet.weaken DotMNF.Examples.E1Filt).translate
+          DotMNF.Examples.E1rInner.translateUses)
+        DotMNF.Examples.E1Filt.translate DotMNF.Examples.E1rMid.translateUses⟩ := by
+    show State.mk _ _ DotMNF.Examples.E1r_typed.translate = _
+    rw [E1r_tr, h₁, E1rMid_tr, h₂]
+  rw [h0]
+  exact ⟨_, Steps.trans Steps.letCastE Steps.letCastE, .cons (.cons .refl _) _, rfl⟩
+
+/-- `κ_ctl` is a root of the filtered platform set. -/
+theorem E1Filt_root_ctl :
+    DotMNF.Examples.E1Plat.ctx.translate.Root (CapAtom.cvar K1ctl)
+      DotMNF.Examples.E1Filt.translate := by
+  refine ⟨0, ?_⟩
+  rw [Ctx.roots_eq_expand_caps, E1_ctx_translate]
+  simp [DotMNF.Examples.E1Filt, DotMNF.CaptureSet.translate_proj, K1Ctx, Ctx.capsAtom_proj,
+    Ctx.capsAtom_cvar, Ctx.capsBound, CaptureSet.proj, CapAtom.projBy]
+  decide
+
+/-- **The variable E1r reads is rooted at `κ_ctl`.**  Every target state at
+the signature of the call that a run of the translated program reaches, over
+any context typing its store, has `κ_ctl` as a root of `b`. -/
+theorem E1r_reads_root {stt : State ([],c,c,x,x)} {Γ' : Ctx ([],c,c,x,x)}
+    (hrun : E1rTgtInit ⟶* stt) (hσ' : Store.Typed stt.σ Γ') :
+    Γ'.Root (CapAtom.cvar (.there (.there K1ctl))) [CapAtom.var .here] := by
+  obtain ⟨L, hL, hE, hann⟩ := E1r_prefix
+  have hst : stt.σ = L.σ := Steps.store_of_reach hL hrun
+  rw [hσ'.root_var_iff, hst, hann]
+  rw [hst] at hσ'
+  exact (hE.root_iff DotMNF.Examples.E1Plat.targetStore_typed hσ' (CapAtom.cvar K1ctl) _).mpr
+    E1Filt_root_ctl
+
+/-- **E1r at the source**, through `DotMNF.dot_classified_effect_safety'`, with
+E1's kinding of the filtered platform set. -/
+theorem E1r_effect_safety {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1rtm⟩ : DotMNF.State ([],c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
+      (E1rTgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some x ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext DotMNF.Examples.E1Plat.targetStore stt.σ ρ ∧
+            ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+              (Cls.only Cls.Control).Contains (Γ'.classOf a) :=
+  DotMNF.dot_classified_effect_safety' DotMNF.Examples.E1Plat DotMNF.Examples.E1r_typed
+    DotMNF.Examples.E1_kind run hin
+
+/-- The source state of E1r at the call `b u`. -/
+def E1rCallSt : DotMNF.State ([],c,c,x,x) :=
+  ⟨(DotMNF.Examples.E1Plat.store.cons (.lam DotMNF.Examples.unitTy (.path (.var .here)))).cons
+      (.lam DotMNF.Examples.unitTy (.path (.var .here))),
+    .cons .nil (.path (.var .here)), .app .here (.there .here)⟩
+
+/-- The source run of E1r to the call: two `let`s with their allocations, and
+the `let` of the result. -/
+theorem E1r_src_call :
+    DotMNF.Steps
+      (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1rtm⟩ : DotMNF.State ([],c,c))
+      E1rCallSt :=
+  .tail (.tail (.tail (.tail (.tail .refl .let) .alloc) .let) .alloc) .let
+
+/-- **The conclusion of `E1r_effect_safety` at the call has a root.**  At the
+source state of the call, which reads `b`, the matched target state roots `b`
+at `κ_ctl`, and every root of `b` has a classifier `only[Control]` admits. -/
+theorem E1r_read_has_root :
+    ∃ (stt : State ([],c,c,x,x)) (Γ' : Ctx ([],c,c,x,x)) (ρ : Rename ([],c,c) ([],c,c,x,x)),
+      (E1rTgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some .here ∧
+        State.erase stt = E1rCallSt.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext DotMNF.Examples.E1Plat.targetStore stt.σ ρ ∧
+            (∀ a : CapAtom ([],c,c,x,x), Γ'.Root a [CapAtom.var .here] →
+              (Cls.only Cls.Control).Contains (Γ'.classOf a)) ∧
+            Γ'.Root (CapAtom.cvar (.there (.there K1ctl))) [CapAtom.var .here] := by
+  obtain ⟨stt, Γ', ρ, hrun, hT, hin, he, hσ', hE, hsafe⟩ := E1r_effect_safety E1r_src_call rfl
+  exact ⟨stt, Γ', ρ, hrun, hT, hin, he, hσ', hE, hsafe, E1r_reads_root hrun hσ'⟩
 
 /-! ## E2, except-thread-local
 
@@ -4258,9 +4654,10 @@ theorem E2_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
     (DotMNF.Platform.initial_typed E2PlatIO DotMNF.Examples.E2_typed)
     E2PlatIO.targetStore_typed E2_initial_kindLe run hin hσ'
 
-/-- **The run never reads a thread-local capability.**  The variable this program
-reads holds a closure with the empty capture set, so by inspection of the term
-(no theorem states it) it has no root and the statement holds for want of one. -/
+/-- **The run never reads a thread-local capability.**  At E2 the variable a
+run reads has no root at the states `E2_reads_pure` covers, so the statement
+holds there for want of one.  `E2r_read_has_root` is a program whose read
+variable has a root. -/
 theorem E2_never_tl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -4271,8 +4668,8 @@ theorem E2_never_tl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var
   exact absurd hc (by decide)
 
 /-- And never a control capability, because `Control` lies below
-`ThreadLocal`.  As for `E2_never_tl`, the variable read has no root, so this
-holds for want of a root. -/
+`ThreadLocal`.  As for `E2_never_tl`, the variable read has no root
+(`E2_reads_pure`), so this holds for want of a root. -/
 theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -4286,19 +4683,207 @@ theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .va
 the source program, its own kinding evidence, and any source run.  The
 matched target state reads only capabilities `except[ThreadLocal]` admits.  In the
 runs of this program the variable read holds the `Future.apply` closure, whose
-capture set is empty, so by inspection of the term (no theorem states it) the
-conclusion holds for want of a root. -/
+annotation is empty, so the conclusion holds for want of a root
+(`E2_reads_pure`).  `E2r_effect_safety` is the same theorem at a program that
+reads a rooted variable. -/
 theorem E2_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2tm⟩ : DotMNF.State ([],c,c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c,c) s),
-      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
-        Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
-          ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
-            (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a) :=
+      (E2TgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some x ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
+            ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+              (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a) :=
   DotMNF.dot_classified_effect_safety' E2PlatIO DotMNF.Examples.E2_typed
     DotMNF.Examples.E2_kind run hin
+
+/-! ### What the run of E2 reads
+
+As for E1: the source run reads `f`, which holds `Future.apply`, a lambda
+annotated with the empty set, so the variable read has no root at every
+matched state. -/
+
+/-- The translation of the body of E2 after `let b`. -/
+theorem E2outer_tr : ∃ (T₂ : Dom ([],c,c,c,x)) (b₂ : Tm (Sig.body ([],c,c,c,x)))
+    (g₂ : CapCo (Sig.body ([],c,c,c,x))) (e₂ : LeCo ([],c,c,c,x)) (U₂ : CaptureSet ([],c,c,c,x))
+    (f₂ : CapCo ([],c,c,c,x,x)) (g : ELeCo ([],c,c,c,x)),
+    DotMNF.Examples.E2outer.translate =
+      .castE (.let (.castE (.val (.lam [] T₂ b₂ g₂)) (.plain e₂))
+        DotMNF.Examples.E2inner.translate U₂ f₂) g := by
+  have h : DotMNF.Examples.E2outer.translate = DotMNF.Examples.E2outer.translate := rfl
+  conv at h =>
+    rhs
+    unfold DotMNF.Examples.E2outer DotMNF.Examples.HasTy.captTo
+    rw [tr_sub, tr_let]
+    unfold DotMNF.HasTy.widen
+    rw [tr_sub]
+    unfold DotMNF.Examples.E2Apply DotMNF.Examples.lam' DotMNF.Examples.E2ApplyTm
+      DotMNF.Examples.E2ApplyTy
+    rw [tr_lam, tr_refl_ty]
+  exact ⟨_, _, _, _, _, _, _, h⟩
+
+/-- The translation of E2: the `let` of the body closure `b`. -/
+theorem E2_tr : DotMNF.Examples.E2_typed.translate =
+    .let ((DotMNF.Examples.E2IdVal (Γ := E2PlatIOCtx) E2Filt).widen E2Filt).translate
+      DotMNF.Examples.E2outer.translate E2Filt.translate
+      DotMNF.Examples.E2outer.translateUses := by
+  unfold DotMNF.Examples.E2_typed DotMNF.Examples.E2tm
+  rw [tr_let]
+  rfl
+
+/-- **The run of E2 to its second allocation.**  The state it reaches holds at
+`f` a literal with the empty annotation. -/
+theorem E2_prefix : ∃ L : State ([],c,c,c,x,x), (E2TgtInit ⟶* L) ∧
+    (L.σ.lookup .here).annot = [] := by
+  obtain ⟨T₁, b₁, g₁, e₁, h₁⟩ := tr_E2IdVal_widen (Γ := E2PlatIOCtx) E2Filt E2Filt
+  obtain ⟨T₂, b₂, g₂, e₂, U₂, f₂, g, h₂⟩ := E2outer_tr
+  have h0 : E2TgtInit = ⟨E2PlatIO.targetStore, .nil,
+      .let (.castE (.val (.lam E2Filt.translate T₁ b₁ g₁)) (.plain e₁))
+        (.castE (.let (.castE (.val (.lam [] T₂ b₂ g₂)) (.plain e₂))
+          DotMNF.Examples.E2inner.translate U₂ f₂) g)
+        E2Filt.translate DotMNF.Examples.E2outer.translateUses⟩ := by
+    show State.mk _ _ DotMNF.Examples.E2_typed.translate = _
+    rw [E2_tr, h₁, h₂]
+  rw [h0]
+  exact ⟨_, Steps.trans (Steps.trans Steps.letCastE (.tail .refl .castEPush)) Steps.letCastE, rfl⟩
+
+/-- **The variable E2 reads has no root.**  For every source run and every
+variable `x` the reached source state reads, every target state at the
+signature of that source state that a run of the translated program reaches,
+over any context typing its store, roots `x` nowhere.  This covers the state
+`E2_effect_safety` matches, so the conclusion of `E2_effect_safety` holds at E2
+for want of a root. -/
+theorem E2_reads_pure {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2tm⟩ : DotMNF.State ([],c,c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x)
+    {stt : State s} {Γ' : Ctx s} (hrun : E2TgtInit ⟶* stt) (hσ' : Store.Typed stt.σ Γ')
+    (a : CapAtom s) : ¬ Γ'.Root a [CapAtom.var x] := by
+  obtain ⟨rfl, he⟩ := Sigma.mk.inj (callTm_reads _ _ _ _ run hin)
+  cases eq_of_heq he
+  obtain ⟨L, hL, hann⟩ := E2_prefix
+  refine root_var_pure hσ' ?_ a
+  rw [Steps.store_of_reach hL hrun]
+  exact hann
+
+/-! ### E2r, a run that reads a filtered closure
+
+`DotMNF.Examples.E2r_typed` calls a closure `b` declared at the filtered
+platform set `{κ_tl, κ_ctl, κ_io} ↾ except[ThreadLocal]`.  The variable its
+run reads is `b`, rooted at `κ_io`: the filter keeps `κ_io` and drops the
+thread-local and the control capability. -/
+
+/-- The initial target state of E2r's program. -/
+def E2rTgtInit : State ([],c,c,c) :=
+  ⟨E2PlatIO.targetStore, .nil, DotMNF.Examples.E2r_typed.translate⟩
+
+/-- The translation of E2r: the `let` of `u`. -/
+theorem E2r_tr : DotMNF.Examples.E2r_typed.translate =
+    .let ((DotMNF.Examples.E2IdVal (Γ := E2PlatIOCtx) []).widen E2Filt).translate
+      DotMNF.Examples.E2rMid.translate E2Filt.translate
+      DotMNF.Examples.E2rMid.translateUses := by
+  unfold DotMNF.Examples.E2r_typed DotMNF.Examples.E2rtm
+  rw [tr_let]
+  rfl
+
+/-- And of its body: the `let` of `b`. -/
+theorem E2rMid_tr : DotMNF.Examples.E2rMid.translate =
+    .let ((DotMNF.Examples.E2IdVal (Γ := DotMNF.Examples.E2rCtx1)
+        (DotMNF.CaptureSet.weaken E2Filt)).widen (DotMNF.CaptureSet.weaken E2Filt)).translate
+      DotMNF.Examples.E2rInner.translate (DotMNF.CaptureSet.weaken E2Filt).translate
+      DotMNF.Examples.E2rInner.translateUses := by
+  unfold DotMNF.Examples.E2rMid
+  rw [tr_let]
+  rfl
+
+/-- The embedding of the platform into the store after the two allocations. -/
+abbrev E2rρ : Rename ([],c,c,c) ([],c,c,c,x,x) := (Rename.id.comp Rename.succ).comp Rename.succ
+
+/-- **The run of E2r to its second allocation.**  The state it reaches holds
+at `b` a literal annotated with the filtered platform set. -/
+theorem E2r_prefix : ∃ L : State ([],c,c,c,x,x), (E2rTgtInit ⟶* L) ∧
+    Store.Ext E2PlatIO.targetStore L.σ E2rρ ∧
+    (L.σ.lookup .here).annot = E2Filt.translate.rename E2rρ := by
+  obtain ⟨T₁, b₁, g₁, e₁, h₁⟩ := tr_E2IdVal_widen (Γ := E2PlatIOCtx) [] E2Filt
+  obtain ⟨T₂, b₂, g₂, e₂, h₂⟩ :=
+    tr_E2IdVal_widen (Γ := DotMNF.Examples.E2rCtx1) (DotMNF.CaptureSet.weaken E2Filt)
+      (DotMNF.CaptureSet.weaken E2Filt)
+  have h0 : E2rTgtInit = ⟨E2PlatIO.targetStore, .nil,
+      .let (.castE (.val (.lam (DotMNF.CaptureSet.translate []) T₁ b₁ g₁)) (.plain e₁))
+        (.let (.castE (.val (.lam (DotMNF.CaptureSet.weaken E2Filt).translate T₂ b₂ g₂))
+          (.plain e₂)) DotMNF.Examples.E2rInner.translate
+          (DotMNF.CaptureSet.weaken E2Filt).translate DotMNF.Examples.E2rInner.translateUses)
+        E2Filt.translate DotMNF.Examples.E2rMid.translateUses⟩ := by
+    show State.mk _ _ DotMNF.Examples.E2r_typed.translate = _
+    rw [E2r_tr, h₁, E2rMid_tr, h₂]
+  rw [h0]
+  exact ⟨_, Steps.trans Steps.letCastE Steps.letCastE, .cons (.cons .refl _) _, rfl⟩
+
+/-- `κ_io` is a root of the filtered platform set. -/
+theorem E2Filt_root_io :
+    E2PlatIO.ctx.translate.Root (CapAtom.cvar E2Tio) E2Filt.translate := by
+  refine ⟨0, ?_⟩
+  rw [Ctx.roots_eq_expand_caps, E2_ctxIO_translate]
+  simp [DotMNF.Examples.E2Filt, DotMNF.CaptureSet.translate_proj, E2TCtx, Ctx.capsAtom_proj,
+    Ctx.capsAtom_cvar, Ctx.capsBound, CaptureSet.proj, CapAtom.projBy]
+  decide
+
+/-- **The variable E2r reads is rooted at `κ_io`.**  Every target state at
+the signature of the call that a run of the translated program reaches, over
+any context typing its store, has `κ_io` as a root of `b`. -/
+theorem E2r_reads_root {stt : State ([],c,c,c,x,x)} {Γ' : Ctx ([],c,c,c,x,x)}
+    (hrun : E2rTgtInit ⟶* stt) (hσ' : Store.Typed stt.σ Γ') :
+    Γ'.Root (CapAtom.cvar (.there (.there E2Tio))) [CapAtom.var .here] := by
+  obtain ⟨L, hL, hE, hann⟩ := E2r_prefix
+  have hst : stt.σ = L.σ := Steps.store_of_reach hL hrun
+  rw [hσ'.root_var_iff, hst, hann]
+  rw [hst] at hσ'
+  exact (hE.root_iff E2PlatIO.targetStore_typed hσ' (CapAtom.cvar E2Tio) _).mpr E2Filt_root_io
+
+/-- **E2r at the source**, through `DotMNF.dot_classified_effect_safety'`, with
+E2's kinding of the filtered platform set. -/
+theorem E2r_effect_safety {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps
+      (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2rtm⟩ : DotMNF.State ([],c,c,c)) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c,c) s),
+      (E2rTgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some x ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
+            ∀ a : CapAtom s, Γ'.Root a [CapAtom.var x] →
+              (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a) :=
+  DotMNF.dot_classified_effect_safety' E2PlatIO DotMNF.Examples.E2r_typed
+    DotMNF.Examples.E2_kind run hin
+
+/-- The source state of E2r at the call `b u`. -/
+def E2rCallSt : DotMNF.State ([],c,c,c,x,x) :=
+  ⟨(E2PlatIO.store.cons (.lam DotMNF.Examples.unitTy (.path (.var .here)))).cons
+      (.lam DotMNF.Examples.unitTy (.path (.var .here))),
+    .cons .nil (.path (.var .here)), .app .here (.there .here)⟩
+
+/-- The source run of E2r to the call. -/
+theorem E2r_src_call :
+    DotMNF.Steps (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2rtm⟩ : DotMNF.State ([],c,c,c))
+      E2rCallSt :=
+  .tail (.tail (.tail (.tail (.tail .refl .let) .alloc) .let) .alloc) .let
+
+/-- **The conclusion of `E2r_effect_safety` at the call has a root.**  At the
+source state of the call, which reads `b`, the matched target state roots `b`
+at `κ_io`, and every root of `b` has a classifier `except[ThreadLocal]`
+admits. -/
+theorem E2r_read_has_root :
+    ∃ (stt : State ([],c,c,c,x,x)) (Γ' : Ctx ([],c,c,c,x,x))
+      (ρ : Rename ([],c,c,c) ([],c,c,c,x,x)),
+      (E2rTgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧ stt.inspects = some .here ∧
+        State.erase stt = E2rCallSt.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext E2PlatIO.targetStore stt.σ ρ ∧
+            (∀ a : CapAtom ([],c,c,c,x,x), Γ'.Root a [CapAtom.var .here] →
+              (Cls.except Cls.ThreadLocal).Contains (Γ'.classOf a)) ∧
+            Γ'.Root (CapAtom.cvar (.there (.there E2Tio))) [CapAtom.var .here] := by
+  obtain ⟨stt, Γ', ρ, hrun, hT, hin, he, hσ', hE, hsafe⟩ := E2r_effect_safety E2r_src_call rfl
+  exact ⟨stt, Γ', ρ, hrun, hT, hin, he, hσ', hE, hsafe, E2r_reads_root hrun hσ'⟩
 
 end E2
 
@@ -4481,18 +5066,35 @@ theorem E3_capkI_mor :
   rw [DotMNF.Shape.tel_cap]
   exact .leC (Telescope.At.one_two _ _)
 
-/-- **The kinding entry, canonically.**  `mor_canon` normalizes the morphism to
-an entry list typed between the two telescopes.  The `kindCle` case is the one
-that `mor_canon` would run, and the semantic step it carries is `kindCle_semantic`.
-This statement holds trivially.  It assumes a store typing `E3CtxB.translate`,
-which binds its term variables opaque, while a typed store binds them
-transparent, so no such store exists (no theorem of the tree states this) and
-the case does not run here. -/
-theorem E3_capkI_mor_canon {σ : Store ([],c,c,x,x,x)}
-    (hσ : Store.Typed σ E3CtxB.translate) :
-    MorConcl σ E3CtxB.translate (DotMNF.Shape.cap lC E3aSet E3aSet).tel E3capkIMor
-      (DotMNF.Shape.capk lC (Cls.only Cls.Control)).tel :=
-  mor_canon hσ E3_capkI_mor
+/-- The first literal's member `{C : {κ₁}..{κ₁}}`, read at the platform
+context, where the platform's target store lives.  Its set names only the
+platform binder `κ₁`, so the same `kindCle` morphism is typed there, with the
+platform's own `kcls` kinding of `κ₁` as its closed kinding. -/
+def E3capkIMorPlat : Morphism ([],c,c) :=
+  .kindCle .nil .nil (.leC 1) .nil (DotMNF.Examples.E3_cap_kind DotMNF.Examples.E3_clsOf_k1).translate
+    (Cls.only Cls.Control)
+
+/-- **The `capkI` morphism over the platform is typed**, from the two-entry
+telescope of `{C : {κ₁}..{κ₁}}` to the one-entry telescope of
+`{C : only[Control]}`. -/
+theorem E3_capkI_mor_plat :
+    E3Plat.ctx.translate ⊢ E3capkIMorPlat :
+      (DotMNF.Shape.cap lC [DotMNF.CapAtom.cvar E3k1] [DotMNF.CapAtom.cvar E3k1]).tel ⇒
+        (DotMNF.Shape.capk lC (Cls.only Cls.Control)).tel := by
+  rw [DotMNF.Shape.tel_capk]
+  refine .kindCle .nil ?_ .nil .nil (DotMNF.CapKind.translate_typed _ E3_ctx_wf)
+  rw [DotMNF.Shape.tel_cap]
+  exact .leC (Telescope.At.one_two _ _)
+
+/-- **The kinding entry, canonically.**  `mor_canon` over the platform's
+target store normalizes the `capkI` morphism to an entry list typed between
+the two telescopes.  Its `kindCle` case runs here, and the semantic step it
+carries is `kindCle_semantic`. -/
+theorem E3_capkI_mor_canon :
+    MorConcl E3Plat.targetStore E3Plat.ctx.translate
+      (DotMNF.Shape.cap lC [DotMNF.CapAtom.cvar E3k1] [DotMNF.CapAtom.cvar E3k1]).tel
+      E3capkIMorPlat (DotMNF.Shape.capk lC (Cls.only Cls.Control)).tel :=
+  mor_canon E3Plat.targetStore_typed E3_capkI_mor_plat
 
 /-! ### The client, charged by `kmember`
 
@@ -4542,10 +5144,11 @@ theorem E3_prediction {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E3Plat.store, .nil, DotMNF.Examples.E3tm⟩ : DotMNF.State ([],c,c)) st) :
     ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
-      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
-        Store.Ext E3Plat.targetStore stt.σ ρ ∧
-          CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
-            Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
+      (E3TgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext E3Plat.targetStore stt.σ ρ ∧
+            CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
+              Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
   DotMNF.dot_classified_prediction E3Plat DotMNF.Examples.E3_typed E3_kindLe_uses run
 
 /-- The same from the source's own kinding evidence, through
@@ -4554,10 +5157,11 @@ theorem E3_prediction' {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E3Plat.store, .nil, DotMNF.Examples.E3tm⟩ : DotMNF.State ([],c,c)) st) :
     ∃ (stt : State s) (Γ' : Ctx s) (ρ : Rename ([],c,c) s),
-      State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
-        Store.Ext E3Plat.targetStore stt.σ ρ ∧
-          CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
-            Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
+      (E3TgtInit ⟶* stt) ∧ (∃ V, State.Typed stt V) ∧
+        State.erase stt = st.erase ∧ Store.Typed stt.σ Γ' ∧
+          Store.Ext E3Plat.targetStore stt.σ ρ ∧
+            CapLe Γ' stt.uses (E3Uses.translate.rename ρ) ∧
+              Γ'.KindLe stt.uses (Cls.only Cls.Control) :=
   DotMNF.dot_classified_prediction' E3Plat DotMNF.Examples.E3_typed
     DotMNF.Examples.E3_kind run
 

@@ -149,8 +149,9 @@ the compiler cuts a cyclic reference.
 
 Every definition is structural, so the kernel evaluates the typer.  The checks
 at the end of the module type the example programs at `defaultFuel` by
-`decide +kernel`.  A level escape reads the well-founded `Ctx.caps`, so those
-verdicts are computed by compiled code.
+`decide +kernel`.  A level escape reads the resolution through `capsK`, a
+structural twin of the well-founded `Ctx.caps`, so the kernel decides those
+verdicts too.
 -/
 
 namespace ClassifiersFrontend
@@ -1128,8 +1129,9 @@ does, and collects every set goal that subcapturing does not find.  For each
 it tries a certificate.  The certificate needs three decided facts: the
 context is well formed (`ctxWf?`), the target set resolves to itself at every
 depth (`selfAtom?`), and at one small depth the source set is not confined to
-a root the target set is confined to.  The last fact reads the well-founded
-`Ctx.caps`, so compiled code computes it, not the kernel. -/
+a root the target set is confined to.  The last fact reads the resolution
+`Ctx.caps`, which is well founded.  `capsK` computes it structurally on a
+budget of steps, so the kernel decides the certificate too. -/
 
 /-- Well-formedness of a context, decided.  Only an object's self binder asks
 something, the conditions `literalShape?` and `distinctLabels?`. -/
@@ -1192,20 +1194,167 @@ theorem caps_self {s : Sig} {Γ : Classifiers.FCdot.Ctx s} :
         caps_self D (fun b hb => h b (List.mem_cons_of_mem _ hb)) n]
       rfl
 
+/-! ### Resolution on a step budget
+
+`FCdot.Ctx.caps` is defined by well-founded recursion, so the kernel does not
+reduce it.  `capsK` and `capsAtomK` follow its clauses one by one, with one
+more argument, a budget of steps, on which they recurse structurally.  When the
+budget runs out they answer `none`.  An answer is the resolution
+(`capsK_sound`).  So the certificate below is computed by the kernel too. -/
+
+section Budget
+
+open Classifiers
+
+mutual
+
+/-- `Ctx.caps` on a budget of `k` steps. -/
+def capsK {s : Sig} (k : Nat) (Γ : FCdot.Ctx s) (n : Nat) (C : FCdot.CaptureSet s) :
+    Option (FCdot.CaptureSet s) :=
+  match k, C with
+  | 0, _ => none
+  | _ + 1, [] => some []
+  | k + 1, a :: C =>
+      match capsAtomK k Γ n a, capsK k Γ n C with
+      | some A, some B => some (A ++ B)
+      | _, _ => none
+termination_by structural k
+
+/-- `Ctx.capsAtom` on a budget of `k` steps. -/
+def capsAtomK {s : Sig} (k : Nat) (Γ : FCdot.Ctx s) (n : Nat) (a : FCdot.CapAtom s) :
+    Option (FCdot.CaptureSet s) :=
+  match k, Γ, n, a with
+  | 0, _, _, _ => none
+  | k + 1, .cons Γ b, n, .var .here => (capsK k Γ n b.ty.captureSet).map FCdot.CaptureSet.weaken
+  | k + 1, .cons Γ _, n, .var (.there y) => (capsAtomK k Γ n (.var y)).map FCdot.CaptureSet.weaken
+  | k + 1, .consC Γ _, n, .var (.there y) =>
+      (capsAtomK k Γ n (.var y)).map FCdot.CaptureSet.weaken
+  | _ + 1, .consC _ .root, _, .cvar .here => some [.cvar .here]
+  | _ + 1, .consC _ .star, _, .cvar .here => some [.cvar .here]
+  | _ + 1, .consC _ (.cls _), _, .cvar .here => some [.cvar .here]
+  | k + 1, .consC Γ (.upper C), n, .cvar .here => (capsK k Γ n C).map FCdot.CaptureSet.weaken
+  | k + 1, .consC Γ (.inst C), n, .cvar .here => (capsK k Γ n C).map FCdot.CaptureSet.weaken
+  | k + 1, .cons Γ _, n, .cvar (.there κ) =>
+      (capsAtomK k Γ n (.cvar κ)).map FCdot.CaptureSet.weaken
+  | k + 1, .consC Γ _, n, .cvar (.there κ) =>
+      (capsAtomK k Γ n (.cvar κ)).map FCdot.CaptureSet.weaken
+  | _ + 1, _, _, .top => some [.top]
+  | _ + 1, _, 0, .name _ _ => some []
+  | k + 1, Γ, n + 1, .name x ℓ =>
+      match Γ.lookupDefC x ℓ with
+      | some C => capsK k Γ n C
+      | none => some []
+  | k + 1, Γ, n, .proj a φ => (capsAtomK k Γ n a).map (·.map (FCdot.CapAtom.proj · φ))
+termination_by structural k
+
+end
+
+/-- One step of `capsK_sound`, on atoms. -/
+theorem capsAtomK_succ_sound {k : Nat}
+    (ihC : ∀ {s : Sig} (Γ : FCdot.Ctx s) (n : Nat) (C L : FCdot.CaptureSet s),
+      capsK k Γ n C = some L → Γ.caps n C = L)
+    (ihA : ∀ {s : Sig} (Γ : FCdot.Ctx s) (n : Nat) (a : FCdot.CapAtom s)
+      (L : FCdot.CaptureSet s), capsAtomK k Γ n a = some L → Γ.capsAtom n a = L) :
+    ∀ {s : Sig} (Γ : FCdot.Ctx s) (n : Nat) (a : FCdot.CapAtom s) (L : FCdot.CaptureSet s),
+      capsAtomK (k + 1) Γ n a = some L → Γ.capsAtom n a = L
+  | _, .cons Γ b, n, .var .here, L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihC _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .cons Γ b, n, .var (.there y), L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihA _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ b, n, .var (.there y), L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihA _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ .root, n, .cvar .here, L, h => by
+      simp only [capsAtomK, Option.some.injEq] at h; subst h; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ .star, n, .cvar .here, L, h => by
+      simp only [capsAtomK, Option.some.injEq] at h; subst h; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ (.cls _), n, .cvar .here, L, h => by
+      simp only [capsAtomK, Option.some.injEq] at h; subst h; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ (.upper C), n, .cvar .here, L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihC _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ (.inst C), n, .cvar .here, L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihC _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .cons Γ b, n, .cvar (.there κ), L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihA _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, .consC Γ b, n, .cvar (.there κ), L, h => by
+      simp only [capsAtomK, Option.map_eq_some_iff] at h
+      obtain ⟨A, hA, rfl⟩ := h
+      rw [← ihA _ _ _ _ hA]; simp [FCdot.Ctx.capsAtom]
+  | _, Γ, n, .top, L, h => by
+      cases Γ <;> simp only [capsAtomK, Option.some.injEq] at h <;> subst h <;>
+        exact FCdot.Ctx.capsAtom_top _ n
+  | _, Γ, 0, .name x ℓ, L, h => by
+      cases Γ <;> simp only [capsAtomK, Option.some.injEq] at h <;> subst h <;>
+        exact FCdot.Ctx.capsAtom_name_zero _ x ℓ
+  | _, Γ, n + 1, .name x ℓ, L, h => by
+      rw [FCdot.Ctx.capsAtom_name_succ]
+      cases hd : Γ.lookupDefC x ℓ with
+      | none =>
+          cases Γ <;> simp only [capsAtomK, hd, Option.some.injEq] at h <;> subst h <;> rfl
+      | some C =>
+          cases Γ <;> simp only [capsAtomK, hd] at h <;> exact ihC _ _ _ _ h
+  | _, Γ, n, .proj a φ, L, h => by
+      rw [FCdot.Ctx.capsAtom_proj]
+      cases Γ <;> simp only [capsAtomK, Option.map_eq_some_iff] at h <;>
+        obtain ⟨A, hA, rfl⟩ := h <;> rw [ihA _ _ _ _ hA]
+
+/-- An answer of `capsK` or `capsAtomK` is the resolution, at every budget. -/
+theorem capsK_sound : ∀ (k : Nat),
+    (∀ {s : Sig} (Γ : FCdot.Ctx s) (n : Nat) (C L : FCdot.CaptureSet s),
+      capsK k Γ n C = some L → Γ.caps n C = L) ∧
+    (∀ {s : Sig} (Γ : FCdot.Ctx s) (n : Nat) (a : FCdot.CapAtom s) (L : FCdot.CaptureSet s),
+      capsAtomK k Γ n a = some L → Γ.capsAtom n a = L)
+  | 0 => ⟨fun _ _ _ _ h => by simp [capsK] at h, fun _ _ _ _ h => by simp [capsAtomK] at h⟩
+  | k + 1 => by
+    obtain ⟨ihC, ihA⟩ := capsK_sound k
+    refine ⟨fun Γ n C L h => ?_, fun Γ n a L h => ?_⟩
+    · cases C with
+      | nil => simp [capsK] at h; simp [h]
+      | cons a C =>
+        simp only [capsK] at h
+        split at h
+        · rename_i A B hA hB
+          cases h
+          rw [FCdot.Ctx.caps_cons, ihA _ _ _ _ hA, ihC _ _ _ _ hB]
+        · cases h
+    · exact capsAtomK_succ_sound ihC ihA Γ n a L h
+
+end Budget
+
+/-- The budget of steps of `certify?`.  A resolution that needs more gives no
+certificate. -/
+def certifyBudget : Nat := 1024
+
 /-- A certificate for the goal `C <: D` at `Γ`: the first root `r` (the
 universal one, then each atom of `D`) that confines `D`, with the first depth
-below four at which `C` is not confined to it. -/
+below four at which `C` is not confined to it.  The resolution of `C` is
+computed by `capsK`, so the kernel reduces the whole certificate. -/
 def certify? {s : Sig} (Γ : Ctx s) (C D : CaptureSet s) : Option Reason :=
   if hwf : ctxWf? Γ = true then
     if hself : ∀ a ∈ D.translate, selfAtom? Γ.translate a = true then
       (Classifiers.FCdot.CapAtom.top :: D.translate).findSome? fun r =>
         if hr : Γ.translate.Confined D.translate r then
           (List.range 4).findSome? fun n =>
-            if hn : ¬ Γ.translate.Confined (Γ.translate.caps n C.translate) r then
-              some (.levelEscape Γ C D r
-                (escape_rejected_at (ctxWf?_sound Γ hwf) r
-                  (fun m => by rw [caps_self _ hself m]; exact hr) n hn))
-            else none
+            match hk : capsK certifyBudget Γ.translate n C.translate with
+            | some L =>
+                if hn : ¬ Γ.translate.Confined L r then
+                  some (.levelEscape Γ C D r
+                    (escape_rejected_at (ctxWf?_sound Γ hwf) r
+                      (fun m => by rw [caps_self _ hself m]; exact hr) n
+                      (by rw [(capsK_sound certifyBudget).1 _ _ _ _ hk]; exact hn)))
+                else none
+            | none => none
         else none
     else none
   else none
@@ -1968,8 +2117,8 @@ open.  Each check runs from a full tank of `defaultFuel` units in the kernel.
 It states the use set and answer, or that there is none, and the tank left.
 An unmarked tank says that the fuel played no part in the verdict.  A
 rejection with the tank unmarked holds at every fuel (`synthTop?_stable`).
-A rejection by a level escape reads `Ctx.caps`, which the kernel does not
-reduce, so those verdicts are `#eval expect` tests. -/
+A rejection by a level escape reads the resolution through `capsK`, so the
+kernel checks those verdicts too. -/
 
 section Checks
 
@@ -2414,9 +2563,8 @@ example : topRejected {} πz exTopSrc = some "existentialAtTop" := by decide +ke
 
 /-! ### Rejections by a level escape
 
-Compiled code computes each verdict, since its certificate reads `Ctx.caps`.
-The depth of the context reached and the kind of root are checked too.  The
-rejections themselves are kernel facts with the tank unmarked. -/
+The kernel checks each verdict, the depth of the context reached and the kind
+of root.  The rejections themselves leave the tank unmarked. -/
 
 example : judgAt πc EscSrc = (none, ⟨defaultFuel - 31, false⟩) := by decide +kernel
 example : judgAt πc TopEscSrc = (none, ⟨defaultFuel - 31, false⟩) := by decide +kernel
@@ -2426,17 +2574,20 @@ example : judgAt πc AscEscSrc = (none, ⟨defaultFuel - 88, false⟩) := by dec
 and the callback returns its parameter.  The goal reached is `{f} <: {κ_g}` in
 the callback's body, in the context that also binds `cb`, nine binders deep.
 The certificate's root is `κ_g`. -/
-#eval expect ((resolveTop Λc [] πc EscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (9, false)) "the escape"
+example : (resolveTop Λc [] πc EscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) =
+    some (9, false) := by
+  decide +kernel
 
 /- At the top the result `any` reads as the platform set, so the
 certificate's root is the universal one. -/
-#eval expect ((resolveTop Λc [] πc TopEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (6, true)) "the escape at the top"
+example : (resolveTop Λc [] πc TopEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) =
+    some (6, true) := by
+  decide +kernel
 
 /- The escape written as an ascription is rejected at the callback's body. -/
-#eval expect ((resolveTop Λc [] πc AscEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) ==
-  some (8, false)) "the escape by an ascription"
+example : (resolveTop Λc [] πc AscEscSrc).bind (fun a => escapeShape? (synthTop? {} πc a)) =
+    some (8, false) := by
+  decide +kernel
 
 /-- The same callback at its own parameter is accepted. -/
 example : (judgAt πc EscOkSrc).1.map (·.1) = some [] := by decide +kernel

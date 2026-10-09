@@ -7,8 +7,8 @@ import Coercions.Classifiers.DotToFCdot.EvidenceTyped
 import Coercions.Classifiers.DotToFCdot.TermsTyped
 import Coercions.Classifiers.DotToFCdot.Erasure
 import Coercions.Classifiers.DotToFCdot.Safety
-import Coercions.Classifiers.DotToFCdot.Consistency
 import Coercions.Classifiers.DotToFCdot.Prediction
+import Coercions.Classifiers.DotToFCdot.Consistency
 /-!
 Import root for the translation from DOT-MNF to FCdot.
 -/
