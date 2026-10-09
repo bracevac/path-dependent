@@ -22,8 +22,8 @@ the resolved one.  `Compiled` holds the elaborated term, its use set, its type,
 the derivation about its erasure and a proof that its skeleton is the skeleton
 of the resolved term.  `ATm.skel` forgets annotations, capture sets, boxes,
 unboxings, ascriptions and capture binders, inlines a `let` of a variable, and
-does not tell `let` from `letex`.  So the check says the elaborated program is
-the written one up to what the typer adds.
+does not tell `let` from `letex`.  So the check says that the elaborated
+program has the skeleton of the resolved one.
 
 `compile` returns the typer's `Verdict`.  `ok` carries the record.  `rejected`
 carries a reason with its proof.  `unknown` says no answer and no reason was
@@ -51,7 +51,7 @@ Except for `compile_rejected_goal` and the `_get` variants,
 * `compile_checks`: the target checker accepts the translation of the
   derivation.
 * `compile_uses_checks`: the target checker accepts the use set evidence.
-* `compile_erase`: the translation erases to the compiled term.
+* `compile_erase`: the translation erases to the erasure of the compiled term.
 * `compile_faithful`: the elaborated term has the skeleton of the resolved
   term.
 * `compile_safe`: every state a run of the compiled term reaches is final or
@@ -59,16 +59,19 @@ Except for `compile_rejected_goal` and the `_get` variants,
   this is composed at the platform.
 * `compile_not_stuck` and `compile_run_progress`: no reachable state is
   stuck, and the state the driver `run` returns is final or has a step.
-* `compile_capture_prediction`: along a run, the matched target state uses no
-  more than the translation of the typer's use set.
+* `compile_capture_prediction`: along a run, a target state with the same
+  erasure and a typed store exists, and it uses no more than the translation of
+  the typer's use set, renamed along the store extension.
 * `compile_effect_safety`: a platform capability not in the typer's use set
-  is never the root of a variable a run reads.
+  is not a root, in the matched target state, of a variable a run reads.
 * `compile_lvl_safety`: at every member-free subcapturing `lo <: hi` of the
   derivation, `lo` is confined to every atom that confines `hi`, at every
   depth of resolution.
 * `compile_rejected_goal`: a program rejected by a level escape comes with a
-  goal `C <: D` that no member-free subcapturing proves.  This is about that
-  goal, not about every derivation of the program.
+  goal `C <: D` that no member-free subcapturing proves.  The conclusion is the
+  certificate that the hypothesis already carries, so the theorem holds
+  trivially.  The content is in `certify?`.  It is about that goal, not about
+  every derivation of the program.
 * `compile_checks_get` and `compile_effect_safety_get`: the same for a
   program whose compile succeeds by a decided test.  For a concrete program
   the kernel reduces the compile, so both premises close by `decide +kernel`.
@@ -361,12 +364,15 @@ theorem compile_uses_checks (h : compile b Λ π e = .ok ⟨a, c⟩) :
       c.use.translate = true :=
   FCdot.checkCap_complete (c.deriv.translate_uses (Platform.ctx_wf π.plat))
 
-/-- **The translation erases to the compiled term.**  `HasTy.translate_erase`. -/
+/-- **The translation erases to the erasure of the compiled term.**
+`HasTy.translate_erase`. -/
 theorem compile_erase (h : compile b Λ π e = .ok ⟨a, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the written one up to what the typer adds.** -/
+/-- **The compiled term has the skeleton of the resolved one.**  This names the
+field `Compiled.skel`.  The check is in `compile`, which builds the record only
+when the skeletons agree. -/
 theorem compile_faithful (h : compile b Λ π e = .ok ⟨a, c⟩) : ATm.skel c.tm = ATm.skel a :=
   c.skel
 
@@ -403,8 +409,8 @@ theorem compile_run_progress (h : compile b Λ π e = .ok ⟨a, c⟩) (m : Nat) 
     | some _ => rfl
     | none => exact absurd hstep (step?_eq_none_iff.mp hs)
 
-/-- **Capture prediction of the compiled program.**  For a run `r`, a typed
-target state with the same erasure exists.  Its store extends the platform's
+/-- **Capture prediction of the compiled program.**  For a run `r`, a target
+state with the same erasure and a typed store exists.  Its store extends the platform's
 along a renaming `ρ`, and its use set is below the translation of the typer's
 use set, renamed by `ρ`.  `DotMNF.dot_capture_prediction`. -/
 theorem compile_capture_prediction (h : compile b Λ π e = .ok ⟨a, c⟩) {s : Sig}
@@ -449,7 +455,8 @@ end
 /-- **What a rejection by a level escape says.**  The goal `C <: D` at the
 context `Γ` the typer reached, which the verdict names, is proved by no
 member-free subcapturing.  The proof is the certificate the reason carries,
-built by `escape_rejected_at` from `source_lvl_safety`. -/
+built by `escape_rejected_at` from `source_lvl_safety`.  The conclusion is that
+certificate, which `h` already holds, so the theorem holds trivially. -/
 theorem compile_rejected_goal {b : Budget} {Λ : LabelTable} {π : PlatformNames} {e : STm}
     {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ρ : FCdot.CapAtom s}
     {cert : ¬ ∃ d : Subcap Γ C D, d.MemberFree}
@@ -490,9 +497,13 @@ end
 
 /-! ## Checks
 
-The log is computed in the kernel.  Two examples show that `compile_lvl_safety`
-says something: the caller of `freshCell` at `Z1Ctx` and the call `p f` at
-`W2CallCtx`, typed by `synthIn?` at the default fuel. -/
+The log is computed in the kernel.  Two examples count the entries of the log
+of `synthIn?` at the open contexts `Z1Ctx` and `W2CallCtx`, for the caller of
+`freshCell` and for the call `p f`, at the default fuel.  They show the log is
+non-empty there.  They are not compiled programs, so they do not meet the
+premise of `compile_lvl_safety`.  `Examples.lean` counts the log of two
+compiled programs, which shows that those logs are not empty.  No example in
+this tree applies `compile_lvl_safety` to an entry. -/
 
 section Checks
 

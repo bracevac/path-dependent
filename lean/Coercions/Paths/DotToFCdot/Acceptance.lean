@@ -16,8 +16,9 @@ allocates the literal as the one entry of a typed store, reads `⊤ ≤ x ∙ A`
 the composite by `Store.Typed.no_top_le_bot` (`no_literal_at_bad`).  A closed
 term at the bad type exists, `diverging_at_bad_bounds` on X2's literal.  Its
 run reaches `o.a` in three steps and then steps to itself (`div_reach`,
-`div_loop`), so it never allocates a literal at the bad type.  That is why the
-test speaks of literals.
+`div_loop`).  That run allocates only X2's literal, which does not have the bad
+type.  Nothing here proves that every run of the term behaves so.  The test
+speaks of literals.
 
 **Test A, gDOT Fig. 2.**  The source is the page `Fig2` of
 `DotMNF/Examples.lean`.  The kernel decides every fact here: a checker verdict
@@ -110,11 +111,12 @@ theorem acceptance_gdot3_any {A : Label} {d : Defs ([],x)} :
     CastTower.typed (translate_tower h) (HasTy.translate_typed h .nil)
   exact no_literal_at_bad hv he
 
-/-! ### A closed term at the bad type exists, and it never allocates a literal there
+/-! ### A closed term at the bad type exists, and its run loops
 
-`let o = ν(x. {a = x.a}) in let y = o.a in y`, X2's literal.  `o.a` diverges,
-so the term never reaches a value at the bad type.  The theorems above are
-about literals, and this is why they cannot be about terms. -/
+`let o = ν(x. {a = x.a}) in let y = o.a in y`, X2's literal.  `o.a` steps to
+itself (`div_reach`, `div_loop`), so this run never reaches a value at the bad
+type.  The theorems above are about literals, and this is why they are not
+about terms. -/
 
 /-- `ν(x. {a = x.a})` at `μ(x. {a : {A : ⊤..⊥}})`, closed. -/
 def div_x2lit : HasTy Ctx.nil (.val (.obj Examples.X2_Defs)) (.mu Examples.X2_Self) :=

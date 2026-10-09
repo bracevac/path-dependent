@@ -25,7 +25,7 @@ set, its type, the derivation about its erasure, and the proof that its
 skeleton is the skeleton of the resolved term.  `ATm.skel` forgets annotations,
 capture sets, boxes, unboxings, ascriptions and capture binders, inlines a
 `let` of a variable, and does not tell `let` from `letex`.  Equal skeletons say
-that the elaborated program is the written one up to what the typer adds.
+that the elaborated program has the skeleton of the resolved one.
 
 The typer synthesizes the least use set it can, and a declared use set is
 binding.  When the program declares `uses C`, `compile` asks the subcapturing
@@ -66,7 +66,7 @@ Otherwise the walk goes on into its parts.
 
 * `compile_checks`, `compile_uses_checks`.  The FCdot checker accepts the
   translation and its use set evidence.
-* `compile_erase`.  The translation erases to the compiled term.
+* `compile_erase`.  The translation erases to the erasure of the compiled term.
 * `compile_faithful`.  The elaborated term has the skeleton of the resolved
   body.
 * `compile_safe`, `compile_not_stuck`, `compile_run_progress`.  Every state a
@@ -74,19 +74,23 @@ Otherwise the walk goes on into its parts.
   `DotMNF.dot_safety` is stated at the empty context only, so `compile_safe`
   is composed at the platform from `Platform.simulatedRun`,
   `FCdot.State.Typed.steps`, `Platform.initial_typed` and `Simulated.progress`.
-* `compile_capture_prediction`.  Along any run, the matched FCdot state uses
-  no more than the translation of the use set of the result.
+* `compile_capture_prediction`.  Along any run, an FCdot state with the same
+  erasure and a typed store exists, and it uses no more than the translation of
+  the use set of the result, renamed along the store extension.
 * `compile_effect_safety`.  A platform capability `κ` that is not in the use
-  set of the result is never the root of a variable a run reads.  Both premises
+  set of the result is not a root, in the matched FCdot state, of a variable a
+  run reads.  Both premises
   are decided: the use set writes no projection, and `κ` is not in it.  The
   first is needed because `{κ}.only[K]` does not hold `κ` and still reaches it.
 * `compile_lvl_safety`.  At every member-free subcapturing `lo <: hi` of the
   derivation, at its context `Γ`, `lo` is confined to every atom that confines
-  `hi`.  So no set leaves the scope of a root it is checked against.
+  `hi`.
 * `compile_rejected_goal`.  A program rejected by a level escape comes with a
   goal `C <: D` at the context the typer reached, and no member-free
   subcapturing proves that goal.  It does not say that no other derivation
-  types the program.
+  types the program.  The conclusion is the certificate that the hypothesis
+  already carries, so the theorem holds trivially.  The content is in
+  `certify?`.
 * `compile_checks_get`, `compile_effect_safety_get`.  The same for a program
   whose compile succeeds by a decided test.  For a concrete program the kernel
   reduces the compile, and the premises close by `decide +kernel`.
@@ -558,13 +562,17 @@ theorem compile_uses_checks (h : compile b Λ p = .ok ⟨r, c⟩) :
       c.use.translate = true :=
   FCdot.checkCap_complete (c.deriv.translate_uses (Platform.ctx_wf r.plat))
 
-/-- **The translation erases to the compiled term.**  `HasTy.translate_erase`. -/
+/-- **The translation erases to the erasure of the compiled term.**
+`HasTy.translate_erase`. -/
 theorem compile_erase (h : compile b Λ p = .ok ⟨r, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the written one up to what the typer adds.**  The
-elaborated term has the skeleton of the resolved body. -/
+/-- **The elaborated term has the skeleton of the resolved body.**  This names
+the field `Compiled.skel`.  The check is in `compile`, which builds the record
+only when the skeletons agree.  `ATm.skel` forgets annotations, capture sets,
+boxes, unboxings, ascriptions and capture binders, inlines a `let` of a
+variable, and does not tell `let` from `letex`. -/
 theorem compile_faithful (h : compile b Λ p = .ok ⟨r, c⟩) : ATm.skel c.tm = ATm.skel r.body :=
   c.skel
 
@@ -603,8 +611,8 @@ theorem compile_run_progress (h : compile b Λ p = .ok ⟨r, c⟩) (m : Nat) :
     | some _ => rfl
     | none => exact absurd hstep (step?_eq_none_iff.mp hs)
 
-/-- **Capture prediction of the compiled program.**  Along a run `run'`, a
-typed FCdot state with the same erasure exists.  Its store extends the
+/-- **Capture prediction of the compiled program.**  Along a run `run'`, an
+FCdot state with the same erasure and a typed store exists.  Its store extends the
 platform's along a renaming `ρ`, and its use set is below the translation of
 the use set of the result, renamed by `ρ`.  `DotMNF.dot_capture_prediction`. -/
 theorem compile_capture_prediction (h : compile b Λ p = .ok ⟨r, c⟩) {s : Sig}
@@ -648,7 +656,8 @@ end
 context the typer reached, no member-free subcapturing proves it.  The proof
 is the certificate the reason carries, built by `escape_rejected_at` from
 `source_lvl_safety`.  It is about that goal, not about every derivation of the
-program. -/
+program.  The conclusion is that certificate, which `h` already holds, so the
+theorem holds trivially. -/
 theorem compile_rejected_goal {b : Budget} {Λ : LabelTable} {p : SProg}
     {s : Sig} {Γ : Ctx s} {C D : CaptureSet s} {ρ : FCdot.CapAtom s}
     {cert : ¬ ∃ d : Subcap Γ C D, d.MemberFree}
@@ -782,9 +791,10 @@ end
 /-! ## Checks
 
 The log is computed in the kernel, so its length is a decided fact.  Two open
-examples have a non-empty log, so `compile_lvl_safety` says something about
-them: the caller of `freshCell` at `Z1Ctx` and the call `p f` at `W2CallCtx`, typed
-by `synthIn?` at the default fuel.
+examples have a non-empty log: the caller of `freshCell` at `Z1Ctx` and the
+call `p f` at `W2CallCtx`, typed by `synthIn?` at the default fuel.  They are
+not compiled programs, so they do not meet the premise of
+`compile_lvl_safety`.
 
 `Try.apply`, the first classifier example, goes through all three entry
 points.  Its body is the one of `Typer.lean`, with the binders' types written

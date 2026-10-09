@@ -17,7 +17,11 @@ capabilities `k1` and `k2`, or over `πz`, the same two binders named `fs` and
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.  Every check runs at `defaultFuel`.
+resolution, the typer and the machine.  The exception is a level escape.
+`certify?` reads the well-founded `FCdot.Ctx.caps`, which the kernel does not
+reduce, so the reason of a level-escape rejection is checked by `#eval`, and
+the certificate at the goal is proved by `Esc_rejected'`.  Every check runs at
+`defaultFuel`.
 
 For a program that compiles:
 
@@ -1875,7 +1879,8 @@ theorem C2_never_reads_k1 {s : Sig} {st : State s}
 /-! ## The log of a compiled program
 
 `compile_lvl_safety` speaks of each entry of the log `levelSteps` reads off the
-derivation.  C2 has 121 entries and S1 has 92. -/
+derivation.  C2 has 121 entries and S1 has 92.  The counts show that the logs
+are not empty.  No example here applies the theorem to an entry. -/
 
 example : (compileLog {} Λc πc C2src).length = 121 := by decide +kernel
 

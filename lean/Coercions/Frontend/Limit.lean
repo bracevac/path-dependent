@@ -15,8 +15,9 @@ rules.  The kernel checks each goal below at `defaultFuel`.
   level.
 * An alias chain whose every link is an intersection of two copies of one
   member.  Every goal along a branch is new, and `sSelHi` tries both members at
-  every link, so the work doubles per link.  The goal is false at every fuel.
-  The tank stays unmarked at eight links and is marked at ten and twelve.
+  every link, so the work doubles per link.  At eight links the search rejects
+  with the tank unmarked.  At ten and twelve links the tank is marked, so the
+  search ends at the recursion limit before it decides.
 
 The verdicts depend on `defaultFuel = 2 ^ 15`.  A fuel below `2 ^ 13` marks the
 chain at eight links.  A fuel of `2 ^ 16` leaves it at ten links unmarked.
@@ -67,7 +68,7 @@ def doubledCtx : (n : Nat) → Ctx (chainSig n)
       (.and (.typ lA (.sel (.var .here) lA) (.sel (.var .here) lA))
             (.typ lA (.sel (.var .here) lA) (.sel (.var .here) lA)))
 
--- `x8.A <: {a : ⊤}` is false at every fuel, and the search ends unmarked.
+-- `x8.A <: {a : ⊤}` is rejected, and the search ends unmarked.
 example : rejects (sub? (doubledCtx 8) (chainTop 8) (.fld la .top)) 8188 = true := by decide +kernel
 
 -- At ten and twelve links the search exceeds `defaultFuel`.

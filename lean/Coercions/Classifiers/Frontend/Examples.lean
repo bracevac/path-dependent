@@ -27,8 +27,12 @@ refuses.  W ascribes a restricted variable at its restricted set.
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer, the kinding goal and the machine.  Every check runs at
-`defaultFuel`, the one field of the default budget `{}`.
+resolution, the typer, the kinding goal and the machine.  The exception is a
+level escape.  `certify?` reads the well-founded `FCdot.Ctx.caps`, which the
+kernel does not reduce, so the reason of a level-escape rejection is checked by
+`#eval`, and the certificate at the goal is proved separately (`Esc_rejected'`,
+`top_escape_rejected`).  Every check runs at `defaultFuel`, the one field of
+the default budget `{}`.
 
 For a program that compiles:
 
@@ -2079,7 +2083,9 @@ theorem compile_effect_safety_at {b : Budget} {Λ : LabelTable} {p : SProg}
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's
 initial store, a variable the reached state reads is not rooted at `k1` in
-the matched target state. -/
+the matched target state.  The run reads only `c`, which the program declares
+at the empty capture set, so no root exists and the statement holds trivially
+here. -/
 theorem C2_never_reads_k1 {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, C2tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
@@ -2264,9 +2270,11 @@ theorem CE1_kind_checks :
 /-- **CE1 reads only `Control` capabilities.**  Along any run of the
 version's `E1tm` from the initial store of `E1Plat`, every root of a
 variable the reached state reads, in the matched target state, carries a
-classifier `only[Control]` admits.  So the run never reads `io`.  This is
-`compile_filtered_effect_safety` at CE1, with the platform and the term
-compared by the kernel. -/
+classifier `only[Control]` admits.  This is `compile_filtered_effect_safety`
+at CE1, with the platform and the term compared by the kernel.  The run reads
+only `f`, which the program declares at the empty capture set, so no root
+exists and the statement holds trivially here.  The program never calls
+`r.body`, so the filter is not exercised. -/
 theorem CE1_reads_only_control {s : Sig} {st : State s}
     (r : Steps (⟨E1Plat.store, .nil, E1tm⟩ : State ([],c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
@@ -2570,7 +2578,8 @@ example : (compileFiltered {} Λk CE3src (Cls.only Cls.Control)).isOk = false :=
 version's `E3tm` from the initial store of `E3Plat`, every root of a
 variable the reached state reads carries a classifier `only[Control]`
 admits.  `compile_classified_effect_safety` at the kinding the kinding
-goal found. -/
+goal found.  The run reads only `c`, which the program declares at the empty
+capture set, so no root exists and the statement holds trivially here. -/
 theorem CE3_reads_only_control {s : Sig} {st : State s}
     (r : Steps (⟨E3Plat.store, .nil, E3tm⟩ : State ([],c,c)) st)
     {x : BVar s .var} (hin : st.inspects = some x) :

@@ -49,8 +49,8 @@ Use sets are the other half.  `HasTy.translateUses` is a second function on deri
 literal, the avoidance evidence of a translated let, and the premise of a translated unboxing.
 
 `any` has no target atom.  `CapAtom.translate?` returns `none` on it, and `CaptureSet.translate`
-drops it.  This is sound because no source rule reads `any`, and a program is expanded before it
-is typed.
+drops it.  No typing rule reads `any`, and the front end expands it before typing.  A hand-built
+derivation may still contain `any`, and no theorem covers what the translation does with it.
 
 ## Side conditions
 
@@ -66,17 +66,26 @@ alias-tolerant resolution follows them and resolves a cyclic alias to `⊤`.
   to typed evidence between the translated endpoints.
 - `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`: a variable typing becomes an atom of the
   translated type rooted at that variable.
-- `HasTy.translate_typed`: a typing derivation becomes a typed FCdot term.
-- `HasTy.translate_uses`: the translated term's use set is below the translated declared use set.
+- `HasTy.translate_typed`: over a well-formed context (`Ctx.Wf`), a typing derivation becomes a typed
+  FCdot term.
+- `HasTy.translate_uses`: over a well-formed context, the translated term's use set is below the
+  translated declared use set.
 - `HasTy.translate_erase`, `coherence`: a translated term erases to its source term, so two
   derivations of one term translate to terms with the same erasure.
-- `dot_safety`, `dot_not_stuck`: a closed well-typed source program never gets stuck.
-- `reachable_consistent`, `reachable_realized`: every reachable store is typed, has no closed
+- `dot_safety`, `dot_not_stuck`: a source program well-typed in the empty context never gets stuck.
+  A program that uses a platform capability is not in the empty context.  `compile_safe` in
+  `Frontend/Pipeline.lean` covers the compiled ones.
+- `reachable_consistent`, `reachable_realized`: for a source program well-typed in the empty
+  context, every store the target machine reaches from its translation is typed, has no closed
   `⊤ ≤ ⊥`, and defines every block name.
-- `dot_capture_prediction`: along a run over a platform prefix, the matched target state's use set
-  stays below the translated declared use set.
-- `dot_effect_safety`: a program whose declared use set omits a platform capability `κ` never reads
-  a variable that reaches `κ`.
+- `dot_capture_prediction`: along a source run over a platform prefix, some target state with the
+  same erasure has a typed store extending the translated platform store, and its use set is
+  below the translated declared use set, renamed along the extension.  The conclusion does not
+  name the target run and does not require the term of that state to be typed.
+- `dot_effect_safety`: let the declared use set omit a platform capability `κ`, and let a source
+  run reach a state that reads `x`.  Then some target state with the same erasure and a typed
+  store, extending the translated platform store, does not root `x` at the image of `κ` in that
+  store.  The conclusion does not name the target run.
 
 Two things changed form.  Every theorem about `HasTy U Γ t T` quantifies over the use set `U`.
 `CapAtom.translate?` is partial, because the target has no atom for `any`.

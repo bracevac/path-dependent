@@ -16,8 +16,10 @@ subcapturing.  So one step never grows the roots of a state's use set:
 * `step_uses`: one step, with the store extension it performs.
 * `capture_prediction`: the same along a run, the extensions composed.
 * `inspects_covered`: the root a state reads is in its use set.
-* `effect_safety`: a run of a state whose use set has no root `κ` never reads
-  a root with root `κ`.
+* `effect_safety`: from a typed state whose use set has no root `κ`, a run
+  never reaches a state that reads a root with root `κ`.  A stored box has
+  the empty annotation, so reading a box is never flagged, and the unboxing
+  is charged to the use set through `capture_prediction`.
 * `returned_capture_bound`: an answer's annotation, and the root of a
   returned atom, are bounded by the capture set of the answer's type.
 
@@ -281,7 +283,9 @@ theorem inspects_covered {s : Sig} {st : State s} {Γ : Ctx s} {x : BVar s .var}
 /-- **Effect safety.**  A run from a typed state whose use set has no root
 `κ` never reaches a state that reads a root with root `κ`.  This is capture
 prediction and `inspects_covered`, transported along the store extension by
-the roots lemma. -/
+the roots lemma.  It says something at a rigid or star binder `κ`.  For a
+bounded or instantiated `κ` both the premise and the conclusion hold for a
+trivial reason. -/
 theorem effect_safety {s s' : Sig} {st : State s} {st' : State s'} {Γ : Ctx s}
     {Γ' : Ctx s'} {U : Ty s} {κ : BVar s .cap} {x : BVar s' .var}
     (hT : State.Typed st U) (hσ : ⊢ st.σ : Γ) (run : st ⟶* st')

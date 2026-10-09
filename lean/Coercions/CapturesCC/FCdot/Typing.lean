@@ -422,7 +422,7 @@ inductive Tm.HasType : Ctx s → Tm s → ETy s → Prop where
   /-- The head's bound is charged to the declared use set, the answer avoids
       both opened binders, and the body may name the opened binder in its
       charge.  The opened capture binder is rigid: it has no scope of its
-      own, so two `letex`es open two incomparable binders. -/
+      own, so two `letex`es open two separate rigid binders. -/
   | letex {T : Ty (s,c)} {C₀ U' : CaptureSet s} {E : ETy s} :
       Γ ⊢ t :ᵉ ∃ᶜ[C₀] T →
       Γ ⊢ᶜ h : C₀ ⊑ U' →

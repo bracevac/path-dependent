@@ -62,11 +62,13 @@ for types and `CaptureSet.subCaptures` (cc/CaptureSet.scala) for capture sets.
 `Alg` is its algorithmic judgment, one rule for each alternative of the
 compiler's case order. The typer spends one fuel tank over the whole typing.
 The tank is marked when it runs dry, and the typer then reports a recursion
-limit, which is not a rejection by the rules. Up to that limit it is complete
-with respect to `Alg`. It rejects E1, E3, E4, B1, A1 and the converse of
+limit, which is not a rejection by the rules. Up to that limit the checks for
+shapes, capture sets, subtypes and variables are complete with respect to
+`Alg`. The typer as a whole has no such theorem. It rejects E1, E3, E4, B1, A1 and the converse of
 P1cc, programs in `Examples` that scalac rejects too. Writing the middle type,
 as in E1s and E3s, compiles. The typer returns the `HasTy` derivation, so it is
-sound by construction, and it finds the least use set the rules allow. An unannotated `let` is typed by avoidance, which replaces the type of
+sound by construction, and it finds the least use set the rules allow. An
+unannotated `let` is typed by avoidance, which replaces the type of
 the body by one free of the binder, as in `TypeOps.avoid` (core/TypeOps.scala).
 A written `let` type binds. Missing boxes and unboxings are inserted as in
 `CaptureChecker.adaptBoxed` (cc/CheckCaptures.scala). The programmer writes the
@@ -75,16 +77,18 @@ object's capture set, a box, an unboxing and an ascription are optional.
 
 ## Main theorems
 
-- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation and the use set evidence. `compile_erase`, `compile_faithful`: the translation erases to the compiled term, which has the skeleton of the resolved one.
-- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: every reachable state is final or can step, and `run` never stops at a stuck state.
-- `compile_capture_prediction`: along any run, the matched FCdot state uses no more than the translated use set, up to a renaming.
-- `compile_effect_safety`, `compile_effect_safety_get`: a run never reads a variable rooted at a platform capability outside the use set. `S1_never_reads_fs` and `C2_never_reads_k1` in `Examples` are the instances for S1 and C2 at `k1`.
-- `shape?_complete`, `subcap?_complete`, `sub?_complete`, `var?_complete`: a goal `Alg` derives is answered at every fuel at which the run ends with the tank unmarked. The `_reject` versions say that a rejection with the tank unmarked means `Alg` derives no such goal. `Alg.sound_shape` and `Alg.sound_cap`: a goal `Alg` derives has a `SubShape` or `Subcap` derivation.
-- `shape?_mono`, `var?_mono`, `synthTop?_mono`, `synthTop?_stable`: an answer stays the same at more fuel, and so does a rejection that ends with the tank unmarked.
-- `avoidLet_strengthen`: where the body's type strengthens past the binder, avoidance returns that type.
-- `objFix_progress`: each further pass of the object fixpoint adds a capture the set does not cover, or changes the definitions.
+- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: for a program that compiles, the FCdot checker accepts the translated derivation and the use set evidence. `compile_erase`: the translation erases to the erasure of the compiled term.
+- `compile_faithful`: it names the field `Compiled.skel`, so it holds trivially. The content is the test in `compile`, which builds the record only when the elaborated term has the skeleton of the resolved one. `ATm.skel` forgets annotations, ascriptions, boxes and unboxings, and inlines a `let` of a variable.
+- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: every state reached from the platform's initial store is final or can step, and `run` never stops at a stuck state.
+- `compile_capture_prediction`: along any run from the platform's initial store, an FCdot state with the same erasure and a typed store exists. Its store extends the platform's along a renaming, and it uses no more than the translated use set, renamed along that extension.
+- `compile_effect_safety`, `compile_effect_safety_get`: let `κ` be a platform capability that the use set lacks, and `x` a variable the reached state reads. In the matched FCdot state, `κ` renamed along the store extension is not a root of `x`. Only FCdot contexts have roots. `C2_never_reads_k1` in `Examples` is the instance for C2, and `S1_never_reads_fs` the instance for the unascribed S1bare, both at `k1`.
+- `shape?_complete`, `subcap?_complete`, `sub?_complete`, `var?_complete`: if `Alg` derives the goal and the run ends with the tank unmarked, it is answered. For `sub?` and `var?` the goal is a shape goal and a capture goal, and both must be derived. The `_reject` versions say that a rejection with the tank unmarked means `Alg` derives no such goal, or for `sub?` and `var?` not both halves. `Alg.sound_shape` and `Alg.sound_cap`: a goal `Alg` derives has a `SubShape` or `Subcap` derivation.
+- `shape?_mono`, `var?_mono`, `synthTop?_mono`: an answer stays the same at more fuel. `synthTop?_stable`: a closed typing that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
+- `avoidLet_strengthen`: from an unmarked tank with at least one unit left, where the body's type strengthens past the binder, avoidance returns that type.
+- `objFix_progress`: a pass of the object fixpoint that ends on an unmarked tank and goes on adds a capture that `Alg` does not derive from the current set, or changes the definitions.
 - In `Examples`, for a program `X`: `X_type` and `X_checks` for each accepted one, `X_rejected` for each rejected one with `X_not_alg` where it fails at one core goal, and `LPlet_limit`, `LPasc_limit`, `LPw2_limit` and `Doubled12k2_limit` at the recursion limit.
-- `resolveTm_isSome`, `tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`, `step?_sound`, `fcStep?_sound`: resolution is total on scoped programs, the side conditions are decided, and the machines agree with the step relations.
+- `resolveTm_isSome`: resolution is total on scoped programs whose labels are in the table and whose `any` and capture sets are placed. `tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`: the side conditions are decided.
+- `step?_sound`, `step?_complete`: the DOT-MNF machine agrees with its step relation. `fcStep?_sound` holds at every normalisation fuel, and `fcStep?_complete` finds the step at some fuel.
 
 ## What it leaves out
 

@@ -289,7 +289,12 @@ theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
 every resolution of the target is at or outside `r`, so is every resolution
 of the source.  A corollary of `cap_canon` over a typed store, not an
 induction on the evidence: as an induction on `f` alone the `capvar` case is
-false, since bad capture bounds are derivable under a lambda (example C3). -/
+false, since bad capture bounds are derivable under a lambda (example C3).
+
+Over a typed store the conclusion holds trivially for every `r`, with no
+evidence: a store context has no root binder, so every level is the outermost
+one and every set is confined at every `r`.  The content for rooted contexts
+is `level_inversion`. -/
 theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
     (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
     (h₂ : ∀ m, Γ.Confined (Γ.caps m C₂) r) : Γ.Confined (Γ.caps n C₁) r := by
@@ -327,7 +332,10 @@ theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : C
   exact hm
 
 /-- **Scope safety.**  What closed evidence puts below a scope root
-resolves to capabilities at or outside that root. -/
+resolves to capabilities at or outside that root.  Over a typed store this
+holds trivially, for the reason given at `lvl_canon`: the conclusion follows
+from `hσ` and `hr` alone, for every capture set.  The content is
+`level_inversion`. -/
 theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
     (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
     Γ.Confined (Γ.caps n C) r :=
@@ -341,7 +349,12 @@ theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : Captur
 introduced strictly inside a scope below that scope's root.  The conclusion
 is about what `C` resolves to and not about its syntactic atoms: a pure inner
 binder is below every set by `capvar` and `elem`, so the syntactic reading is
-false and the resolved reading is what holds. -/
+false and the resolved reading is what holds.
+
+The hypotheses `hσ`, `hr` and `hout` cannot hold together.  Over a typed store
+the only root is `⊤ᶜ`, and every atom is at or outside `⊤ᶜ`, so `hout` fails.
+The theorem therefore holds trivially.  The content is `level_inversion`, used
+as in `X4_no_escape`. -/
 theorem no_inner_escape (hσ : ⊢ σ : Γ) {r : CapAtom s} {κ : BVar s .cap}
     (hr : Γ.IsRoot r) (hκ : (Γ.lookupCap κ).opaque = true)
     (hout : ¬ Γ.LvlLe (.cvar κ) r) : ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r] := by

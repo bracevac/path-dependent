@@ -10,7 +10,8 @@ shapes only; in particular there is no closed `⊤ ≤ ⊥`, no closed inclusion
 of an object type *without bounds* into a function type, no closed inclusion
 of a function type into an object type with a proposition that is not a
 bound, and every block name of a store binder is defined by the stored
-literal's witness.  Bad bounds remain expressible under a lambda; they never
+literal's witness.  That last part holds in every typed store, because a label
+that the literal does not declare reads `⊤`.  Bad bounds remain expressible under a lambda; they never
 reach the store.  Along a run of the machine the store stays typed
 (`Steps.typed`), so these hold at every reachable state.
 
@@ -237,7 +238,9 @@ theorem Store.Typed.no_pi_le_obj (hσ : ⊢ σ : Γ) {Tel : Telescope (s,x)} {S 
   hσ.no_pi_le_obj_of hσ.fieldForms hAt hP
 
 /-- Every block name of a store binder is defined by the stored literal's
-witness, and the definition is closed equality evidence. -/
+witness, and the definition is closed equality evidence.  A label that the
+literal does not declare has the witness `⊤`, so this holds in every typed
+store. -/
 theorem Store.Typed.realized (hσ : ⊢ σ : Γ) (x : BVar s .var) (ℓ : Label) :
     ∃ W, Γ.lookupDef x ℓ = some W ∧ Γ ⊢ .def x ℓ : x ∙ ℓ ≡ W :=
   ⟨_, hσ.lookupDef x ℓ, .def (hσ.lookupDef x ℓ)⟩

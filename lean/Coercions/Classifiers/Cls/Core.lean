@@ -91,7 +91,9 @@ theorem leB_antisymm : ∀ {a b : Classifier}, leB a b = true → leB b a = true
         omega
 
 /-- Trichotomy (`Classifier/Core.lean:157-160`): two classifiers are subclass
-related in one direction or disjoint. -/
+related in one direction or disjoint.  This holds by the definition of
+`disjointB` as neither direction of `leB`, for any Boolean relation.  The
+content about the tree is in `chain` and `not_disjoint_of_le`. -/
 theorem subclass_or_disjoint (a b : Classifier) :
     leB a b = true ∨ leB b a = true ∨ disjointB a b = true := by
   cases h1 : leB a b
