@@ -8,6 +8,7 @@ import Coercions.Paths.Frontend.Sub
 import Coercions.Paths.Frontend.Alg
 import Coercions.Paths.Frontend.Avoid
 import Coercions.Paths.Frontend.Typer
+import Coercions.Paths.Frontend.Elab
 import Coercions.Paths.Frontend.Step
 import Coercions.Paths.Frontend.StepFC
 import Coercions.Paths.Frontend.Pipeline
@@ -31,6 +32,11 @@ scalac does, and their variants that write the middle type compile.  It
 rejects R2 and PQ, which scalac accepts, since the version has no rule for
 them.  Every definition is structural, so each verdict of `Examples.lean` is
 a theorem the kernel checks.
+
+The elaborator (`Elab.lean`) fills the annotations a program leaves out and
+types the result with the typer.  It rejects a program with a `Reason`, the
+type that `Coercions.Frontend.Reason` shares among the front ends, at the
+labels of this version.
 
 The library imports the version and changes nothing in it.  It is not a
 default build target.
