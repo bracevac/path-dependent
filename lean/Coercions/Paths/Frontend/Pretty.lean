@@ -23,9 +23,11 @@ A path never needs parentheses.  `{val a : T}` prints like `{a : T}` with the
 keyword.
 
 The output is not meant to parse back through `pdot%`.  The DOT-MNF printer
-writes `ν(x. d)` for a literal, because that syntax has no self type.  Binders
-lose their source names.  A label such as `Type` prints without the guillemets
-the notation needs.  The annotated printer `ppATmWith` prints the self type.
+writes `ν(x. d)` for a literal, because that syntax has no self type.  The
+notation reads that text as a literal whose self type is left to inference.
+Binders lose their source names.  A label such as `Type` prints without the
+guillemets the notation needs.  The annotated printer `ppATmWith` prints the
+self type.
 -/
 
 namespace PathsFrontend
@@ -274,9 +276,11 @@ A path in term position is nested `proj`. -/
 def ppSTmAt (p : Nat) (e : STm) : String :=
   match e with
   | .var x => x
-  | .lam x T t =>
+  | .lam x (some T) t =>
       parenIf (p > 1) ("λ(" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). " ++ ppSTmAt 0 t)
-  | .obj x T d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .lam x none t => parenIf (p > 1) ("λ" ++ x ++ ". " ++ ppSTmAt 0 t)
+  | .obj x (some T) d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .obj x none d => "ν(" ++ x ++ ". " ++ ppSDefsAt d ++ ")"
   | .app t u => parenIf (p > 70) (ppSTmAt 70 t ++ " " ++ ppSTmAt 71 u)
   | .proj t a => ppSTmAt 80 t ++ "." ++ a
   | .«let» x ann t u =>
@@ -286,12 +290,14 @@ def ppSTmAt (p : Nat) (e : STm) : String :=
         | some U => " : " ++ ppSTyAt 0 U
       parenIf (p > 0)
         ("let " ++ x ++ ann? ++ " = " ++ ppSTmAt 1 t ++ " in " ++ ppSTmAt 0 u)
+  | .asc t T => "(" ++ ppSTmAt 0 t ++ " : " ++ ppSTyAt 0 T ++ ")"
 termination_by structural e
 /-- A surface definition list in the paper's notation. -/
 def ppSDefsAt (d : SDefs) : String :=
   match d with
   | .typ A T => "{type " ++ A ++ " = " ++ ppSTyAt 0 T ++ "}"
-  | .trm a t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a none t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a (some T) t => "{" ++ a ++ " : " ++ ppSTyAt 0 T ++ " = " ++ ppSTmAt 0 t ++ "}"
   | .and d' e => ppSDefsAt d' ++ " ∧ " ++ ppSDefsAt e
 termination_by structural d
 end
@@ -462,6 +468,20 @@ example :
 
 /-- Nothing to print. -/
 example : ppRun [] none = "did not compile" := rfl
+
+/-- A lambda with its domain left to inference prints without parentheses. -/
+example : ppSTm (pdot% λx. x) = "λx. x" := rfl
+
+/-- A literal with its self type left to inference, and a written field type. -/
+example : ppSTm (pdot% ν(x. {a : ⊤ = x})) = "ν(x. {a : ⊤ = x})" := rfl
+
+/-- An ascription prints in its own parentheses. -/
+example : ppSTm (pdot% (λx. x : ⊤)) = "(λx. x : ⊤)" := rfl
+
+/-- A written field type at a path, and a nested literal without a self type. -/
+example :
+    ppSTm (pdot% ν(x. {c = ν(y. {type A = ⊤})} ∧ {a : x.c.A = x}))
+      = "ν(x. {c = ν(y. {type A = ⊤})} ∧ {a : x.c.A = x})" := rfl
 
 end Checks
 
