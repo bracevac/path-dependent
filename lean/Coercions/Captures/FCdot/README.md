@@ -34,7 +34,7 @@ unboxing a term, so the capability an atom denotes is always the capability of i
 | `CanonicalForms` | canonical forms for shape, capture and type evidence and for atoms, `closed_box_inversion`, `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
 | `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, over a typed store a platform capability never sinks to `{}`, `reachable_consistent` |
-| `Prediction` | `step_uses`, `capture_prediction`, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
+| `Prediction` | `step_uses`, `capture_prediction`, `inspects_covered`, `effect_safety`, `effect_safety_unbox`, `returned_capture_bound` |
 | `Examples` | the vanilla E1 to E8 at pure types, the capture examples, and the target side of the source examples |
 
 ## Notation
@@ -87,8 +87,10 @@ New:
 - `effect_safety`: from a typed state whose use set has no root `κ`, a run never reaches a state
   that reads a variable rooted at the image of `κ` in the end store.  It says something at a rigid
   or star binder `κ`.  For a bounded or instantiated `κ` it holds for a trivial reason.  A stored box
-  has the empty annotation, so reading a box is not flagged.  The unboxing of a capability is
-  charged to the use set through `capture_prediction`, not to this theorem.
+  has the empty annotation, so reading a box is not flagged.
+- `effect_safety_unbox`: from a typed state whose use set has no root `κ`, a run never reaches a
+  state that unboxes an atom whose root holds a stored box `□ b` with `b` rooted at the image of
+  `κ` in the end store.  The unboxing of a capability is charged here.
 - `returned_capture_bound`: a returned value or atom is bounded by the capture set of the answer's type.
 
 The checker decides the examples in the kernel.  `C1_typed` accepts the closure

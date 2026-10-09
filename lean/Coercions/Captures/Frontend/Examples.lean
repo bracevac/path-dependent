@@ -55,7 +55,8 @@ its client ascribed, S1 and S2.  C5 is typed at the open context `S2Ctx3` at
 the least judgment, and the hand-written judgment is reached from it.
 
 Accepted at a judgment written here: E6, E9, E10t, E11, the Scala form of C7,
-C2 as `Notation.lean` writes it, S1 with `withFile` unascribed, and box
+C2 as `Notation.lean` writes it, C2 with a client called (C2gb, C2ga), S1
+with `withFile` unascribed, and box
 inference at an argument, a receiver and a field (argBox, argUnbox, recv,
 impure, impureIns).  E2 is typed at the type avoidance gives,
 `∀(y : ∀(z : ⊤) ⊥) ⊤`, where the hand-written derivation concludes `⊤`.
@@ -98,10 +99,15 @@ Without the ascriptions that name the hand-written types, the typer finds the
 least use set.  S1 without an ascription is typed at `{}`, since its operation
 never calls the file.  C2 as `Notation.lean` writes it is typed at `{k2}`,
 since its answer is the client at `b`, whose member is `{k2}`.
-`compile_effect_safety_get` at these programs says that a run of S1 or of C2
-never reads a variable rooted at `k1`, which is the file system in S1.  The
-theorems state this of the terms `S1tm` and `C2tm`, which the elaborated terms
-equal.
+`compile_effect_safety_get` at these programs says that whenever a run of S1
+or of C2 reads a variable, the FCdot machine runs from the translated
+derivation to a typed state with the same erasure in which that variable is
+not rooted at `k1`, the file system in S1.  The theorems state this of the
+terms `S1tm` and `C2tm`, which the elaborated terms equal.  The run of C2
+reads only `c`, a closed function.  C2gb and C2ga call one client of C2, so
+their runs read the client and the object it closes over.
+`C2gb_never_reads_k1` and `C2ga_never_reads_k2` are the effect theorems at
+those reads.
 
 ## Run tests
 
@@ -599,6 +605,19 @@ term. -/
 theorem C7nb_checks : CheckerAccepts {} Λc πc C7nbSrc C7nb_compiles :=
   compile_checks_get C7nb_compiles
 
+/-- **`compile_faithful` at C7 with no box.**  The resolved term is the one
+`resolveTop` makes of the program.  The elaborated term is not the resolved
+one, since box inference inserted two boxes and an unboxing, and the two
+have one skeleton. -/
+theorem C7nb_faithful :
+    resolveTop Λc πc C7nbSrc = some ((compile {} Λc πc C7nbSrc).get C7nb_compiles).1 ∧
+      ((compile {} Λc πc C7nbSrc).get C7nb_compiles).2.tm ≠
+        ((compile {} Λc πc C7nbSrc).get C7nb_compiles).1 ∧
+      ATm.skel ((compile {} Λc πc C7nbSrc).get C7nb_compiles).2.tm =
+        ATm.skel ((compile {} Λc πc C7nbSrc).get C7nb_compiles).1 :=
+  have hf := compile_faithful_get C7nb_compiles
+  ⟨hf.1, by decide +kernel, hf.2.2⟩
+
 /-! ## C7 in the form a Scala program has
 
 No box is written, and the element is called where it is read, `let e = o.e1
@@ -763,6 +782,13 @@ theorem S1_compiles : (compile {} Λc πc S1src).isSome = true := by decide +ker
 /-- The target checker accepts the translation of S1. -/
 theorem S1_checks : CheckerAccepts {} Λc πc S1src S1_compiles :=
   compile_checks_get S1_compiles
+
+/-- The skeleton test of `compile` is not trivial: C2 and S1 have different
+skeletons. -/
+theorem C2_S1_skel_ne :
+    ATm.skel ((compile {} Λc πc C2src).get C2_compiles).2.tm ≠
+      ATm.skel ((compile {} Λc πc S1src).get S1_compiles).2.tm := by
+  decide +kernel
 
 /-! ## S1 with `withFile` unascribed
 
@@ -1444,13 +1470,17 @@ found does not hold `k1`, is decided by the kernel.  The run moves onto the
 elaborated term by the decided equation between it and the hand-written term. -/
 
 /-- **S1 never reads the file system.**  Along any run of `S1tm` from the
-platform's initial store, a variable the reached state reads is not rooted
-at `k1` in the matched target state. -/
+platform's initial store, the target machine runs from the translation of the
+compiled derivation to a typed state with the same erasure, and a variable
+the reached state reads is not rooted at `k1` in it. -/
 theorem S1_never_reads_fs {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, S1tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc S1bareSrc).get S1bare_compiles).2.deriv.translate⟩ : FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] := by
   have he : ((compile {} Λc πc S1bareSrc).get S1bare_compiles).2.tm.erase = S1tm := by
@@ -1458,13 +1488,17 @@ theorem S1_never_reads_fs {s : Sig} {st : State s}
   exact compile_effect_safety_get S1bare_compiles (κ := k1) (by decide +kernel) (he ▸ r) hin
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's
-initial store, a variable the reached state reads is not rooted at `k1` in
-the matched target state. -/
+initial store, the target machine runs from the translation of the compiled
+derivation to a typed state with the same erasure, and a variable the
+reached state reads is not rooted at `k1` in it. -/
 theorem C2_never_reads_k1 {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, C2tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc C2src).get C2_compiles).2.deriv.translate⟩ : FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] := by
   have he : ((compile {} Λc πc C2src).get C2_compiles).2.tm.erase = C2tm := by
@@ -1515,6 +1549,187 @@ example : ppRunTm Λc (compileAndRun {} runBudget Λc .empty E11src) = "x0" := b
 
 example : (runFinal? {} 12 .empty E11src && ! runFinal? {} 11 .empty E11src) = true := by
   decide +kernel
+
+/-! ## Effect safety where the run reads a capturing variable
+
+The run of C2 reads only `c`, a closed function, twice, so no variable it
+reads captures a platform capability.  The two programs here are C2
+with one client called on the identity `i`.  The run then reads the client,
+the object the client closes over, and that object's `run` member.  The
+object enters `c` as the parameter `x`, which is declared at `{k1, k2}`.
+
+C2gb calls the client at `b`.  `C2_type` types that client at
+`(⊤ → ⊤) ^ {k2}`, since C2 is the same program with the answer `gb`.  The use
+set of C2gb is `{k2}`, and `C2gb_never_reads_k1` says that no variable the run
+reads is rooted at `k1`.  C2ga calls the client at `a`, typed at
+`(⊤ → ⊤) ^ {k1}` (`C2gaAns_type`).  Its use set is `{k1}`, and
+`C2ga_never_reads_k2` rules out `k2`.  In each program the other capability
+is in the use set, so the premise of the theorem fails for it.  The three
+reads are at steps 14, 16 and 18, and step 16 reads the object through `x`. -/
+
+/-- C2 with the client at `b` called on the identity. -/
+def C2gbSrc : STm :=
+  cap% let c = λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in let i = λ(u : ⊤). u in gb i
+
+/-- C2 with the client at `a` called on the identity. -/
+def C2gaSrc : STm :=
+  cap% let c = λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in let i = λ(u : ⊤). u in ga i
+
+/-- C2 with the answer `ga`, the client at `a`. -/
+def C2gaAnsSrc : STm :=
+  cap% let c = λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in ga
+
+/-- The client at `a` is typed at `(⊤ → ⊤) ^ {k1}`. -/
+theorem C2gaAns_type : judgAt πc C2gaAnsSrc =
+    (some ([CapAtom.cvar k1], arrowS ^ [CapAtom.cvar k1]), ⟨defaultFuel - 175, false⟩) := by
+  decide +kernel
+
+/-- C2gb is typed at `{k2}` and `⊤`. -/
+theorem C2gb_type : judgAt πc C2gbSrc =
+    (some ([CapAtom.cvar k2], unitTy), ⟨defaultFuel - 171, false⟩) := by
+  decide +kernel
+
+/-- C2ga is typed at `{k1}` and `⊤`. -/
+theorem C2ga_type : judgAt πc C2gaSrc =
+    (some ([CapAtom.cvar k1], unitTy), ⟨defaultFuel - 171, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} Λc πc C2gbSrc)
+  "C2gb: the target checker rejects the translation"
+
+#eval expect (compiledVerdict {} Λc πc C2gaSrc)
+  "C2ga: the target checker rejects the translation"
+
+#eval expect (compiledUsesVerdict {} Λc πc C2gbSrc)
+  "C2gb: the target checker rejects the use set evidence"
+
+#eval expect (compiledUsesVerdict {} Λc πc C2gaSrc)
+  "C2ga: the target checker rejects the use set evidence"
+
+/-- C2gb compiles. -/
+theorem C2gb_compiles : (compile {} Λc πc C2gbSrc).isSome = true := by decide +kernel
+
+/-- C2ga compiles. -/
+theorem C2ga_compiles : (compile {} Λc πc C2gaSrc).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of C2gb. -/
+theorem C2gb_checks : CheckerAccepts {} Λc πc C2gbSrc C2gb_compiles :=
+  compile_checks_get C2gb_compiles
+
+/-- The target checker accepts the translation of C2ga. -/
+theorem C2ga_checks : CheckerAccepts {} Λc πc C2gaSrc C2ga_compiles :=
+  compile_checks_get C2ga_compiles
+
+/-- The state C2gb reaches after `n` steps from the platform's initial store. -/
+def C2gbAt (n : Nat) : (s : Sig) × State s :=
+  run n πc.sig ⟨πc.plat.store, .nil, ((compile {} Λc πc C2gbSrc).get C2gb_compiles).2.tm.erase⟩
+
+/-- The state C2ga reaches after `n` steps from the platform's initial store. -/
+def C2gaAt (n : Nat) : (s : Sig) × State s :=
+  run n πc.sig ⟨πc.plat.store, .nil, ((compile {} Λc πc C2gaSrc).get C2ga_compiles).2.tm.erase⟩
+
+/-- **C2gb never reads `k1`.**  Along any run of C2gb from the platform's
+initial store, the target machine runs from the translation of the compiled
+derivation to a typed state with the same erasure, and a variable the
+reached state reads is not rooted at `k1` in it. -/
+theorem C2gb_never_reads_k1 {s : Sig} {st : State s}
+    (r : Steps (⟨πc.plat.store, .nil, ((compile {} Λc πc C2gbSrc).get C2gb_compiles).2.tm.erase⟩ :
+      State πc.sig) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc C2gbSrc).get C2gb_compiles).2.deriv.translate⟩ : FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
+          ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] :=
+  compile_effect_safety_get C2gb_compiles (κ := k1) (by decide +kernel) r hin
+
+/-- **C2ga never reads `k2`.**  The same for C2ga and `k2`. -/
+theorem C2ga_never_reads_k2 {s : Sig} {st : State s}
+    (r : Steps (⟨πc.plat.store, .nil, ((compile {} Λc πc C2gaSrc).get C2ga_compiles).2.tm.erase⟩ :
+      State πc.sig) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc C2gaSrc).get C2ga_compiles).2.deriv.translate⟩ : FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
+          ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k2)) [FCdot.CapAtom.var x] :=
+  compile_effect_safety_get C2ga_compiles (κ := k2) (by decide +kernel) r hin
+
+/-- `k1` is in the use set of C2ga and `k2` in that of C2gb, so neither
+theorem holds at the other capability by its premise. -/
+example : ((compile {} Λc πc C2gaSrc).get C2ga_compiles).2.uses.elem (.cvar k1) = true ∧
+    ((compile {} Λc πc C2gbSrc).get C2gb_compiles).2.uses.elem (.cvar k2) = true := by
+  decide +kernel
+
+/-- At step 16 C2gb projects `run` off `x4`, the object `b` with `C = {k2}`,
+which `x2`, the function `c`, received as its parameter declared at
+`{k1, k2}`.  `x6` is the client at `b`. -/
+example : ppRunOver Λc πcNames (some (C2gbAt 16)) =
+    "⟨k1, k2, x2 = λ(x : μ(x. {C^ : {} .. {k1, k2}} ∧ {run : (∀(y : ⊤) ⊤) ^ {x.C}}) ^ {k1, k2}). " ++
+    "λ(y : ⊤). let z = x.run in z y, x3 = ν(x. {C^ = {k1}} ∧ {run = λ(y : ⊤). y}), " ++
+    "x4 = ν(x. {C^ = {k2}} ∧ {run = λ(y : ⊤). y}), x5 = λ(x : ⊤). let y = x3.run in y x, " ++
+    "x6 = λ(x : ⊤). let y = x4.run in y x, x7 = λ(x : ⊤). x | let x = □ in x x7 | x4.run⟩" := by
+  decide +kernel
+
+/-- C2gb reads the client `x6` at step 14, the object `x4` at step 16, and
+its member `x8` at step 18. -/
+example : ([14, 16, 18].map fun n => ppRunTmOver Λc πcNames (some (C2gbAt n))) =
+    ["x6 x7", "x4.run", "x8 x7"] := by
+  decide +kernel
+
+/-- C2ga reads the client `x5` at step 14, the object `x3`, with `C = {k1}`,
+at step 16, and its member `x8` at step 18. -/
+example : ([14, 16, 18].map fun n => ppRunTmOver Λc πcNames (some (C2gaAt n))) =
+    ["x5 x7", "x3.run", "x8 x7"] := by
+  decide +kernel
+
+/-- The state of C2gb at step 14 reads a variable. -/
+theorem C2gb_reads14 : (C2gbAt 14).2.inspects.isSome = true := by decide +kernel
+/-- The state of C2gb at step 16 reads a variable. -/
+theorem C2gb_reads16 : (C2gbAt 16).2.inspects.isSome = true := by decide +kernel
+/-- The state of C2gb at step 18 reads a variable. -/
+theorem C2gb_reads18 : (C2gbAt 18).2.inspects.isSome = true := by decide +kernel
+/-- The state of C2ga at step 14 reads a variable. -/
+theorem C2ga_reads14 : (C2gaAt 14).2.inspects.isSome = true := by decide +kernel
+/-- The state of C2ga at step 16 reads a variable. -/
+theorem C2ga_reads16 : (C2gaAt 16).2.inspects.isSome = true := by decide +kernel
+/-- The state of C2ga at step 18 reads a variable. -/
+theorem C2ga_reads18 : (C2gaAt 18).2.inspects.isSome = true := by decide +kernel
+
+/-- The client at `b`, read at step 14, is not rooted at `k1`. -/
+example := C2gb_never_reads_k1 (run_steps 14 _) (Option.some_get C2gb_reads14).symm
+/-- The object `b`, read through `x` at step 16, is not rooted at `k1`. -/
+example := C2gb_never_reads_k1 (run_steps 16 _) (Option.some_get C2gb_reads16).symm
+/-- The member `run` of `b`, read at step 18, is not rooted at `k1`. -/
+example := C2gb_never_reads_k1 (run_steps 18 _) (Option.some_get C2gb_reads18).symm
+/-- The client at `a`, read at step 14, is not rooted at `k2`. -/
+example := C2ga_never_reads_k2 (run_steps 14 _) (Option.some_get C2ga_reads14).symm
+/-- The object `a`, read through `x` at step 16, is not rooted at `k2`. -/
+example := C2ga_never_reads_k2 (run_steps 16 _) (Option.some_get C2ga_reads16).symm
+/-- The member `run` of `a`, read at step 18, is not rooted at `k2`. -/
+example := C2ga_never_reads_k2 (run_steps 18 _) (Option.some_get C2ga_reads18).symm
 
 end Examples
 
