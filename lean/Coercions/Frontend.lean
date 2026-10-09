@@ -4,12 +4,14 @@ import Coercions.Frontend.Ann
 import Coercions.Frontend.Resolve
 import Coercions.Frontend.Decide
 import Coercions.Frontend.Fuel
+import Coercions.Frontend.Reason
 import Coercions.Frontend.Look
 import Coercions.Frontend.Sub
 import Coercions.Frontend.Alg
 import Coercions.Frontend.Limit
 import Coercions.Frontend.Avoid
 import Coercions.Frontend.Typer
+import Coercions.Frontend.Elab
 import Coercions.Frontend.Step
 import Coercions.Frontend.StepFC
 import Coercions.Frontend.Pipeline
@@ -42,6 +44,11 @@ and the frozen trees it builds on are unchanged.
   that repeats a pending one.  For a step that is framed and dominated, a run
   that ends unmarked gives the same answer with more fuel (`run_frame`) and a
   larger index (`run_index`), and the cut loses no success (`cut_complete`).
+* `Reason` is why a program is rejected: a missing parameter type, a cyclic
+  reference, a definition that needs a written type, candidates with no least
+  type, a reason of the typer, a mismatch, or the recursion limit.  It is
+  generic in the label type and in the typer's reasons, and imports only
+  Lean core.  `Reason.top` picks the one a rejection reports.
 * `Look` is the cost of a goal, `cost k = k + 1`, `defaultFuel = 2 ^ 15`, and
   member lookup on demand, after `Types.findMember`.  It returns every member
   it finds, each with its derivation, since DOT-MNF cannot merge two members.
@@ -65,6 +72,15 @@ and the frozen trees it builds on are unchanged.
   of candidates with their derivations, and keeps every choice.  A typing that
   ends unmarked gives the same verdict at more fuel (`synthTop?_mono`,
   `synthTop?_stable`).  It has no completeness theorem.
+* `Elab` is the elaborator in front of the typer.  It fills the empty slots of
+  a partial term: a lambda's domain from the function part of its goal, or
+  from the callee of a body `g x` when the goal has none, a call argument's
+  goal from the dominant formal of the callee, a literal's self type from a
+  `μ` goal.  A term with no empty slot goes to the typer as it is, so a
+  program with every slot written is the typer's, at the same fuel
+  (`elabF_toI`, `elabChkF_toI`).  The elaborator is framed (`elabF_framed`),
+  and a lambda whose body has no empty slot is the typer's check of the filled
+  lambda (`lam_fill_full`).
 * `Step` is the DOT-MNF machine as a structural function, with agreement with
   the frozen step relation in both directions.
 * `StepFC` is the FCdot machine as a function.  It takes the fuel of the frozen
