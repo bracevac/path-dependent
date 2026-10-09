@@ -10,7 +10,7 @@ annotations and let result types are also unrestricted.
 | `Typing` | contexts (`cons`, `consSelf`); `Sub`, `HasTy`, `DefsTy` (Type-valued); unrestricted intersections and recursive bodies; object definitions may contain same-block aliases |
 | `Structural` | renaming of all three judgments under lookup preservation; weakening under ordinary and object self binders |
 | `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck` |
-| `Erasure` | erasure to `Runtime`, with `erase_step` and `erase_reflect`. The final-state theorems `final_erase` and `final_reflect` are in namespace `DotMNF` but declared in `../DotToFCdot/Safety.lean` |
+| `Erasure` | erasure to `Runtime`, with `erase_step`, `erase_reflect`, `final_erase` and `final_reflect` |
 | `Examples` | E1 to E12 as `HasTy` derivations; E9 executes a function folded through a recursive type; E10 to E12 exercise self-dependent intersections, nested recursion, and a bare self selection |
 
 ## Correspondence with WadlerFest DOT

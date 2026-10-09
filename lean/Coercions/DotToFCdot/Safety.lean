@@ -44,47 +44,6 @@ namespace DotMNF
 
 open FCdot (Kind Sig BVar Rename Label)
 
-/-! ## Final states of the source machine
-
-A source state is final exactly when its erasure is: the continuation is
-erased frame by frame, and the running term is an answer exactly when its
-erasure is. -/
-
-/-- A final source state erases to a final runtime state. -/
-theorem final_erase {s : Sig} {st : State s} (h : st.Final) : st.erase.Final := by
-  obtain ⟨σ, K, t⟩ := st
-  obtain ⟨hK, ht⟩ := h
-  refine ⟨?_, ?_⟩
-  · simp only at hK; subst hK; rfl
-  · rcases ht with ⟨v, hv⟩ | ⟨p, hp⟩
-    · simp only at hv; subst hv
-      exact Or.inl (Value.isValue_erase v)
-    · simp only at hp; subst hp
-      exact Or.inr ⟨p.root, rfl⟩
-
-/-- Conversely, a source state whose erasure is final is itself final.
-Unlike in FCdot there is no pending-cast-frame caveat: the source machine
-has no cast frames. -/
-theorem final_reflect {s : Sig} {st : State s} (h : st.erase.Final) : st.Final := by
-  obtain ⟨σ, K, t⟩ := st
-  obtain ⟨hK, ht⟩ := h
-  refine ⟨?_, ?_⟩
-  · cases K with
-    | nil => rfl
-    | cons K u => simp [State.erase, Cont.erase] at hK
-  · cases t with
-    | val v => exact Or.inl ⟨v, rfl⟩
-    | path p => exact Or.inr ⟨p, rfl⟩
-    | app x y =>
-        simp only [State.erase, Tm.erase] at ht
-        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
-    | proj x a =>
-        simp only [State.erase, Tm.erase] at ht
-        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
-    | «let» t u =>
-        simp only [State.erase, Tm.erase] at ht
-        exact ht.elim (fun hv => by cases hv) (fun ⟨_, hy⟩ => by cases hy)
-
 /-! ## Typedness along a target run -/
 
 /-- Preservation, iterated: a typed FCdot state stays typed along a run.
