@@ -6,8 +6,11 @@ import Coercions.Paths.DotMNF.Examples
 # Name resolution and let insertion
 
 `resolvePath`, `resolveTy`, `resolveTm` and `resolveDefs` take a surface phrase
-to the annotated de Bruijn syntax of `Ann.lean`.  They are the only place where
-a name becomes an index.
+to the partial terms of `Ann.lean`.  They are the only place where a name
+becomes an index.  A slot the programmer left empty stays empty in the result,
+for the elaborator to fill.  `resolveP` returns that partial term.  `resolve`
+keeps only a program with every slot written, through `PTm.full?`, and gives
+the annotated term the typer reads.
 
 A `NameEnv` lists one name per binder, innermost first, so the innermost
 binding wins.  A path resolves its root by the name environment and its field
@@ -21,8 +24,10 @@ up, so no freshness counter is needed.  A path `x.a.b` in term position
 resolves to `let % = x.a in %.b`.  The binder `%` has the type of `x.a`, not
 the singleton of the path.
 
-`ATm.app`, `ATm.proj` and `ATm.path` take bare variables, so normal form needs
-no predicate.  The module proves totality on scoped, well labelled phrases, the
+`PTm.app`, `PTm.proj` and `PTm.path` take bare variables, so normal form needs
+no predicate.  Each inserted `let` carries a tag that says where it sits: `arg`
+at the operand of an application, `recv` at an operator or at the receiver of a
+projection.  The module proves totality on scoped, well labelled phrases, the
 two spine equations and the no insertion property.  It relates a surface
 program to its resolved term only by the examples at the end.
 
@@ -112,6 +117,12 @@ theorem SType.Scoped_covers : ∀ (T : SType) {Γ Γ' : List String}, Covers Γ 
       simp only [SType.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨SType.Scoped_covers S h hs.1, SType.Scoped_covers T h hs.2⟩
 
+/-- Scoping of an optional type survives a larger name list. -/
+theorem SType.ScopedOpt_covers : ∀ (T : Option SType) {Γ Γ' : List String}, Covers Γ Γ' →
+    SType.ScopedOpt Γ T = true → SType.ScopedOpt Γ' T = true
+  | none, _, _, _, _ => rfl
+  | some T, _, _, h, hs => SType.Scoped_covers T h hs
+
 mutual
 /-- Scoping of a term survives a larger name list. -/
 theorem STm.Scoped_covers : ∀ (e : STm) {Γ Γ' : List String}, Covers Γ Γ' →
@@ -119,10 +130,10 @@ theorem STm.Scoped_covers : ∀ (e : STm) {Γ Γ' : List String}, Covers Γ Γ' 
   | .var x, _, _, h, hs => h x hs
   | .lam x T t, _, _, h, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
-      exact ⟨SType.Scoped_covers T h hs.1, STm.Scoped_covers t (h.cons x) hs.2⟩
+      exact ⟨SType.ScopedOpt_covers T h hs.1, STm.Scoped_covers t (h.cons x) hs.2⟩
   | .obj x T d, _, _, h, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
-      exact ⟨SType.Scoped_covers T (h.cons x) hs.1, SDefs.Scoped_covers d (h.cons x) hs.2⟩
+      exact ⟨SType.ScopedOpt_covers T (h.cons x) hs.1, SDefs.Scoped_covers d (h.cons x) hs.2⟩
   | .app t u, _, _, h, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨STm.Scoped_covers t h hs.1, STm.Scoped_covers u h hs.2⟩
@@ -133,11 +144,16 @@ theorem STm.Scoped_covers : ∀ (e : STm) {Γ Γ' : List String}, Covers Γ Γ' 
       cases ann with
       | none => rfl
       | some U => exact SType.Scoped_covers U h hs.1.1
+  | .asc t T, _, _, h, hs => by
+      simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
+      exact ⟨STm.Scoped_covers t h hs.1, SType.Scoped_covers T h hs.2⟩
 /-- Scoping of a definition list survives a larger name list. -/
 theorem SDefs.Scoped_covers : ∀ (d : SDefs) {Γ Γ' : List String}, Covers Γ Γ' →
     SDefs.Scoped Γ d = true → SDefs.Scoped Γ' d = true
   | .typ _ T, _, _, h, hs => SType.Scoped_covers T h hs
-  | .trm _ t, _, _, h, hs => STm.Scoped_covers t h hs
+  | .trm _ T t, _, _, h, hs => by
+      simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
+      exact ⟨SType.ScopedOpt_covers T h hs.1, STm.Scoped_covers t h hs.2⟩
   | .and d e, _, _, h, hs => by
       simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨SDefs.Scoped_covers d h hs.1, SDefs.Scoped_covers e h hs.2⟩
@@ -167,29 +183,30 @@ A `Spine s s'` is a stack of `let` bindings that takes a term over `s'` to a
 term over `s`.  `Spine.rename` moves a variable of `s` into `s'`.
 `Rename.comp f g` is `g ∘ f`. -/
 
-/-- A stack of inserted `let` bindings. -/
+/-- A stack of inserted `let` bindings, each with the tag it is plugged
+with. -/
 inductive Spine : Sig → Sig → Type where
   /-- No binding. -/
   | nil : Spine s s
   /-- One binding, then the rest under it. -/
-  | cons : ATm s → Spine (s,x) s' → Spine s s'
+  | cons : LetTag → PTm s → Spine (s,x) s' → Spine s s'
 
 /-- Wrap a term of the inner signature in the bindings of the spine. -/
-def Spine.plug : {s s' : Sig} → Spine s s' → ATm s' → ATm s
+def Spine.plug : {s s' : Sig} → Spine s s' → PTm s' → PTm s
   | _, _, .nil, u => u
-  | _, _, .cons t sp, u => .let none t (sp.plug u)
+  | _, _, .cons g t sp, u => .let g none t (sp.plug u)
 termination_by structural _ _ sp => sp
 
 /-- The weakening a spine induces on its outer signature. -/
 def Spine.rename : {s s' : Sig} → Spine s s' → Rename s s'
   | _, _, .nil => Rename.id
-  | _, _, .cons _ sp => Rename.comp Rename.succ sp.rename
+  | _, _, .cons _ _ sp => Rename.comp Rename.succ sp.rename
 termination_by structural _ _ sp => sp
 
 /-- Stack one spine under another. -/
 def Spine.append : {s s' s'' : Sig} → Spine s s' → Spine s' s'' → Spine s s''
   | _, _, _, .nil, sp' => sp'
-  | _, _, _, .cons t sp, sp' => .cons t (sp.append sp')
+  | _, _, _, .cons g t sp, sp' => .cons g t (sp.append sp')
 termination_by structural _ _ _ sp => sp
 
 /-- A term in variable position: the inserted bindings, the extended
@@ -204,22 +221,23 @@ structure Atomic (s : Sig) where
   /-- The variable standing for the term. -/
   var : BVar sig .var
 
-/-- A variable stays.  Any other term is bound by one fresh `let`. -/
-def atomize {s : Sig} (nv : NameEnv s) (t : ATm s) : Atomic s :=
+/-- A variable stays.  Any other term is bound by one fresh `let`, with the tag
+`g` that says where the term sits. -/
+def atomize {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) : Atomic s :=
   match t with
   | .path i => ⟨s, .nil, nv, i⟩
-  | _ => ⟨(s,x), .cons t .nil, nv.cons "%", .here⟩
+  | _ => ⟨(s,x), .cons g t .nil, nv.cons "%", .here⟩
 
 /-- `atomize` extends the environment by at most one name. -/
-theorem atomize_names_covers {s : Sig} (nv : NameEnv s) (t : ATm s) :
-    Covers nv.names (atomize nv t).names.names := by
+theorem atomize_names_covers {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) :
+    Covers nv.names (atomize g nv t).names.names := by
   cases t with
   | path _ => exact Covers.rfl' _
   | lam _ _ => exact Covers.tail _ _
   | obj _ _ => exact Covers.tail _ _
   | app _ _ => exact Covers.tail _ _
   | proj _ _ => exact Covers.tail _ _
-  | «let» _ _ _ => exact Covers.tail _ _
+  | «let» _ _ _ _ => exact Covers.tail _ _
 
 /-! ## The resolvers
 
@@ -228,7 +246,11 @@ Each is structural on the surface phrase.  The clause order matches
 
 `ν(x : T. d)` resolves its annotation under the self binder.
 `let x : U = t in u` resolves `U` at the outer signature.  Operands are
-evaluated left to right, as the spines are appended in that order. -/
+evaluated left to right, as the spines are appended in that order.
+
+`(t : T)` resolves to `let % : T = t in %`, the same term a written
+`let y : T = t in y` gives except for the tag.  It needs no form of its own in
+`PTm`. -/
 
 /-- Resolve a surface path: the root by the environment, every field step by
 the table at the term sort. -/
@@ -281,52 +303,65 @@ def resolveTy {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (T : SType) : Option 
       pure (.and S' T')
 termination_by structural T
 
+/-- Resolve an optional surface type.  An empty slot stays empty, and a
+written type that does not resolve fails the whole. -/
+def resolveTyOpt {s : Sig} (Λ : LabelTable) (nv : NameEnv s) :
+    Option SType → Option (Option (Ty s))
+  | none => some none
+  | some T => (resolveTy Λ nv T).map some
+
 mutual
 /-- Resolve a surface term, inserting `let` bindings for the two direct style
-forms.  The result is in monadic normal form by construction. -/
-def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
+forms.  The result is in monadic normal form by construction.  An empty slot of
+the source is an empty slot of the result.  An inserted binding at an operand is
+tagged `arg`, one at an operator or a receiver `recv`, and an ascription is a
+`let` tagged `asc` whose body is its own binder. -/
+def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (PTm s) :=
   match e with
   | .var x => do
       let i ← nv.find? x
       pure (.path i)
   | .lam x T t => do
-      let T' ← resolveTy Λ nv T
+      let T' ← resolveTyOpt Λ nv T
       let t' ← resolveTm Λ (nv.cons x) t
       pure (.lam T' t')
   | .obj x T d => do
-      let T' ← resolveTy Λ (nv.cons x) T
+      let T' ← resolveTyOpt Λ (nv.cons x) T
       let d' ← resolveDefs Λ (nv.cons x) d
       pure (.obj T' d')
   | .app t u => do
       let t₀ ← resolveTm Λ nv t
-      let a := atomize nv t₀
+      let a := atomize .recv nv t₀
       let u₀ ← resolveTm Λ a.names u
-      let b := atomize a.names u₀
+      let b := atomize .arg a.names u₀
       pure ((a.spine.append b.spine).plug (.app (b.spine.rename.var a.var) b.var))
   | .proj t a => do
       let t₀ ← resolveTm Λ nv t
-      let c := atomize nv t₀
+      let c := atomize .recv nv t₀
       let l ← labelTrm? Λ a
       pure (c.spine.plug (.proj c.var l))
   | .«let» x ann t u => do
-      let ann' ← (match ann with
-        | none => some none
-        | some U => (resolveTy Λ nv U).map some)
+      let ann' ← resolveTyOpt Λ nv ann
       let t' ← resolveTm Λ nv t
       let u' ← resolveTm Λ (nv.cons x) u
-      pure (.let ann' t' u')
+      pure (.let .written ann' t' u')
+  | .asc t T => do
+      let t' ← resolveTm Λ nv t
+      let T' ← resolveTy Λ nv T
+      pure (.let .asc (some T') t' (.path .here))
 termination_by structural e
 /-- Resolve a surface definition list. -/
-def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Option (ADefs s) :=
+def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Option (PDefs s) :=
   match d with
   | .typ A T => do
       let l ← labelTyp? Λ A
       let T' ← resolveTy Λ nv T
       pure (.typ l T')
-  | .trm a t => do
+  | .trm a T t => do
       let l ← labelTrm? Λ a
+      let T' ← resolveTyOpt Λ nv T
       let t' ← resolveTm Λ nv t
-      pure (.trm l t')
+      pure (.trm l T' t')
   | .and d e => do
       let d' ← resolveDefs Λ nv d
       let e' ← resolveDefs Λ nv e
@@ -334,12 +369,21 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
 termination_by structural d
 end
 
-/-- Resolve a program under the names of a context, innermost first. -/
+/-- Resolve a program under the names of a context, innermost first, with every
+slot written.  A program with an empty slot resolves to `none` here. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
-  resolveTm Λ nv e
+  (resolveTm Λ nv e).bind PTm.full?
 
-/-- Resolve a closed surface program. -/
-def resolve (Λ : LabelTable) (e : STm) : Option (ATm []) := resolveIn Λ .nil e
+/-- Resolve a closed surface program to a partial term. -/
+def resolveP (Λ : LabelTable) (e : STm) : Option (PTm []) := resolveTm Λ .nil e
+
+/-- Resolve a closed surface program with every slot written.  A program with an
+empty slot resolves to `none` here, and to its partial term by `resolveP`. -/
+def resolve (Λ : LabelTable) (e : STm) : Option (ATm []) := (resolveP Λ e).bind PTm.full?
+
+/-- `resolve` is `resolveP` followed by `PTm.full?`. -/
+theorem resolve_eq (Λ : LabelTable) (e : STm) : resolve Λ e = (resolveP Λ e).bind PTm.full? :=
+  rfl
 
 /-! ## Totality
 
@@ -457,6 +501,21 @@ theorem resolveTy_isSome : ∀ (T : SType) {s : Sig} (Λ : LabelTable) (nv : Nam
         | none => rw [hT] at h2; simp at h2
         | some _ => rfl
 
+/-- An optional type resolves on the same side conditions.  An empty slot always
+does. -/
+theorem resolveTyOpt_isSome (T : Option SType) {s : Sig} (Λ : LabelTable) (nv : NameEnv s) :
+    SType.ScopedOpt nv.names T = true → SType.LabelsInOpt Λ T = true →
+    (resolveTyOpt Λ nv T).isSome = true := by
+  intro hs hl
+  cases T with
+  | none => rfl
+  | some T =>
+    have h1 := resolveTy_isSome T Λ nv hs hl
+    simp only [resolveTyOpt]
+    cases hT : resolveTy Λ nv T with
+    | none => rw [hT] at h1; simp at h1
+    | some _ => rfl
+
 mutual
 /-- A scoped, well labelled term resolves. -/
 theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameEnv s),
@@ -471,10 +530,10 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
       | some _ => rfl
   | .lam x T t, _, Λ, nv, hs, hl => by
       simp only [STm.Scoped, STm.LabelsIn, Bool.and_eq_true] at hs hl
-      have h1 := resolveTy_isSome T Λ nv hs.1 hl.1
+      have h1 := resolveTyOpt_isSome T Λ nv hs.1 hl.1
       have h2 := resolveTm_isSome t Λ (nv.cons x) hs.2 hl.2
       simp only [resolveTm]
-      cases hT : resolveTy Λ nv T with
+      cases hT : resolveTyOpt Λ nv T with
       | none => rw [hT] at h1; simp at h1
       | some _ =>
         cases ht : resolveTm Λ (nv.cons x) t with
@@ -482,10 +541,10 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
         | some _ => rfl
   | .obj x T d, _, Λ, nv, hs, hl => by
       simp only [STm.Scoped, STm.LabelsIn, Bool.and_eq_true] at hs hl
-      have h1 := resolveTy_isSome T Λ (nv.cons x) hs.1 hl.1
+      have h1 := resolveTyOpt_isSome T Λ (nv.cons x) hs.1 hl.1
       have h2 := resolveDefs_isSome d Λ (nv.cons x) hs.2 hl.2
       simp only [resolveTm]
-      cases hT : resolveTy Λ (nv.cons x) T with
+      cases hT : resolveTyOpt Λ (nv.cons x) T with
       | none => rw [hT] at h1; simp at h1
       | some _ =>
         cases hd : resolveDefs Λ (nv.cons x) d with
@@ -498,9 +557,9 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
       cases ht : resolveTm Λ nv t with
       | none => rw [ht] at h1; simp at h1
       | some t₀ =>
-        have h2 := resolveTm_isSome u Λ (atomize nv t₀).names
-          (STm.Scoped_covers u (atomize_names_covers nv t₀) hs.2) hl.2
-        cases hu : resolveTm Λ (atomize nv t₀).names u with
+        have h2 := resolveTm_isSome u Λ (atomize .recv nv t₀).names
+          (STm.Scoped_covers u (atomize_names_covers .recv nv t₀) hs.2) hl.2
+        cases hu : resolveTm Λ (atomize .recv nv t₀).names u with
         | none => rw [hu] at h2; simp at h2
         | some _ => simp [hu]
   | .proj t a, _, Λ, nv, hs, hl => by
@@ -519,7 +578,7 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
       have h3 := resolveTm_isSome u Λ (nv.cons x) hs.2 hl.2
       cases ann with
       | none =>
-        simp only [resolveTm]
+        simp only [resolveTm, resolveTyOpt]
         cases ht : resolveTm Λ nv t with
         | none => rw [ht] at h2; simp at h2
         | some _ =>
@@ -528,7 +587,7 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
           | some _ => rfl
       | some U =>
         have h1 := resolveTy_isSome U Λ nv hs.1.1 hl.1.1
-        simp only [resolveTm]
+        simp only [resolveTm, resolveTyOpt]
         cases hU : resolveTy Λ nv U with
         | none => rw [hU] at h1; simp at h1
         | some _ =>
@@ -538,6 +597,17 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
             cases hu : resolveTm Λ (nv.cons x) u with
             | none => rw [hu] at h3; simp at h3
             | some _ => rfl
+  | .asc t T, _, Λ, nv, hs, hl => by
+      simp only [STm.Scoped, STm.LabelsIn, Bool.and_eq_true] at hs hl
+      have h1 := resolveTm_isSome t Λ nv hs.1 hl.1
+      have h2 := resolveTy_isSome T Λ nv hs.2 hl.2
+      simp only [resolveTm]
+      cases ht : resolveTm Λ nv t with
+      | none => rw [ht] at h1; simp at h1
+      | some _ =>
+        cases hT : resolveTy Λ nv T with
+        | none => rw [hT] at h2; simp at h2
+        | some _ => rfl
 /-- A scoped, well labelled definition list resolves. -/
 theorem resolveDefs_isSome : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : NameEnv s),
     SDefs.Scoped nv.names d = true → SDefs.LabelsIn Λ d = true →
@@ -552,16 +622,20 @@ theorem resolveDefs_isSome : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : N
         cases hT : resolveTy Λ nv T with
         | none => rw [hT] at h1; simp at h1
         | some _ => rfl
-  | .trm a t, _, Λ, nv, hs, hl => by
+  | .trm a T t, _, Λ, nv, hs, hl => by
       simp only [SDefs.Scoped, SDefs.LabelsIn, Bool.and_eq_true] at hs hl
-      have h1 := resolveTm_isSome t Λ nv hs hl.2
+      have h1 := resolveTyOpt_isSome T Λ nv hs.1 hl.1.2
+      have h2 := resolveTm_isSome t Λ nv hs.2 hl.2
       simp only [resolveDefs]
       cases ha : labelTrm? Λ a with
       | none => rw [ha] at hl; simp at hl
       | some _ =>
-        cases ht : resolveTm Λ nv t with
-        | none => rw [ht] at h1; simp at h1
-        | some _ => rfl
+        cases hT : resolveTyOpt Λ nv T with
+        | none => rw [hT] at h1; simp at h1
+        | some _ =>
+          cases ht : resolveTm Λ nv t with
+          | none => rw [ht] at h2; simp at h2
+          | some _ => rfl
   | .and d e, _, Λ, nv, hs, hl => by
       simp only [SDefs.Scoped, SDefs.LabelsIn, Bool.and_eq_true] at hs hl
       have h1 := resolveDefs_isSome d Λ nv hs.1 hl.1
@@ -579,10 +653,10 @@ end
 
 /-- Plugging into an appended spine is plugging twice. -/
 theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'')
-    (u : ATm s''), (sp.append sp').plug u = sp.plug (sp'.plug u)
+    (u : PTm s''), (sp.append sp').plug u = sp.plug (sp'.plug u)
   | _, _, _, .nil, _, _ => rfl
-  | _, _, _, .cons t sp, sp', u => by
-      show ATm.let none t ((sp.append sp').plug u) = _
+  | _, _, _, .cons g t sp, sp', u => by
+      show PTm.let g none t ((sp.append sp').plug u) = _
       rw [Spine.plug_append sp sp' u]
       rfl
 
@@ -590,14 +664,14 @@ theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine 
 theorem Spine.rename_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s''),
     (sp.append sp').rename = Rename.comp sp.rename sp'.rename
   | _, _, _, .nil, sp' => Rename.funext' (fun _ => rfl)
-  | _, _, _, .cons _ sp, sp' => by
+  | _, _, _, .cons _ _ sp, sp' => by
       show Rename.comp Rename.succ ((sp.append sp').rename) = _
       rw [Spine.rename_append sp sp']
       exact Rename.funext' (fun _ => rfl)
 
 /-- No insertion: a variable is not bound again. -/
-theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
-    atomize nv (.path i) = ⟨s, .nil, nv, i⟩ := rfl
+theorem atomize_var {s : Sig} (g : LetTag) (nv : NameEnv s) (i : BVar s .var) :
+    atomize g nv (.path i) = ⟨s, .nil, nv, i⟩ := rfl
 
 /-! ## The version's programs
 
@@ -752,5 +826,171 @@ example : (resolve pathsTable R1_src).isSome = true := by decide
 example : (resolve pathsTable R2_src).isSome = true := by decide
 
 example : (resolve pathsTable R7_src).isSome = true := by decide
+
+/-! ## Partial programs
+
+A program with an empty slot resolves by `resolveP` to a partial term with that
+slot empty, and `resolve` returns `none` on it.  The checks below show the empty
+slots and the tags.  Then each example program loses some of its annotations:
+the erased source resolves to the resolved written program with the same
+annotations erased by `PTm.eraseDoms`, `PTm.eraseSelf` or `PTm.eraseArgs`. -/
+
+example : resolveP pathsTable (pdot% λx. x) = some (.lam none (.path .here)) := rfl
+
+example : resolve pathsTable (pdot% λx. x) = none := rfl
+
+/-- The body of `λx.` takes a path, which stays one projection off the
+variable. -/
+example : resolveP pathsTable (pdot% λx. x.a) = some (.lam none (.proj .here la)) := rfl
+
+/-- A lambda passed as an argument is bound by an `arg` binding. -/
+example : resolveP pathsTable (pdot% λ(f : ⊤). f (λx. x)) =
+    some (.lam (some .top)
+      (.let .arg none (.lam none (.path .here)) (.app (.there .here) .here))) := rfl
+
+/-- An operator that is not a variable is bound by a `recv` binding. -/
+example : resolveP pathsTable (pdot% λ(f : ⊤). λ(x : ⊤). f x x) =
+    some (.lam (some .top) (.lam (some .top)
+      (.let .recv none (.app (.there .here) .here) (.app .here (.there .here))))) := rfl
+
+/-- The prefix of a path in term position is bound by a `recv` binding. -/
+example : (resolveP pathsTable X3d_src).map PTm.eraseDoms =
+    some (.lam none (.let .recv none (.proj .here la) (.proj .here lb))) := rfl
+
+/-- The ascription is a `let` at its type whose body is the binder. -/
+example : resolveP pathsTable (pdot% λ(y : ⊤). (λx. x : ∀(z : ⊤) ⊤)) =
+    some (.lam (some .top)
+      (.let .asc (some (.all .top .top)) (.lam none (.path .here)) (.path .here))) := rfl
+
+/-- An ascription at a singleton type names the path's root. -/
+example : resolveP pathsTable (pdot% λ(y : ⊤). (y : y.type)) =
+    some (.lam (some .top)
+      (.let .asc (some (.sngl (.var .here))) (.path .here) (.path .here))) := rfl
+
+example : resolveP pathsTable (pdot% ν(x. {a : ⊤ = x})) =
+    some (.obj none (.trm la (some .top) (.path .here))) := rfl
+
+/-- A literal without a self type nested in another one. -/
+example : resolveP pathsTable (pdot% ν(x. {c = ν(y. {type A = ⊤})})) =
+    some (.obj none (.trm lc none (.obj none (.typ lA .top)))) := rfl
+
+/-- A written field type resolves under the self binder, so it may name a path
+off the self. -/
+example : resolveP pathsTable (pdot% ν(x. {type A = ⊤} ∧ {a : x.A = x})) =
+    some (.obj none (.and (.typ lA .top) (.trm la (some (.sel (.var .here) lA)) (.path .here)))) :=
+  rfl
+
+/-- A field type under a written self type resolves.  The elaborator compares
+it with the self type's field at that label. -/
+example : (resolveP pathsTable (pdot% ν(s : {a : ⊤}. {a : ⊤ = s}))).isSome = true := rfl
+
+/-- E2 with the lambda domain erased. -/
+def E2_srcD : STm :=
+  pdot% let x = ν(s : {A : ∀(y : s.A) s.A .. ∀(y : s.A) s.A} ∧ {a : ∀(y : s.A) s.A}.
+                  {type A = ∀(y : s.A) s.A} ∧ {a = λy. y})
+        in let f = x.a in f f
+
+/-- E2 with the self type erased. -/
+def E2_srcS : STm :=
+  pdot% let x = ν(s. {type A = ∀(y : s.A) s.A} ∧ {a = λ(y : s.A). y}) in let f = x.a in f f
+
+/-- E5 with the self type erased. -/
+def E5_srcS : STm :=
+  pdot% λ(w : {A : ⊤..⊤}). let f = λ(v : {A : ⊤..⊤}). ν(z. {a = v}) in let o = f w in o.a
+
+/-- E6 with the self type erased. -/
+def E6_srcS : STm := pdot% λ(n : {a : ⊤}). ν(x. {type T = {a : ⊤}} ∧ {v = n})
+
+/-- E7 with the self type erased. -/
+def E7_srcS : STm := pdot% ν(x. {type A = x.B} ∧ {type B = x.A})
+
+/-- E8 with both lambda domains erased. -/
+def E8_srcD : STm := pdot% λx. λy. y.a
+
+/-- E9 with the lambda domain erased. -/
+def E9_srcD : STm :=
+  pdot% let q = ν(q : {B : {b : ⊤}..{b : ⊤}}. {type B = {b : ⊤}}) in
+        let x = ν(x : {a : q.type}. {a = q}) in
+        let y = x.a in
+        λz. let w = z in w
+
+/-- X1 with both self types erased. -/
+def X1_srcS : STm := pdot% ν(z. {c = ν(w. {type A = z.B})} ∧ {type B = z.c.A})
+
+/-- E11 with every self type erased. -/
+def E11_srcS : STm :=
+  pdot% let z = ν(z. {type C = ⊤}) in ν(x. {a = ν(w. {type A = ⊤})} ∧ {b = z})
+
+/-- A callback whose formal names a singleton, its domain written. -/
+def K1s_src : STm :=
+  pdot% λ(w : ⊤). λ(k : ∀(h : ∀(x : w.type) ⊤) ⊤). k (λ(y : w.type). y)
+
+/-- The same callback with its domain erased. -/
+def K1s_srcA : STm := pdot% λ(w : ⊤). λ(k : ∀(h : ∀(x : w.type) ⊤) ⊤). k (λy. y)
+
+/-- A callback whose formal names a path through a stable field. -/
+def K1p_src : STm :=
+  pdot% λ(m : {val c : μ(z. {A : ⊤ .. ⊤})}). λ(k : ∀(h : ∀(x : m.c.A) ⊤) ⊤). k (λ(y : m.c.A). y)
+
+/-- The same callback with its domain erased. -/
+def K1p_srcA : STm :=
+  pdot% λ(m : {val c : μ(z. {A : ⊤ .. ⊤})}). λ(k : ∀(h : ∀(x : m.c.A) ⊤) ⊤). k (λy. y)
+
+/-- A callee with two function types whose formals have one parameter type. -/
+def K2_src : STm :=
+  pdot% λ(g : (∀(h : ∀(x : ⊤) ⊤) ⊤) ∧ (∀(h : ∀(x : ⊤) {a : ⊤}) ⊤)). g (λ(x : ⊤). x)
+
+/-- The same call with the argument's domain erased. -/
+def K2_srcA : STm :=
+  pdot% λ(g : (∀(h : ∀(x : ⊤) ⊤) ⊤) ∧ (∀(h : ∀(x : ⊤) {a : ⊤}) ⊤)). g (λx. x)
+
+/-- A callee with two function types whose formals have two parameter types. -/
+def K3_src : STm :=
+  pdot% λ(g : (∀(h : ∀(x : ⊤) ⊤) ⊤) ∧ (∀(h : ∀(x : {a : ⊤}) ⊤) ⊤)). g (λ(x : ⊤). x)
+
+/-- The same call with the argument's domain erased. -/
+def K3_srcA : STm :=
+  pdot% λ(g : (∀(h : ∀(x : ⊤) ⊤) ⊤) ∧ (∀(h : ∀(x : {a : ⊤}) ⊤) ⊤)). g (λx. x)
+
+example : (resolveP pathsTable E2_src).map PTm.eraseDoms = resolveP pathsTable E2_srcD := rfl
+
+example : (resolveP pathsTable E2_src).map PTm.eraseSelf = resolveP pathsTable E2_srcS := rfl
+
+example : (resolveP pathsTable E5_src).map PTm.eraseSelf = resolveP pathsTable E5_srcS := rfl
+
+example : (resolveP pathsTable E6_src).map PTm.eraseSelf = resolveP pathsTable E6_srcS := rfl
+
+example : (resolveP pathsTable E7_src).map PTm.eraseSelf = resolveP pathsTable E7_srcS := rfl
+
+example : (resolveP pathsTable E8_src).map PTm.eraseDoms = resolveP pathsTable E8_srcD := rfl
+
+example : (resolveP pathsTable E9_src).map PTm.eraseDoms = resolveP pathsTable E9_srcD := rfl
+
+example : (resolveP pathsTable X1_src).map PTm.eraseSelf = resolveP pathsTable X1_srcS := rfl
+
+example : (resolveP pathsTable E11_src).map PTm.eraseSelf = resolveP pathsTable E11_srcS := rfl
+
+example : (resolveP pathsTable K1s_src).map PTm.eraseArgs = resolveP pathsTable K1s_srcA := rfl
+
+example : (resolveP pathsTable K1p_src).map PTm.eraseArgs = resolveP pathsTable K1p_srcA := rfl
+
+example : (resolveP pathsTable K2_src).map PTm.eraseArgs = resolveP pathsTable K2_srcA := rfl
+
+example : (resolveP pathsTable K3_src).map PTm.eraseArgs = resolveP pathsTable K3_srcA := rfl
+
+/-- E2 binds its lambda with a `let` and passes none, so erasing the domains of
+arguments leaves it as it is. -/
+example : (resolveP pathsTable E2_src).map PTm.eraseArgs = resolveP pathsTable E2_src := rfl
+
+/-- The written E2 is full, so `resolve` gives the annotated term above.  The
+erased ones are not full. -/
+example : (resolveP pathsTable E2_srcD).bind PTm.full? = none := rfl
+
+example : (resolveP pathsTable E2_srcS).bind PTm.full? = none := rfl
+
+/-- The written callbacks are full, and `resolve` sees no empty slot. -/
+example : (resolve pathsTable K1s_src).isSome = true := rfl
+
+example : resolve pathsTable K1s_srcA = none := rfl
 
 end PathsFrontend

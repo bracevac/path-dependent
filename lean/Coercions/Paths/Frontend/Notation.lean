@@ -25,6 +25,11 @@ projections.  In type position a name needs two components or more.  Every
 component but the last is a field step.  The last is either the keyword `type`
 or a type label.  A name without a dot is never a type, since a selection needs
 a receiver.
+
+The same lexer rule asks for a space after the dot of `λx. t`.  Written `λx.x`,
+the body and the dot merge into the one name `x.x`, and the rule for `λx.` never
+sees its dot.  So the lambda with its domain left to inference is written with a
+space, `λx. x`.
 -/
 
 namespace PathsFrontend
@@ -73,6 +78,12 @@ syntax:70 pdotTm:70 pdotTm:71 : pdotTm
 syntax:max "let" ident (" : " pdotTy)? " = " pdotTm " in " pdotTm:60 : pdotTm
 /-- Parentheses. -/
 syntax:max "(" pdotTm ")" : pdotTm
+/-- `λx. t`, a lambda whose domain is left to inference. -/
+syntax:max "λ" ident "." pdotTm:60 : pdotTm
+/-- `ν(x. d)`, an object literal whose self type is left to inference. -/
+syntax:max "ν" "(" ident "." pdotDefs ")" : pdotTm
+/-- `(t : T)`, an ascription. -/
+syntax:max "(" pdotTm " : " pdotTy ")" : pdotTm
 
 /-- `{type A = T}`, a type member definition. -/
 syntax:max "{" "type" ident " = " pdotTy "}" : pdotDefs
@@ -82,6 +93,8 @@ syntax:max "{" ident " = " pdotTm "}" : pdotDefs
 syntax:65 pdotDefs:66 " ∧ " pdotDefs:65 : pdotDefs
 /-- Parentheses, needed for a definition list that nests to the left. -/
 syntax:max "(" pdotDefs ")" : pdotDefs
+/-- `{a : T = t}`, a term member definition with a written type. -/
+syntax:max "{" ident " : " pdotTy " = " pdotTm "}" : pdotDefs
 
 /-- Expand a `pdotTy` into an `SType`. -/
 syntax:max "pdotTy% " pdotTy : term
@@ -160,9 +173,9 @@ macro_rules
 macro_rules
   | `(pdot% $x:ident) => surfaceTmOfIdent x
   | `(pdot% λ ( $x:ident : $T:pdotTy ) . $t:pdotTm) =>
-      `(STm.lam $(quote x.getId.toString) (pdotTy% $T) (pdot% $t))
+      `(STm.lam $(quote x.getId.toString) (some (pdotTy% $T)) (pdot% $t))
   | `(pdot% ν ( $x:ident : $T:pdotTy . $d:pdotDefs )) =>
-      `(STm.obj $(quote x.getId.toString) (pdotTy% $T) (pdotDefs% $d))
+      `(STm.obj $(quote x.getId.toString) (some (pdotTy% $T)) (pdotDefs% $d))
   | `(pdot% $t:pdotTm . $a:ident) => `(STm.proj (pdot% $t) $(quote a.getId.toString))
   | `(pdot% $t:pdotTm $u:pdotTm) => `(STm.app (pdot% $t) (pdot% $u))
   | `(pdot% let $x:ident = $t:pdotTm in $u:pdotTm) =>
@@ -170,14 +183,21 @@ macro_rules
   | `(pdot% let $x:ident : $T:pdotTy = $t:pdotTm in $u:pdotTm) =>
       `(STm.«let» $(quote x.getId.toString) (some (pdotTy% $T)) (pdot% $t) (pdot% $u))
   | `(pdot% ( $t:pdotTm )) => `(pdot% $t)
+  | `(pdot% λ $x:ident . $t:pdotTm) =>
+      `(STm.lam $(quote x.getId.toString) (none : Option SType) (pdot% $t))
+  | `(pdot% ν ( $x:ident . $d:pdotDefs )) =>
+      `(STm.obj $(quote x.getId.toString) (none : Option SType) (pdotDefs% $d))
+  | `(pdot% ( $t:pdotTm : $T:pdotTy )) => `(STm.asc (pdot% $t) (pdotTy% $T))
 
 macro_rules
   | `(pdotDefs% { type $A:ident = $T:pdotTy }) =>
       `(SDefs.typ $(quote A.getId.toString) (pdotTy% $T))
   | `(pdotDefs% { $a:ident = $t:pdotTm }) =>
-      `(SDefs.trm $(quote a.getId.toString) (pdot% $t))
+      `(SDefs.trm $(quote a.getId.toString) (none : Option SType) (pdot% $t))
   | `(pdotDefs% $d:pdotDefs ∧ $e:pdotDefs) => `(SDefs.and (pdotDefs% $d) (pdotDefs% $e))
   | `(pdotDefs% ( $d:pdotDefs )) => `(pdotDefs% $d)
+  | `(pdotDefs% { $a:ident : $T:pdotTy = $t:pdotTm }) =>
+      `(SDefs.trm $(quote a.getId.toString) (some (pdotTy% $T)) (pdot% $t))
 
 /-! ## One check per surface form -/
 
@@ -248,11 +268,11 @@ example : (match pdotTy% t.«Type» with | .sel _ A => A | _ => "?") = "Type" :=
 
 example : (pdot% x) = STm.var "x" := by decide
 
-example : (pdot% λ ( x : ⊤ ) . x) = STm.lam "x" .top (.var "x") := by decide
+example : (pdot% λ ( x : ⊤ ) . x) = STm.lam "x" (some .top) (.var "x") := by decide
 
 example :
     (pdot% ν ( s : { a : ⊤ } . { a = s } )) =
-      STm.obj "s" (.fld "a" .top) (.trm "a" (.var "s")) := by
+      STm.obj "s" (some (.fld "a" .top)) (.trm "a" none (.var "s")) := by
   decide
 
 example : (pdot% f x) = STm.app (.var "f") (.var "x") := by decide
@@ -274,7 +294,8 @@ example : (pdot% ( x )) = STm.var "x" := by decide
 
 /-- `λ` extends as far right as it can. -/
 example :
-    (pdot% λ ( x : ⊤ ) . f x) = STm.lam "x" .top (.app (.var "f") (.var "x")) := by decide
+    (pdot% λ ( x : ⊤ ) . f x) = STm.lam "x" (some .top) (.app (.var "f") (.var "x")) := by
+  decide
 
 /-- `x`, `x.a` and `x.a.b` are each one `ident`. -/
 example : (pdot% x.a) = STm.proj (.var "x") "a" := by decide
@@ -283,6 +304,32 @@ example : (pdot% x.a.b) = STm.proj (.proj (.var "x") "a") "b" := by decide
 
 /-- A receiver that is not an identifier takes the projection rule. -/
 example : (pdot% ( f x ).a) = STm.proj (.app (.var "f") (.var "x")) "a" := by decide
+
+example : (pdot% λx. x) = STm.lam "x" none (.var "x") := by decide
+
+/-- The body of `λx.` extends as far right as it can, a path included. -/
+example : (pdot% λx. x.a) = STm.lam "x" none (.proj (.var "x") "a") := by decide
+
+example : (pdot% λx. λy. f x y) =
+    STm.lam "x" none (.lam "y" none (.app (.app (.var "f") (.var "x")) (.var "y"))) := by decide
+
+example : (pdot% ν(x. {type A = ⊤})) = STm.obj "x" none (.typ "A" .top) := by decide
+
+/-- A literal without a self type inside another one. -/
+example : (pdot% ν(x. {c = ν(y. {type A = ⊤})})) =
+    STm.obj "x" none (.trm "c" none (.obj "y" none (.typ "A" .top))) := by decide
+
+example : (pdot% (λx. x : ∀(y : ⊤) ⊤)) =
+    STm.asc (.lam "x" none (.var "x")) (.all "y" .top .top) := by decide
+
+example : (pdot% f (λx. x)) = STm.app (.var "f") (.lam "x" none (.var "x")) := by decide
+
+example : (pdot% (f x : ⊤).a) = STm.proj (.asc (.app (.var "f") (.var "x")) .top) "a" := by
+  decide
+
+/-- An ascription at a singleton type. -/
+example : (pdot% (x.a : y.type)) = STm.asc (.proj (.var "x") "a") (.sngl (.var "y")) := by
+  decide
 
 example : nameParts `x [] = ["x"] := by decide
 
@@ -294,23 +341,31 @@ example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
 
 example : (pdotDefs% { type A = ⊤ }) = SDefs.typ "A" .top := by decide
 
-example : (pdotDefs% { a = x }) = SDefs.trm "a" (.var "x") := by decide
+example : (pdotDefs% { a = x }) = SDefs.trm "a" none (.var "x") := by decide
+
+example : (pdotDefs% {a : ⊤ = x}) = SDefs.trm "a" (some .top) (.var "x") := by decide
+
+/-- A written field type may name a path. -/
+example : (pdotDefs% {a : x.c.A = y}) =
+    SDefs.trm "a" (some (.sel (.sel (.var "x") "c") "A")) (.var "y") := by decide
 
 example :
     (pdotDefs% { type A = ⊤ } ∧ { a = x }) =
-      SDefs.and (.typ "A" .top) (.trm "a" (.var "x")) := by
+      SDefs.and (.typ "A" .top) (.trm "a" none (.var "x")) := by
   decide
 
 /-- `∧` leans right on definitions too. -/
 example :
     (pdotDefs% { a = x } ∧ { b = y } ∧ { c = z }) =
-      SDefs.and (.trm "a" (.var "x")) (.and (.trm "b" (.var "y")) (.trm "c" (.var "z"))) := by
+      SDefs.and (.trm "a" none (.var "x"))
+        (.and (.trm "b" none (.var "y")) (.trm "c" none (.var "z"))) := by
   decide
 
 /-- Parentheses regroup a definition list to the left. -/
 example :
     (pdotDefs% ( { a = x } ∧ { b = y } ) ∧ { c = z }) =
-      SDefs.and (.and (.trm "a" (.var "x")) (.trm "b" (.var "y"))) (.trm "c" (.var "z")) := by
+      SDefs.and (.and (.trm "a" none (.var "x")) (.trm "b" none (.var "y")))
+        (.trm "c" none (.var "z")) := by
   decide
 
 /-! ## The example programs in the notation
