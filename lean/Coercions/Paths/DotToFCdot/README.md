@@ -91,13 +91,17 @@ the enclosing module. `acceptance_fig1` and its companions check the pDOT varian
 has no inversion lemmas, so the proof translates the derivation, allocates the literal in a typed
 store, and applies `Store.Typed.no_top_le_bot`. The claim is about literals, not terms:
 `diverging_at_bad_bounds` is a closed term at the bad type. Its run reaches a state that steps to
-itself (`div_reach`, `div_loop`). That one run allocates only X2's literal, which does not have the bad type. The development does
-not prove that every run of the term behaves so.
+itself (`div_reach`, `div_loop`). The machine is deterministic (`Step.det`: two steps out of one
+state reach the same state), so that run is the only one. `div_stores` states that every store
+reachable from the term is empty or holds X2's literal as its one entry. By
+`acceptance_gdot3_any` that literal does not have the bad type, so no run allocates a literal at
+the bad type.
 
 ## Examples
 
 Z1 to Z9 are kernel-decided facts about translated derivations. Z9 shows why the source leaves out
 replacement and non-singleton uses of a singleton variable: no template reads an inclusion out of
-a singleton (`no_le_out_of_sngl`) or rewrites an alias (`alias_template_fixed`). Both are stated
-for a target telescope of one entry. `Pages` checks
+a singleton (`no_le_out_of_sngl`) or rewrites an alias (`alias_template_fixed`). Out of the
+telescope `[≈ q]` no morphism has a target `Tel ▹ S ⊑ T`, and one with a target `Tel ▹ ≈ q'` has
+`q' = q`, for every `Tel`. `Pages` checks
 the translations of E1p to E8p, E9, E10, E11, P2e and P3e.
