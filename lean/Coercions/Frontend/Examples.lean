@@ -1,81 +1,75 @@
 import Coercions.Frontend.Pipeline
 import Coercions.Frontend.Pretty
+import Coercions.Frontend.Alg
 
 /-!
 # The examples end to end
 
-The ten surface programs of `Resolve.lean` are taken through the whole
-front end and compared against the hand written derivations of
-`lean/Coercions/DotMNF/Examples.lean`.
+The ten surface programs of `Resolve.lean`, the programs of `Typer.lean` and a
+few more are taken through the whole front end at `defaultFuel`.  Where
+`lean/Coercions/DotMNF/Examples.lean` has a hand written derivation, the term
+and the type are compared with it.  `vanillaTm` and `vanillaTy` read them off
+the derivation.  Derivations are not compared, since `DotMNF.HasTy` has no
+decidable equality.
 
-## What is compared
+For a program that compiles:
 
-Three things, all of them decidable.  The term the resolver returns, the type
-the typer synthesizes, and the verdict of the target checker on the translation
-of the derivation.  Derivations themselves are not compared.  `DotMNF.HasTy` is
-`Type` valued data with no decidable equality
-(`lean/Coercions/DotMNF/Typing.lean:7-9`), and the typer legitimately reaches
-the same judgment by another route in three places.
+* the resolved term, by `decide`, where the vanilla file has the term,
+* `Ek_type`: the type and the tank left, by `decide +kernel`,
+* `Ek_compiles`, and `Ek_checks`, the target checker's acceptance of the
+  translation, which is `compile_checks_get` at the program.
 
-The comparison never transcribes a vanilla term or a vanilla type.  `vanillaTm`
-and `vanillaTy` read the subject and the conclusion off the vanilla derivation
-itself, so `E1` and its seven companions are the standard of comparison and not
-a copy of them.
+For a program the typer rejects:
 
-## Four checks per program
+* `Ek_verdict`: no type, tank unmarked,
+* `Ek_rejected`: `compile` returns nothing at every budget, by
+  `synthTop?_stable` above `defaultFuel` and `synthTop?_mono` below,
+* `Ek_not_alg`, where the rejection is at one goal of the subtyping core:
+  `Alg` does not derive it (`var?_reject`), so no fuel and no order of the
+  alternatives would find it.
 
-One kernel decided, two compiled, one theorem.
+For a program at the recursion limit, `Ek_limit`: no type, tank marked.
 
-The first is `compiledTm exampleTable Eksrc = some (vanillaTm Ek)`, by `decide`.
-Resolution is structural, so the kernel reduces it.  This is also the
-let insertion test.  It holds on the nose for E1 to E9, because every one of
-them is already in monadic normal form in the vanilla file, so `atomize` inserts
-nothing.  E10 is the opposite case and is compared against its let expanded
-form.
+## The programs by verdict
 
-The second and the third run compiled code through `expect`, because the typer
-is well-founded and does not reduce in the kernel.  They are the
-synthesized type and the checker's verdict.  The verdict is run and not only
-proved, so the checker and the translation are seen to actually agree.
-Running the checker also covers checking that the program compiles at all,
-since `compiledVerdict` is false when the typer returns nothing.
+* Accepted: E5, E6, E7, E8, E9, E10t and E11.  The vanilla file types E5 to E8.
+  E2 is accepted at the type avoidance gives, `∀(y : ∀(z : ⊤) ⊥) ⊤`, where the
+  vanilla derivation concludes `⊤`.
+* Accepted, and found by no search over the declared types of the context.
+  P1: a member three steps down a recursive type under a `∀`.  P4: a field four
+  steps down the upper bound of a selection.  P5: an intersection of two
+  function types applied to an argument only the second accepts.  R2: a
+  projection with two written fields, of which only the second has the member
+  the body reads.  G: a `let` whose body type has two members of one name,
+  approximated by the meet of their upper bounds.  E1s and E3s: E1 and E3 with
+  the middle type written as an ascription, typed at the types of the vanilla
+  derivations.
+* Accepted with every field a candidate: R1.  Its projection finds one field
+  through the upper bound of a selection and has one written, and the body
+  needs the second.
+* Rejected, as scalac rejects them: E1, E3, E4 and B1 need a middle type the
+  program does not write.  A1 has a written `let` annotation the bound value
+  does not meet.  Each has its `¬ Alg` fact.  E10 applies a variable at `⊤`,
+  and the lookup finds no function type in `⊤`.
+* At the recursion limit: LP, a check through `∀` bodies that reaches the same
+  goal under one more binder at every level.  PF, Pierce's divergence of
+  bounded quantification written with type members.  The doubled alias chain of
+  twelve links, whose goal is false at every fuel and needs more than
+  `defaultFuel` to say so.
 
-The fourth is `Ek_checks`, the pipeline theorem at this program.  It is
-stated in the hypothetical form, with the hypothesis supplied by the `#eval`
-beside it rather than by a kernel reduction through the typer.
-
-## The budgets
-
-E1 to E8 run at the budgets `Typer.lean` measured, unchanged.  E9 and E10 are
-new and their budgets are measured here.  Every budget is minimal in each of its
-four components, and the negative probes beside E9 and E10 say so.
-
-## E10 and its typed cousin
-
-E10 is `λ(f : ⊤). λ(g : ⊤). f (g f)`, the one program of the ten that is not
-already in monadic normal form.  Its operator is a variable at `⊤`, and `⊤` is
-not a function type, so the typer returns nothing and must return nothing.  Its
-two compiled checks are therefore negative, and the second of them raises every
-counter to show that the failure is the program and not the budget.
-
-That still leaves the end to end test of let insertion without a program
-that reaches the typer.  `E10tsrc` is E10 with its two binders
-at `∀(x : ⊤) ⊤` instead of `⊤`.  It resolves to the same shape with the same
-inserted binding, it typechecks, and its translation passes the target checker.
-It carries the same four checks and is the eleventh program, beside the ten.
+The alias chains of 16 and 32 links are core goals, checked in `Sub.lean`.
 
 ## The run tests
 
-The file closes with the machine.  `compileAndRun` at a step budget of 32, and
-`ppRun` of the answer.  E5 is a lambda at the top level, so its initial
-state is already final and the run gives the program back at zero steps.  Only
-E2 reduces, in six steps.  A third run is printed beside them, E11, which is
-E10t applied to the identity twice.  It is the one program here that runs
-through a binding that let insertion inserted, and it takes twelve steps.
+The file closes with `compileAndRun` at a step budget of 32, printed by `ppRun`.
+E5 is a lambda at the top level, so it is final at zero steps.  E2 reduces in
+six steps.  E11 is E10t applied to the identity twice, and it takes twelve
+steps through the bindings that let insertion inserted.
 -/
 
 namespace Frontend
 
+open Frontend.Fuel Frontend.Core
 open FCdot (Kind Sig BVar Label)
 open DotMNF (Ty Tm Ctx HasTy)
 
@@ -85,9 +79,8 @@ open DotMNF.Examples
 
 /-! ## Reading a vanilla derivation
 
-A vanilla example is a derivation, and its subject and its conclusion are the
-two arguments of its type.  These two read them off, so that no term and no type
-of `lean/Coercions/DotMNF/Examples.lean` is copied into this file. -/
+The subject and the conclusion of a derivation are the two arguments of its
+type.  These two functions read them off. -/
 
 /-- The term a vanilla derivation is about. -/
 def vanillaTm {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (_ : HasTy Γ t T) : Tm s := t
@@ -95,183 +88,230 @@ def vanillaTm {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (_ : HasTy Γ t T) : 
 /-- The type a vanilla derivation concludes. -/
 def vanillaTy {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (_ : HasTy Γ t T) : Ty s := T
 
-/-! ## The three decidable things -/
+/-! ## The decidable things -/
 
-/-- The resolved term, erased into the frozen syntax.  Structural, so this
-reduces in the kernel. -/
+/-- The resolved term, erased into the frozen syntax. -/
 def compiledTm (Λ : LabelTable) (e : STm) : Option (Tm []) :=
   (resolve Λ e).map fun a => a.erase
 
-/-- The synthesized type.  This runs the typer, so it does not reduce in the
-kernel. -/
-def compiledTy (b : Budget) (Λ : LabelTable) (e : STm) : Option (Ty []) :=
-  (compile b Λ e).map fun r => r.2.ty
-
 /-- The target checker's verdict on the translation of the derivation, and
-`false` when the front end returned nothing.  `FCdot.checkTm` takes no fuel
-(`lean/Coercions/FCdot/Checker.lean:906-910`), so the only search here is the
-typer's. -/
+`false` when the front end returned nothing.  `FCdot.checkTm` takes no fuel. -/
 def compiledVerdict (b : Budget) (Λ : LabelTable) (e : STm) : Bool :=
   match compile b Λ e with
   | some r => FCdot.checkTm .nil r.2.deriv.translate r.2.ty.translate
   | none => false
 
+/-- What `compile_checks_get` concludes at a program that compiles: the target
+checker accepts the translation of its derivation. -/
+def CheckerAccepts (b : Budget) (Λ : LabelTable) (e : STm)
+    (h : (compile b Λ e).isSome = true) : Prop :=
+  FCdot.checkTm .nil ((compile b Λ e).get h).2.deriv.translate
+    ((compile b Λ e).get h).2.ty.translate = true
+
+/-- A rejection that leaves the tank unmarked is a rejection at every budget.
+Above the fuel of the check this is `synthTop?_stable`.  Below it,
+`synthTop?_mono` would keep an answer and contradict the check. -/
+theorem typeAt_rejects {e : STm} {n k : Nat} (h : typeAt e n = (none, ⟨k, false⟩))
+    (b : Budget) : compile b exampleTable e = none := by
+  unfold typeAt at h
+  cases hr : resolve exampleTable e with
+  | none =>
+    rw [hr] at h
+    cases h
+  | some a =>
+    rw [hr] at h
+    simp only [Prod.mk.injEq, Option.map_eq_none_iff] at h
+    obtain ⟨h1, h2⟩ := h
+    have hs : synthTopF n a = (none, ⟨k, false⟩) := by rw [← h1, ← h2]
+    have hnone : (synthTopF b.fuel a).1 = none := by
+      rcases Nat.le_total n b.fuel with hle | hle
+      · have := synthTop?_stable hs (b.fuel - n)
+        rwa [Nat.add_sub_cancel' hle] at this
+      · cases hc : (synthTopF b.fuel a).1 with
+        | none => rfl
+        | some c =>
+          have := synthTop?_mono hc hle
+          rw [h1] at this
+          cases this
+    simp [compile, hr, synthTop?, hnone]
+
 /-! ## E1: bad bounds under a lambda
 
-The annotated `let` takes the first rung of the ladder, and the body is retyped
-through `⊤ <: x.A <: ⊥ <: {B : Int..Int}`.  The vanilla derivation is `E1`
-(`lean/Coercions/DotMNF/Examples.lean:68-72`). -/
+The vanilla derivation `E1` retypes the body through
+`⊤ <: x.A <: ⊥ <: {B : Int..Int}`.  The middle `x.A` is not written in the
+program.  The typer rejects the check of the body `y` against the annotation. -/
 
 example : compiledTm exampleTable E1src = some (vanillaTm E1) := by decide
 
-#eval expect (compiledTy bE1 exampleTable E1src == some (vanillaTy E1))
-  "E1: the typer does not conclude the type of the vanilla derivation"
+/-- `x : {A : ⊤..⊥}` and the `let` binder `y` at the same type. -/
+def E1yCtx : Ctx ([],x,x) := E1Ctx.cons E1Dom
 
-#eval expect (compiledVerdict bE1 exampleTable E1src)
-  "E1: the target checker rejects the translation"
+/-- The typer rejects E1, with the tank unmarked. -/
+theorem E1_verdict : typeAt E1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
 
-/-- The pipeline theorem at E1. -/
-theorem E1_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE1 exampleTable E1src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E1 does not compile at any budget. -/
+theorem E1_rejected (b : Budget) : compile b exampleTable E1src = none :=
+  typeAt_rejects E1_verdict b
+
+/-- `y : {B : {a : ⊤}..{a : ⊤}}` has no `Alg` derivation. -/
+theorem E1_not_alg : ¬ Alg ⟨_, E1yCtx, .var .here (E1yCtx.lookup .here) E1Res⟩ :=
+  var?_reject (rejects_eq (by decide +kernel : rejects (var? E1yCtx .here E1Res) 3 = true))
 
 /-! ## E2: a recursive object with a self referential member
 
-The inner `let` takes the second rung of the ladder, the outer one falls to the
-third, and the answer is `⊤`.  The vanilla derivation is `E2` (`:124-129`). -/
+The inner `let` is typed at `x.A`, which does not mention its binder.  The
+outer one is typed at the type avoidance gives, `∀(y : ∀(z : ⊤) ⊥) ⊤`.  The
+vanilla derivation `E2` concludes `⊤`. -/
 
 example : compiledTm exampleTable E2src = some (vanillaTm E2) := by decide
 
-#eval expect (compiledTy bE2 exampleTable E2src == some (vanillaTy E2))
-  "E2: the typer does not conclude the type of the vanilla derivation"
+/-- E2 is typed at the avoided type. -/
+theorem E2_type : typeAt E2src = (some (.all (.all .top .bot) .top), ⟨defaultFuel - 58, false⟩) := by
+  decide +kernel
 
-#eval expect (compiledVerdict bE2 exampleTable E2src)
+#eval expect (compiledVerdict {} exampleTable E2src)
   "E2: the target checker rejects the translation"
 
-/-- The pipeline theorem at E2. -/
-theorem E2_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE2 exampleTable E2src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E2 compiles. -/
+theorem E2_compiles : (compile {} exampleTable E2src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E2. -/
+theorem E2_checks : CheckerAccepts {} exampleTable E2src E2_compiles :=
+  compile_checks_get E2_compiles
 
 /-! ## E3: an intersection with a shared member
 
-Rule 11 with two declarations of one variable at one label.  The vanilla
-derivation is `E3` (`:162-166`). -/
+The vanilla derivation `E3` goes through the middle `x.A`, which the program
+does not write.  The typer rejects the check of the body `y` against the
+annotation. -/
 
 example : compiledTm exampleTable E3src = some (vanillaTm E3) := by decide
 
-#eval expect (compiledTy bE3 exampleTable E3src == some (vanillaTy E3))
-  "E3: the typer does not conclude the type of the vanilla derivation"
+/-- `x`, `z : {b : ⊤}`, and the `let` binder `y : {b : ⊤}`. -/
+def E3yCtx : Ctx ([],x,x,x) := E3Ctx2.cons E3T2
 
-#eval expect (compiledVerdict bE3 exampleTable E3src)
-  "E3: the target checker rejects the translation"
+/-- The typer rejects E3, with the tank unmarked. -/
+theorem E3_verdict : typeAt E3src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
 
-/-- The pipeline theorem at E3. -/
-theorem E3_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE3 exampleTable E3src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E3 does not compile at any budget. -/
+theorem E3_rejected (b : Budget) : compile b exampleTable E3src = none :=
+  typeAt_rejects E3_verdict b
+
+/-- `y : {a : ⊤}` has no `Alg` derivation. -/
+theorem E3_not_alg : ¬ Alg ⟨_, E3yCtx, .var .here (E3yCtx.lookup .here) E3T1⟩ :=
+  var?_reject (rejects_eq (by decide +kernel : rejects (var? E3yCtx .here E3T1) 3 = true))
 
 /-! ## E4: the counterexample of the paper's first section
 
-Two rounds of the declaration table, the second of them the detour view step at
-`w`.  The vanilla derivation is `E4` (`:228-236`). -/
+The vanilla derivation `E4` widens `w` to the type `x.B`, a middle the program
+does not write.  The typer rejects the argument `n` of `g n` against the domain
+`w.A`. -/
 
 example : compiledTm exampleTable E4src = some (vanillaTm E4) := by decide
 
-#eval expect (compiledTy bE4 exampleTable E4src == some (vanillaTy E4))
-  "E4: the typer does not conclude the type of the vanilla derivation"
+/-- The typer rejects E4, with the tank unmarked. -/
+theorem E4_verdict : typeAt E4src = (none, ⟨defaultFuel - 6, false⟩) := by decide +kernel
 
-#eval expect (compiledVerdict bE4 exampleTable E4src)
-  "E4: the target checker rejects the translation"
+/-- E4 does not compile at any budget. -/
+theorem E4_rejected (b : Budget) : compile b exampleTable E4src = none :=
+  typeAt_rejects E4_verdict b
 
-/-- The pipeline theorem at E4. -/
-theorem E4_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE4 exampleTable E4src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- `n : w.A` has no `Alg` derivation. -/
+theorem E4_not_alg : ¬ Alg ⟨_, E4Ctx4, .var (.there .here) (E4Ctx4.lookup (.there .here))
+    (.sel (.var (.there (.there .here))) lA)⟩ :=
+  E4_var_not_alg
 
 /-! ## E5: an object returned from a function and selected after a `let`
 
-Both `let`s take the second rung.  The vanilla derivation is `E5` (`:296-301`).
-Its field body goes another way than the search does. -/
+Both `let`s are typed at `w.A`, which mentions neither binder.  The vanilla
+derivation is `E5`. -/
 
 example : compiledTm exampleTable E5src = some (vanillaTm E5) := by decide
 
-#eval expect (compiledTy bE5 exampleTable E5src == some (vanillaTy E5))
-  "E5: the typer does not conclude the type of the vanilla derivation"
+/-- E5 is typed at the type of the vanilla derivation. -/
+theorem E5_type : typeAt E5src = (some (vanillaTy E5), ⟨defaultFuel - 14, false⟩) := by
+  decide +kernel
 
-#eval expect (compiledVerdict bE5 exampleTable E5src)
+#eval expect (compiledVerdict {} exampleTable E5src)
   "E5: the target checker rejects the translation"
 
-/-- The pipeline theorem at E5. -/
-theorem E5_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE5 exampleTable E5src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E5 compiles. -/
+theorem E5_compiles : (compile {} exampleTable E5src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E5. -/
+theorem E5_checks : CheckerAccepts {} exampleTable E5src E5_compiles :=
+  compile_checks_get E5_compiles
 
 /-! ## E6: a field typed at its own literal's member
 
-The vanilla `E6` is typed under the context that binds `n` (`:341-342`), so the
-surface program is that derivation under the lambda that closes it, and the
-comparison carries the same lambda on both sides. -/
+The vanilla `E6` is typed under the context that binds `n`.  The surface program
+is that derivation under the lambda that closes it, and the comparison carries
+the same lambda on both sides. -/
 
 example : compiledTm exampleTable E6src = some (.val (.lam E6Int (vanillaTm E6))) := by
   decide
 
-#eval expect (compiledTy bE6 exampleTable E6src == some (.all E6Int (vanillaTy E6)))
-  "E6: the typer does not conclude the type of the vanilla derivation under one ∀"
+/-- E6 is typed at the type of the vanilla derivation under one `∀`. -/
+theorem E6_type : typeAt E6src = (some (.all E6Int (vanillaTy E6)), ⟨defaultFuel - 12, false⟩) := by
+  decide +kernel
 
-#eval expect (compiledVerdict bE6 exampleTable E6src)
+#eval expect (compiledVerdict {} exampleTable E6src)
   "E6: the target checker rejects the translation"
 
-/-- The pipeline theorem at E6. -/
-theorem E6_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE6 exampleTable E6src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E6 compiles. -/
+theorem E6_compiles : (compile {} exampleTable E6src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E6. -/
+theorem E6_checks : CheckerAccepts {} exampleTable E6src E6_compiles :=
+  compile_checks_get E6_compiles
 
 /-! ## E7: two type members that name each other
 
 Nothing is searched.  Both definitions are type members and `DefsTy.typ` reads
 them off.  The distinctness of the two labels is decided here, where the vanilla
-file proves it by hand (`E7Distinct`, `:357-363`).  The vanilla derivation is
-`E7` (`:367`). -/
+file proves it by hand (`E7Distinct`).  The vanilla derivation is `E7`. -/
 
 example : compiledTm exampleTable E7src = some (vanillaTm E7) := by decide
 
-#eval expect (compiledTy bE7 exampleTable E7src == some (vanillaTy E7))
-  "E7: the typer does not conclude the type of the vanilla derivation"
+/-- E7 is typed at the type of the vanilla derivation. -/
+theorem E7_type : typeAt E7src = (some (vanillaTy E7), ⟨defaultFuel, false⟩) := by decide +kernel
 
-#eval expect (compiledVerdict bE7 exampleTable E7src)
+#eval expect (compiledVerdict {} exampleTable E7src)
   "E7: the target checker rejects the translation"
 
-/-- The pipeline theorem at E7. -/
-theorem E7_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE7 exampleTable E7src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E7 compiles. -/
+theorem E7_compiles : (compile {} exampleTable E7src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E7. -/
+theorem E7_checks : CheckerAccepts {} exampleTable E7src E7_compiles :=
+  compile_checks_get E7_compiles
 
 /-! ## E8: the right view step
 
-One round of the closure takes the right operand of the intersection.  The
-vanilla derivation is `E8` (`:427-429`), which goes the same way.  The vanilla
-file also has `E8b`, the other route, which the search here does not reach. -/
+The lookup finds the field `a` through `x.A`'s upper bound and in the right
+operand of the intersection, both at `⊤`.  The vanilla derivation is `E8`. -/
 
 example : compiledTm exampleTable E8src = some (vanillaTm E8) := by decide
 
-#eval expect (compiledTy bE8 exampleTable E8src == some (vanillaTy E8))
-  "E8: the typer does not conclude the type of the vanilla derivation"
+/-- E8 is typed at the type of the vanilla derivation. -/
+theorem E8_type : typeAt E8src = (some (vanillaTy E8), ⟨defaultFuel - 11, false⟩) := by
+  decide +kernel
 
-#eval expect (compiledVerdict bE8 exampleTable E8src)
+#eval expect (compiledVerdict {} exampleTable E8src)
   "E8: the target checker rejects the translation"
 
-/-- The pipeline theorem at E8. -/
-theorem E8_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE8 exampleTable E8src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E8 compiles. -/
+theorem E8_compiles : (compile {} exampleTable E8src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E8. -/
+theorem E8_checks : CheckerAccepts {} exampleTable E8src E8_compiles :=
+  compile_checks_get E8_compiles
 
 /-! ## E9: the upper view step
 
-New here, and the only mandatory example of the upper view step: `y : x.A` and
-the field is read off the upper bound of `x`'s member `A`.  Deduplication takes
-that route away from E8, which is why E9 exists as its own example.  There is
-no vanilla derivation, so the term and the type are written out. -/
+`y : x.A`, and the field is read off the upper bound of `x`'s member `A`.  The
+vanilla file has no derivation of E9, so the term and the type are written
+out. -/
 
 /-- `λ(x : {A : ⊥..{a : ⊤}}). λ(y : x.A). y.a`, erased. -/
 def E9tm : Tm [] :=
@@ -280,80 +320,50 @@ def E9tm : Tm [] :=
 /-- `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A) ⊤`. -/
 def E9ty : Ty [] := .all E8Dom (.all (.sel (.var .here) lA) .top)
 
-/-- The measured budget of E9.  One round of the table and one of the closure.
-The search itself is never called. -/
-def bE9 : Budget := { decls := 1, views := 1, sub := 0, typer := 1 }
-
 example : compiledTm exampleTable E9src = some E9tm := by decide
 
-#eval expect (compiledTy bE9 exampleTable E9src == some E9ty)
-  "E9: the typer does not conclude ∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A) ⊤"
+/-- E9 is typed at `∀(x : {A : ⊥..{a : ⊤}}) ∀(y : x.A) ⊤`. -/
+theorem E9_type : typeAt E9src = (some E9ty, ⟨defaultFuel - 5, false⟩) := by decide +kernel
 
-#eval expect (compiledVerdict bE9 exampleTable E9src)
+#eval expect (compiledVerdict {} exampleTable E9src)
   "E9: the target checker rejects the translation"
 
--- One round of the table short, and one round of the closure short.  Each
--- budget of this file is minimal in every component, and these two probes say
--- so for E9.
-#eval expect (! (compile { bE9 with decls := 0 } exampleTable E9src).isSome)
-  "E9: the typer succeeds at no round of the table, so the budget is not measured"
+/-- E9 compiles. -/
+theorem E9_compiles : (compile {} exampleTable E9src).isSome = true := by decide +kernel
 
-#eval expect (! (compile { bE9 with views := 0 } exampleTable E9src).isSome)
-  "E9: the typer succeeds at no round of the closure, so the budget is not measured"
-
-/-- The pipeline theorem at E9. -/
-theorem E9_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE9 exampleTable E9src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- The target checker accepts the translation of E9. -/
+theorem E9_checks : CheckerAccepts {} exampleTable E9src E9_compiles :=
+  compile_checks_get E9_compiles
 
 /-! ## E10: let insertion at a nested application
 
 The one program of the ten that is not in monadic normal form.  The operand
 `g f` is not a variable, so `atomize` binds it, and the resolved term is the let
-expanded one.  That is the check the kernel decides.
+expanded one.
 
-The typer must fail here, and does.  The operator is a variable at `⊤`, `⊤` is
-not a function type, and no view of a variable at `⊤` is a `∀`.  The second
-compiled check raises every counter well past the largest budget of this file,
-so the failure is the program and not the budget. -/
+The typer rejects it.  The operator is a variable at `⊤`, and the lookup finds
+no function type in `⊤`.  No subtyping goal is asked, so there is no `Alg`
+fact. -/
 
 /-- `λ(f). λ(g). let % = g f in f %`, erased. -/
 def E10tm : Tm [] :=
   .val (.lam .top (.val (.lam .top
     (.let (.app .here (.there .here)) (.app (.there (.there .here)) .here)))))
 
-/-- The budget E10 is refused at.  The nominal default of `Budget`, which is
-larger in every component than any budget E1 to E9 need. -/
-def bE10 : Budget := { decls := 3, views := 3, sub := 6, typer := 8 }
-
 example : compiledTm exampleTable E10src = some E10tm := by decide
 
-#eval expect (compiledTy bE10 exampleTable E10src == none)
-  "E10: the typer applies a variable at ⊤"
+/-- The typer rejects E10, with the tank unmarked. -/
+theorem E10_verdict : typeAt E10src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
-#eval expect (compiledTy { decls := 8, views := 8, sub := 16, typer := 24 }
-    exampleTable E10src == none)
-  "E10: the typer applies a variable at ⊤ once the budget is large enough"
-
-/-- The pipeline theorem at E10.  True and empty, since E10 does not
-compile.  It is written because the ten programs carry the same four checks. -/
-theorem E10_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE10 exampleTable E10src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E10 does not compile at any budget. -/
+theorem E10_rejected (b : Budget) : compile b exampleTable E10src = none :=
+  typeAt_rejects E10_verdict b
 
 /-! ## E10t: the same program with a function type at its binders
 
-The eleventh program, beside the ten.  E10 is the only end to end test of let
-insertion among the ten, and the typer cannot reach it, so nothing downstream of
-resolution is exercised there.  E10t is E10 with `∀(x : ⊤) ⊤` at both binders.
-It inserts the same binding, it typechecks, and the target checker accepts the
-translation.  So the inserted `let` is carried through the typer, the
-translation and the checker.  Carrying it through the machine as well takes a
-program that is not a value at the top, which is E11 at the end of the file. -/
-
-/-- `λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)`. -/
-def E10tsrc : STm :=
-  dot% λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)
+E10t is E10 with `∀(x : ⊤) ⊤` at both binders.  It inserts the same binding and
+typechecks, so the inserted `let` goes through the typer, the translation and
+the checker.  E11 carries it through the machine. -/
 
 /-- `⊤ → ⊤`, the type of both binders. -/
 def E10tArr {s : Sig} : Ty s := .all .top .top
@@ -366,69 +376,308 @@ def E10ttm : Tm [] :=
 /-- `∀(f : ⊤ → ⊤) ∀(g : ⊤ → ⊤) ⊤`. -/
 def E10tty : Ty [] := .all E10tArr (.all E10tArr .top)
 
-/-- The measured budget of E10t.  One unit of the search, for the argument of
-each application against `⊤`. -/
-def bE10t : Budget := { decls := 0, views := 0, sub := 1, typer := 1 }
-
 example : compiledTm exampleTable E10tsrc = some E10ttm := by decide
 
-#eval expect (compiledTy bE10t exampleTable E10tsrc == some E10tty)
-  "E10t: the typer does not conclude ∀(f : ⊤ → ⊤) ∀(g : ⊤ → ⊤) ⊤"
+/-- E10t is typed at `∀(f : ⊤ → ⊤) ∀(g : ⊤ → ⊤) ⊤`. -/
+theorem E10t_type : typeAt E10tsrc = (some E10tty, ⟨defaultFuel - 7, false⟩) := by decide +kernel
 
-#eval expect (compiledVerdict bE10t exampleTable E10tsrc)
+#eval expect (compiledVerdict {} exampleTable E10tsrc)
   "E10t: the target checker rejects the translation"
 
--- One unit of the search short: the argument is never seen to be below `⊤`.
-#eval expect (! (compile { bE10t with sub := 0 } exampleTable E10tsrc).isSome)
-  "E10t: the typer succeeds at search fuel 0, so the budget is not measured"
+/-- E10t compiles. -/
+theorem E10t_compiles : (compile {} exampleTable E10tsrc).isSome = true := by decide +kernel
 
-/-- The pipeline theorem at E10t. -/
-theorem E10t_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE10t exampleTable E10tsrc = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- The target checker accepts the translation of E10t. -/
+theorem E10t_checks : CheckerAccepts {} exampleTable E10tsrc E10t_compiles :=
+  compile_checks_get E10t_compiles
 
 /-! ## E11: a program that runs
 
-The twelfth program, and the only one of them all whose top level term is not a
-value.  It is E10t applied twice to the identity, in direct style, so the
-resolver atomizes the operator as well as the operand and the machine then
-reduces through the bindings it inserted.  It exists for the run tests below.
-E2 is the only one of the ten example programs that reduces at all, and what
-it reduces is an object literal and a projection. -/
+The only program here whose top level term is not a value.  It is E10t applied
+twice to the identity in direct style, so the resolver atomizes the operator as
+well as the operand.  The run tests use it. -/
 
-/-- `let i = λ(x : ⊤). x in (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i`. -/
-def E11src : STm :=
-  dot% let i = λ(x : ⊤). x in
-       (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i
+/-- E11 is typed at `⊤`. -/
+theorem E11_type : typeAt E11src = (some .top, ⟨defaultFuel - 14, false⟩) := by decide +kernel
 
-/-- The measured budget of E11, the same as E10t's. -/
-def bE11 : Budget := { decls := 0, views := 0, sub := 1, typer := 1 }
-
-#eval expect (compiledTy bE11 exampleTable E11src == some .top)
-  "E11: the typer does not conclude ⊤"
-
-#eval expect (compiledVerdict bE11 exampleTable E11src)
+#eval expect (compiledVerdict {} exampleTable E11src)
   "E11: the target checker rejects the translation"
 
-/-- The pipeline theorem at E11. -/
-theorem E11_checks {a : ATm []} {c : Compiled a.erase}
-    (h : compile bE11 exampleTable E11src = some ⟨a, c⟩) :
-    FCdot.checkTm .nil c.deriv.translate c.ty.translate = true := compile_checks h
+/-- E11 compiles. -/
+theorem E11_compiles : (compile {} exampleTable E11src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E11. -/
+theorem E11_checks : CheckerAccepts {} exampleTable E11src E11_compiles :=
+  compile_checks_get E11_compiles
+
+/-! ## E1s and E3s: the middle written
+
+E1 and E3 with the middle type `x.A` written as a `let` annotation.  Each is
+typed at the type of the vanilla derivation of E1 or E3. -/
+
+/-- E1s is typed at the type of the vanilla derivation of E1. -/
+theorem E1s_type : typeAt E1ssrc = (some (vanillaTy E1), ⟨defaultFuel - 14, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable E1ssrc)
+  "E1s: the target checker rejects the translation"
+
+/-- E1s compiles. -/
+theorem E1s_compiles : (compile {} exampleTable E1ssrc).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E1s. -/
+theorem E1s_checks : CheckerAccepts {} exampleTable E1ssrc E1s_compiles :=
+  compile_checks_get E1s_compiles
+
+/-- E3s is typed at the type of the vanilla derivation of E3. -/
+theorem E3s_type : typeAt E3ssrc = (some (vanillaTy E3), ⟨defaultFuel - 16, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable E3ssrc)
+  "E3s: the target checker rejects the translation"
+
+/-- E3s compiles. -/
+theorem E3s_compiles : (compile {} exampleTable E3ssrc).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of E3s. -/
+theorem E3s_checks : CheckerAccepts {} exampleTable E3ssrc E3s_compiles :=
+  compile_checks_get E3s_compiles
+
+/-! ## P1: a member of a recursive type under a `∀`
+
+`f : ∀(y : M) y.A` is ascribed `∀(y : M) {a : ⊤}`, with
+`M = μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥..{a : ⊤}}))`.  The bodies of the two `∀`
+are compared under `y`, and `y.A`'s upper bound is read off `M` opened at `y`,
+three steps down.  Scalac accepts the same program. -/
+
+/-- `λ(f : ∀(y : M) y.A). let g : ∀(y : M) {a : ⊤} = f in g`. -/
+def P1src : STm :=
+  dot% λ(f : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) y.A).
+         let g : ∀(y : μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {A : ⊥ .. {a : ⊤}}))) {a : ⊤} = f in g
+
+/-- P1 is typed at `∀(f : ∀(y : M) y.A) ∀(y : M) {a : ⊤}`. -/
+theorem P1_type : typeAt P1src = (some (.all P1S (.all P1M (.fld la .top))), ⟨defaultFuel - 30, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable P1src)
+  "P1: the target checker rejects the translation"
+
+/-- P1 compiles. -/
+theorem P1_compiles : (compile {} exampleTable P1src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of P1. -/
+theorem P1_checks : CheckerAccepts {} exampleTable P1src P1_compiles :=
+  compile_checks_get P1_compiles
+
+/-! ## P4: a field four steps down an upper bound
+
+`y : x.A`, and the field `a` is found by the lookup through `x.A`'s upper
+bound, the recursive type opened at `y`, and the right operand twice.  Its
+type `s.B` is opened at `y` as well.  The lookup alone is checked in
+`Look.lean`.  Scalac accepts the same program with the field at `Any`. -/
+
+/-- `λ(x : {A : ⊥..μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {a : s.B}))}). λ(y : x.A). y.a`. -/
+def P4src : STm :=
+  dot% λ(x : {A : ⊥ .. μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {a : s.B}))}). λ(y : x.A). y.a
+
+/-- P4 is typed at `∀(x : {A : ⊥..μ(s. {b : ⊤} ∧ ({v : ⊤} ∧ {a : s.B}))}) ∀(y : x.A) y.B`. -/
+theorem P4_type : typeAt P4src =
+    (some (.all (.typ lA .bot (.mu (.and (.fld lb .top) (.and (.fld lv .top)
+        (.fld la (.sel (.var .here) lB))))))
+      (.all (.sel (.var .here) lA) (.sel (.var .here) lB))), ⟨defaultFuel - 26, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable P4src)
+  "P4: the target checker rejects the translation"
+
+/-- P4 compiles. -/
+theorem P4_compiles : (compile {} exampleTable P4src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of P4. -/
+theorem P4_checks : CheckerAccepts {} exampleTable P4src P4_compiles :=
+  compile_checks_get P4_compiles
+
+/-! ## P5: an intersection of two function types
+
+The application tries every function type the lookup finds in `f`'s type.
+The first takes `{a : ⊤}`, which `y : ⊤` does not meet.  The second takes
+`⊤`.  Scalac accepts the same program. -/
+
+/-- P5 is typed. -/
+theorem P5_type : typeAt P5src =
+    (some (.all (.and (.all (.fld la .top) .top) (.all .top .top)) (.all .top .top)),
+      ⟨defaultFuel - 9, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable P5src)
+  "P5: the target checker rejects the translation"
+
+/-- P5 compiles. -/
+theorem P5_compiles : (compile {} exampleTable P5src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of P5. -/
+theorem P5_checks : CheckerAccepts {} exampleTable P5src P5_compiles :=
+  compile_checks_get P5_compiles
+
+/-! ## R1 and R2: every field a candidate
+
+A projection returns every field the lookup finds at its label.  In R1 the
+first field of `y.a` comes through `x.A`'s upper bound at `{a : ⊤}`, and the
+second is written at `{a : {b : ⊤}}`.  The body reads `b`, which only the
+second has.  R2 is the same with both fields written.  Scalac accepts R2,
+merging the two fields into one. -/
+
+/-- R1 is typed. -/
+theorem R1_type : typeAt R1src =
+    (some (.all (.typ lA .bot (.fld la .top))
+      (.all (.and (.sel (.var .here) lA) (.fld la (.fld lb .top))) .top)),
+      ⟨defaultFuel - 14, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable R1src)
+  "R1: the target checker rejects the translation"
+
+/-- R1 compiles. -/
+theorem R1_compiles : (compile {} exampleTable R1src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of R1. -/
+theorem R1_checks : CheckerAccepts {} exampleTable R1src R1_compiles :=
+  compile_checks_get R1_compiles
+
+/-- R2 is typed. -/
+theorem R2_type : typeAt R2src =
+    (some (.all (.and (.fld la .top) (.fld la (.fld lb .top))) .top), ⟨defaultFuel - 8, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable R2src)
+  "R2: the target checker rejects the translation"
+
+/-- R2 compiles. -/
+theorem R2_compiles : (compile {} exampleTable R2src).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of R2. -/
+theorem R2_checks : CheckerAccepts {} exampleTable R2src R2_compiles :=
+  compile_checks_get R2_compiles
+
+/-! ## G: avoidance by the meet of two upper bounds
+
+`z.v` has the type `z.A`, and `z` has two members `A`, with the upper bounds
+`{a : ⊤}` and `{b : ⊤}`.  Avoidance at the inner `let` replaces `z.A` by the
+meet of the two, `{a : ⊤} ∧ {b : ⊤}`, so the outer `let` finds the member `b`.
+Scalac accepts the same program. -/
+
+/-- The inner `let` of G is typed at the meet. -/
+theorem Gin_type : typeAt Ginsrc =
+    (some (.all GFun (.all .top (.and (.fld la .top) (.fld lb .top)))), ⟨defaultFuel - 41, false⟩) := by
+  decide +kernel
+
+/-- G is typed. -/
+theorem G_type : typeAt Gsrc = (some (.all GFun (.all .top .top)), ⟨defaultFuel - 47, false⟩) := by
+  decide +kernel
+
+#eval expect (compiledVerdict {} exampleTable Gsrc)
+  "G: the target checker rejects the translation"
+
+/-- G compiles. -/
+theorem G_compiles : (compile {} exampleTable Gsrc).isSome = true := by decide +kernel
+
+/-- The target checker accepts the translation of G. -/
+theorem G_checks : CheckerAccepts {} exampleTable Gsrc G_compiles :=
+  compile_checks_get G_compiles
+
+/-! ## A1: a written annotation binds
+
+`λ(x : ⊤). let y : {a : ⊤} = x in y`.  The annotation is the type of `y`,
+and the body `y` is checked against it.  `⊤` does not meet `{a : ⊤}`, so the
+typer rejects the program and does not fall back on the type of `x`.  Scalac
+rejects it too. -/
+
+/-- `x : ⊤` and the `let` binder `y : ⊤`. -/
+def A1Ctx : Ctx ([],x,x) := (Ctx.nil.cons .top).cons .top
+
+/-- The typer rejects A1, with the tank unmarked. -/
+theorem A1_verdict : typeAt A1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
+
+/-- A1 does not compile at any budget. -/
+theorem A1_rejected (b : Budget) : compile b exampleTable A1src = none :=
+  typeAt_rejects A1_verdict b
+
+/-- `y : {a : ⊤}` has no `Alg` derivation. -/
+theorem A1_not_alg : ¬ Alg ⟨_, A1Ctx, .var .here (A1Ctx.lookup .here) (.fld la .top)⟩ :=
+  var?_reject (rejects_eq (by decide +kernel : rejects (var? A1Ctx .here (.fld la .top)) 3 = true))
+
+/-! ## B1: a field through a middle the program does not write
+
+`x : {A : {a : ⊤}..{b : ⊤}}` and `n : {a : ⊤}`.  Through `x.A`,
+`{a : ⊤} <: x.A <: {b : ⊤}`, so the vanilla calculus types `n.b`.  The middle `x.A` is
+not written, the lookup finds no field `b` in `{a : ⊤}`, and the typer
+rejects the program, as scalac does.  The goal that would give `n` the field
+is `n : {b : ⊤}`, and `Alg` does not derive it. -/
+
+/-- `x : {A : {a : ⊤}..{b : ⊤}}` and `n : {a : ⊤}`. -/
+def B1Ctx : Ctx ([],x,x) := (Ctx.nil.cons (.typ lA (.fld la .top) (.fld lb .top))).cons (.fld la .top)
+
+/-- The typer rejects B1, with the tank unmarked. -/
+theorem B1_verdict : typeAt B1src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+
+/-- B1 does not compile at any budget. -/
+theorem B1_rejected (b : Budget) : compile b exampleTable B1src = none :=
+  typeAt_rejects B1_verdict b
+
+/-- `n : {b : ⊤}` has no `Alg` derivation. -/
+theorem B1_not_alg : ¬ Alg ⟨_, B1Ctx, .var .here (B1Ctx.lookup .here) (.fld lb .top)⟩ :=
+  var?_reject (rejects_eq (by decide +kernel : rejects (var? B1Ctx .here (.fld lb .top)) 3 = true))
+
+/-! ## The recursion limit
+
+Three programs whose typing exhausts the tank.  Each ends with the tank marked,
+which is the recursion limit and not a rejection by the rules. -/
+
+/-- LP ends with the tank marked. -/
+theorem LP_limit : typeAt LPsrc = (none, ⟨defaultFuel - 32556, true⟩) := by decide +kernel
+
+/-- Pierce's divergence: `x0 : {A : ⊥..T}` with
+`T = ∀(x : {A : ⊥..⊤}) ∀(z : {A : ⊥..∀(y : {A : ⊥..x.A}) ∀(w : {A : ⊥..y.A}) w.A}) z.A`,
+and `v : x0.A` ascribed `∀(x1 : {A : ⊥..x0.A}) ∀(z : {A : ⊥..x1.A}) z.A`.  The
+goal comes back renamed under a new binder at every level. -/
+def PFsrc : STm :=
+  dot% λ(x0 : {A : ⊥ .. ∀(x : {A : ⊥ .. ⊤})
+                          ∀(z : {A : ⊥ .. ∀(y : {A : ⊥ .. x.A}) ∀(w : {A : ⊥ .. y.A}) w.A}) z.A}).
+         λ(v : x0.A). let r : ∀(x1 : {A : ⊥ .. x0.A}) ∀(z : {A : ⊥ .. x1.A}) z.A = v in r
+
+/-- PF ends with the tank marked. -/
+theorem PF_limit : typeAt PFsrc = (none, ⟨defaultFuel - 32734, true⟩) := by decide +kernel
+
+/-- The doubled alias chain of twelve links: `x0 : {A : ⊥..⊤}`, each `xk` at
+two copies of `{A : x(k-1).A..x(k-1).A}`, and `y : x12.A` ascribed
+`{a : ⊤}`.  The goal is false at every fuel.  Every link offers two members,
+so the work doubles per link. -/
+def Doubled12src : STm :=
+  dot% λ(x0 : {A : ⊥ .. ⊤}).
+       λ(x1 : {A : x0.A .. x0.A} ∧ {A : x0.A .. x0.A}).
+       λ(x2 : {A : x1.A .. x1.A} ∧ {A : x1.A .. x1.A}).
+       λ(x3 : {A : x2.A .. x2.A} ∧ {A : x2.A .. x2.A}).
+       λ(x4 : {A : x3.A .. x3.A} ∧ {A : x3.A .. x3.A}).
+       λ(x5 : {A : x4.A .. x4.A} ∧ {A : x4.A .. x4.A}).
+       λ(x6 : {A : x5.A .. x5.A} ∧ {A : x5.A .. x5.A}).
+       λ(x7 : {A : x6.A .. x6.A} ∧ {A : x6.A .. x6.A}).
+       λ(x8 : {A : x7.A .. x7.A} ∧ {A : x7.A .. x7.A}).
+       λ(x9 : {A : x8.A .. x8.A} ∧ {A : x8.A .. x8.A}).
+       λ(x10 : {A : x9.A .. x9.A} ∧ {A : x9.A .. x9.A}).
+       λ(x11 : {A : x10.A .. x10.A} ∧ {A : x10.A .. x10.A}).
+       λ(x12 : {A : x11.A .. x11.A} ∧ {A : x11.A .. x11.A}).
+       λ(y : x12.A). let r : {a : ⊤} = y in r
+
+/-- The doubled chain ends with the tank marked. -/
+theorem Doubled12_limit : typeAt Doubled12src = (none, ⟨defaultFuel - 32761, true⟩) := by
+  decide +kernel
 
 /-! ## The run tests
 
-`compileAndRun` at a step budget of 32, printed by the unparser of
-`Pretty.lean`.  Each run is printed and then pinned at the step count it
-needs, so that a change to the machine or to the printer fails the build
-rather than changing a line of the log.
+`compileAndRun` at a step budget of 32, printed by `Pretty.lean`.  Each run is
+pinned at the step count it needs. -/
 
-E5 is a lambda at the top level, so its state is final at once and its
-run gives the program back at zero steps.  It is a printer test.  E2 is the one
-program of the ten that reduces, and it takes six steps.  E11 takes twelve and
-is the one that runs through an inserted binding. -/
-
-/-- The step budget of the three runs.  Twelve is the largest any of them
-needs. -/
+/-- The step budget of the three runs. -/
 def runBudget : Nat := 32
 
 /-- Whether the driver's answer is a final state, and `false` when the program
@@ -438,28 +687,30 @@ def runFinal? (b : Budget) (m : Nat) (Λ : LabelTable) (e : STm) : Bool :=
   | some r => final? r.2
   | none => false
 
-#eval ppRun exampleTable (compileAndRun bE2 runBudget exampleTable E2src)
+#eval ppRun exampleTable (compileAndRun {} runBudget exampleTable E2src)
 
-#eval expect
-  (ppRunTm exampleTable (compileAndRun bE2 runBudget exampleTable E2src) == "x1")
-  "E2: the run does not answer at the second store entry"
+/-- E2 answers at the second store entry. -/
+example : ppRunTm exampleTable (compileAndRun {} runBudget exampleTable E2src) = "x1" := by
+  decide +kernel
 
-#eval expect (runFinal? bE2 6 exampleTable E2src && ! runFinal? bE2 5 exampleTable E2src)
-  "E2: the run is not final at six steps and open at five"
+/-- E2 is final at six steps and open at five. -/
+example : (runFinal? {} 6 exampleTable E2src && ! runFinal? {} 5 exampleTable E2src) = true := by
+  decide +kernel
 
-#eval ppRun exampleTable (compileAndRun bE5 runBudget exampleTable E5src)
+#eval ppRun exampleTable (compileAndRun {} runBudget exampleTable E5src)
 
-#eval expect (runFinal? bE5 0 exampleTable E5src)
-  "E5: the initial state is not final, so the program is not a value"
+/-- E5 is final at zero steps. -/
+example : runFinal? {} 0 exampleTable E5src = true := by decide +kernel
 
-#eval ppRun exampleTable (compileAndRun bE11 runBudget exampleTable E11src)
+#eval ppRun exampleTable (compileAndRun {} runBudget exampleTable E11src)
 
-#eval expect
-  (ppRunTm exampleTable (compileAndRun bE11 runBudget exampleTable E11src) == "x0")
-  "E11: the run does not answer at the identity in the store"
+/-- E11 answers at the identity in the store. -/
+example : ppRunTm exampleTable (compileAndRun {} runBudget exampleTable E11src) = "x0" := by
+  decide +kernel
 
-#eval expect (runFinal? bE11 12 exampleTable E11src && ! runFinal? bE11 11 exampleTable E11src)
-  "E11: the run is not final at twelve steps and open at eleven"
+/-- E11 is final at twelve steps and open at eleven. -/
+example : (runFinal? {} 12 exampleTable E11src && ! runFinal? {} 11 exampleTable E11src) = true := by
+  decide +kernel
 
 end Examples
 

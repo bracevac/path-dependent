@@ -1,0 +1,4 @@
+lean/Coercions/Captures/Frontend @ 45ba512: Surface, Notation, Ann and Resolve, copied with Captures renamed to CapturesCC and adapted (fresh, shapes, types and answers apart, arrow binders, letex)
+lean/Coercions/Captures/Frontend @ a47a7fc: Step and StepFC, copied and adapted (entry by substitution, letex, unpack, allocE, answer casts, unpackAtom, unpackVal, appCast at a scoped domain)
+lean/Coercions/Captures/Frontend @ a47a7fc: Decide, Search, Adapt and Typer, copied and adapted (levels, capture binders on arrows, fresh as an existential, the escape rejection)
+lean/Coercions/Captures/Frontend @ 29a7fb5: Pipeline, copied and adapted (the result is a verdict, the log of member-free subcapturings levelSteps, compile_lvl_safety, compile_rejected_goal). Pretty, Examples and README written new in the form of the Captures ones

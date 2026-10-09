@@ -53,20 +53,20 @@ objects that keep their term members.
 **`Frontend/`** is a front end for the source language and is not part of the
 metatheory.  A program is written in the paper's notation inside a `dot%`
 quotation.  Name resolution and let-insertion turn it into DOT-MNF in monadic
-normal form, a budgeted typer returns the `DotMNF.HasTy` derivation rather than
-an answer, and the pipeline sends that derivation through the translation, past
+normal form, a typer returns the `DotMNF.HasTy` derivation rather than an
+answer, and the pipeline sends that derivation through the translation, past
 the target's checker, and into either machine written as a function.  What the
-front end proves is that composition and nothing about the calculus.  Its own
-results are the totality of resolution, decision procedures for the side
-conditions a derivation carries, monotonicity of the search in its budget, and
-agreement of both executable machines with the frozen step relations.  The typer
-is sound by construction, because it returns the derivation, and incomplete by
-necessity, because DOT subtyping is undecidable.  The examples of
-`DotMNF/Examples.lean` are written again as surface programs and compared
-against the hand-written derivations on three decidable things: the resolved
-term, the synthesized type, and the checker's verdict on the translation.  It
-builds as the library `Frontend`, which is not a default target, so the
-metatheory does not wait on it.
+front end proves is that composition and nothing about the calculus.  The typer
+follows the subtype checker of the Scala 3 compiler in its case order and takes
+no middle type from the context.  It runs on one fuel tank and reports a
+recursion limit when the tank runs short.  It is sound by construction, because
+it returns the derivation, and complete up to that limit with respect to its
+algorithmic judgment.  It rejects the examples E1, E3 and E4, as scalac does,
+and their variants E1s and E3s, which write the middle type, compile.
+Every definition is structural, so each example's verdict is a theorem the
+kernel checks.  It builds as the library `Frontend`, which is not a default
+target, so the metatheory does not wait on it.  See
+[Frontend/README.md](Frontend/README.md).
 
 ## The second line: OOPSLA 2016 DOT and FCdotR
 
@@ -76,7 +76,10 @@ subtyping: `stp_bindx` proves `μ(z. S) <: μ(z. T)` from `S <: T` under the ass
 WadlerFest DOT only packs a variable into a recursive type or unpacks it.  Objects hold methods,
 types include unions, and terms are not in normal form.  Type selections in subtyping go through a
 variable typing, `htp`, with no packing rule, and `PackingCounterexample` shows that adding one is
-unsound.
+unsound.  Its front end, the library `Oopsla16Frontend` in
+[Oopsla16/Frontend/](Oopsla16/Frontend/README.md), writes, types, elaborates, checks and runs
+programs in the paper's notation.  Its typer follows the subtype checker of the Scala 3 compiler
+and is complete up to its recursion limit.
 
 **`FCdotR/`** is its target with explicit evidence.  It keeps `Oopsla16`'s types, so the type
 translation is the identity, and its coercion `bindx` is checked under the self assumption that
@@ -105,23 +108,40 @@ every theorem of that base, and is a default target.
 set, `S ^ C`, and a capture parameter is a capture member of an object.  The target proves that a
 run reads only what its use set predicts (`capture_prediction`) and that a capability left out of
 the use set is never read (`effect_safety`).  The source inherits both as `dot_capture_prediction`
-and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).
+and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).  Its front end, the library
+`CapturesFrontend` in [Captures/Frontend/](Captures/Frontend/README.md), writes, types, checks and
+runs programs in the paper's notation, and its typer inserts the boxes and unboxings a program
+leaves out.  The typer follows the subtype checker and the subcapturing of the Scala 3 compiler and
+is complete up to its recursion limit.
 
 **`CapturesCC/`** models capture checking the way the Scala 3 compiler does it, with scopes, levels
-and fresh capabilities, as a copy of `Captures/`.  `no_inner_escape` says that no capability leaves
-the scope that introduced it, which rejects the `withFile` escape.  Every prediction theorem of
-`Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).
+and fresh capabilities, as a copy of `Captures/`.  `source_lvl_safety` says that
+source subcapturing that reads no capture bound never lowers a capability's level, and its instance
+`W5_no_escape` rules out the `withFile` escape.  Every prediction theorem of
+`Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).  Its front end, the library
+`CapturesCCFrontend` in [CapturesCC/Frontend/](CapturesCC/Frontend/README.md), writes, types,
+checks and runs programs in the paper's notation, and rejects the `withFile` escape with a
+certificate at the goal its typer reached.  The typer follows the subtype checker, the
+subcapturing and the levels of the Scala 3 compiler and is complete up to its recursion limit.
 
 **`Classifiers/`** adds the capability classifiers of Capless(K) to a copy of `CapturesCC/`.  A
 library can classify its capabilities, say as `Control`, and `cap.only[Control]` then stands for
 the capabilities of that class alone.  `classified_effect_safety` says that a program whose use set
 has kind `φ` never reads a capability classified outside `φ`, and the source inherits it as
-`dot_classified_effect_safety`.  Library `Classifiers`, see [Classifiers/README.md](Classifiers/README.md).
+`dot_classified_effect_safety`.  Library `Classifiers`, see [Classifiers/README.md](Classifiers/README.md).  Its front end, the library
+`ClassifiersFrontend` in [Classifiers/Frontend/](Classifiers/Frontend/README.md), writes, types,
+checks and runs programs over classified platforms in the paper's notation, and proves of
+`Try.apply` that a run reads only `Control` capabilities.  The typer follows the subtype checker,
+the subcapturing and the levels of the Scala 3 compiler, searches kinds by the same algorithm, and
+is complete up to its recursion limit.
 
 **`Paths/`** adds pDOT's paths `x.a.b` and singleton types to a copy of the main line.  Scala types
 mention such paths all the time, as in `x.a.T`, while WadlerFest DOT selects types on variables
 only.  It keeps `dot_safety` and passes two of gDOT's tests, `acceptance_fig2` and
-`acceptance_gdot3_any`.  Library `Paths`, see [Paths/README.md](Paths/README.md).
+`acceptance_gdot3_any`.  Library `Paths`, see [Paths/README.md](Paths/README.md).  Its front end,
+the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writes, types, checks
+and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
+checker of the Scala 3 compiler and is complete up to its recursion limit.
 
 ## Earlier targets, standalone
 

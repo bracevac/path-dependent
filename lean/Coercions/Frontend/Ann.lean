@@ -4,27 +4,19 @@ import Coercions.DotMNF.Syntax
 # Annotated DOT-MNF terms
 
 `ATm` is `DotMNF.Tm` (`lean/Coercions/DotMNF/Syntax.lean`) with two extra
-fields and nothing else: the self type of an object literal, and the
-optional result type of a `let`.
+fields: the self type of an object literal, and the optional result type of a
+`let`.  `ATm.erase` drops them.
 
-Why the self type has to be carried.  `DotMNF.HasTy.obj` types the definitions
-of a literal against a context entry that already holds the self type
-(`lean/Coercions/DotMNF/Typing.lean`), so the self type cannot be synthesized
-from the definitions, and a `DefsTy` that synthesized it would be circular.
-`DotMNF.Value.obj` has no slot for it and the vanilla tree is frozen.  So the
-annotation lives here, in a front end only term syntax whose erasure is `Tm`.
+The self type is carried because `DotMNF.HasTy.obj` types the definitions of a
+literal against a context entry that already holds it, so it cannot be
+synthesized from the definitions.  `DotMNF.Value.obj` has no slot for it.
 
-Why the `let` type is optional.  It is the first rung of the typer's avoidance
-ladder: an annotated `let` is checked at the annotation, an unannotated one has
-its type strengthened or widened to `⊤`.
+An annotated `let` is checked at its annotation.  An unannotated one gets the
+type of the body with the binder avoided (`Avoid.lean`).
 
-`ATm.erase` of `.obj _ d` is `.val (.obj d.erase)`, which is exactly the term
-`HasTy.obj` concludes about.  Nothing of this module is part of the metatheory
-and no definition here lives in the `DotMNF` or `FCdot` namespaces.
-
-The size functions are the measure the typer recurses on.  They are stated
-and proved positive here, beside the definition, because the typer is in
-another module and a measure with no lower bound is useless there.
+The module defines `ATm.rename` and `ATm.erase_rename`, and the size measure
+the typer recurses on, `sizeATm` and `sizeADefs`, with positivity and the
+smaller subterm lemmas.  Nothing here is part of the metatheory.
 -/
 
 namespace Frontend
@@ -65,8 +57,7 @@ deriving instance DecidableEq for ATm, ADefs
 
 /-! ## Erasure to the frozen syntax
 
-The annotations are dropped and nothing else changes.  This is the only bridge
-from the front end's term syntax to `DotMNF.Tm`. -/
+Erasure drops the annotations.  It is the only bridge to `DotMNF.Tm`. -/
 
 mutual
 /-- Drop the annotations of a term. -/
@@ -86,11 +77,9 @@ end
 
 /-! ## Renaming
 
-The clauses mirror `DotMNF.Tm.rename` and `DotMNF.Defs.rename`
-(`lean/Coercions/DotMNF/Syntax.lean`), with the two annotations renamed at the
-signature they live in.  The self type of a literal lives under the self binder,
-so it is renamed with the lifted renaming.  The type of a `let` lives outside the
-binder, so it is renamed with the renaming itself. -/
+The clauses mirror `DotMNF.Tm.rename` and `DotMNF.Defs.rename`.  The self type
+of a literal lives under the self binder, so it takes the lifted renaming.  The
+type of a `let` lives outside the binder, so it takes the renaming itself. -/
 
 mutual
 /-- Rename the free variables of an annotated term. -/
@@ -112,10 +101,7 @@ end
 /-- Weakening of an annotated term, under one new binder. -/
 def ATm.weaken (t : ATm s) : ATm (s,x) := t.rename Rename.succ
 
-/-! ## Erasure commutes with renaming
-
-The one lemma about `ATm` needed later to move between the two syntaxes
-under a renaming without a second induction. -/
+/-! ## Erasure commutes with renaming -/
 
 mutual
 /-- Erasure commutes with renaming. -/
@@ -147,10 +133,8 @@ end
 
 /-! ## The size measure
 
-The typer recurses on the term, and its `let` clause has to call itself on a
-strictly smaller subterm after a rename, so the measure is on the syntax and not
-on the signature.  Both functions are at least one everywhere, and the body of a
-term member is strictly smaller than the definition list that holds it. -/
+The measure is on the syntax, since the `let` clause of the typer calls itself on
+a smaller subterm after a rename. -/
 
 mutual
 /-- The node count of an annotated term.  Types do not count. -/

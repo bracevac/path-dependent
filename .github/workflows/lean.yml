@@ -21,3 +21,16 @@ jobs:
         with:
           auto-config: false
           build: true
+
+  frontends:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        env:
+          LEAN_NUM_THREADS: 1
+        with:
+          auto-config: false
+          build: false
+      - run: lake build Frontend CapturesFrontend CapturesCCFrontend ClassifiersFrontend PathsFrontend Oopsla16Frontend

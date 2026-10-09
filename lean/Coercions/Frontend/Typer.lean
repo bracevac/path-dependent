@@ -1,132 +1,105 @@
-import Coercions.Frontend.Ann
 import Coercions.Frontend.Resolve
-import Coercions.Frontend.Search
+import Coercions.Frontend.Avoid
 
 /-!
-# The derivation producing typer
+# The typer
 
-This is the module that replaces the hand assembly of
-`lean/Coercions/DotMNF/Examples.lean`.  It is fuel
-bounded, `Option` valued, and sound by construction: `synth?` returns a `Synth`,
-whose second field *is* the `DotMNF.HasTy` derivation, so soundness is the result
-type and there is no soundness theorem to prove.  This is the shape the target's
-own checker already uses, `FCdot.TmChecked`
-(`lean/Coercions/FCdot/Checker.lean:465`).
+The typer reads a type off an annotated term of DOT-MNF and returns the
+`DotMNF.HasTy` derivation with it.  The derivation is a field of the result,
+so soundness is the result type.
 
-It is incomplete by necessity, since DOT subtyping is undecidable.  No
-completeness theorem is attempted or claimed.  What the typer will not find is a
-list, not a theorem: a subtyping whose middle is outside the one family the
-search tries, a `Rec-I` folding other than the goal's own body, an `And-I`
-at a position where
-neither conjunct is separately checkable, an avoidance result other than the
-annotation, the strengthening or `⊤`, an object literal without a self
-annotation, an application whose function variable reaches `∀` only through a
-subtyping step the view closure does not perform, and anything past the budget.
+It runs on the tank of `Fuel.lean`.  One tank is threaded through every
+subtyping goal of `Sub.lean`, every member lookup of `Look.lean` and every
+avoidance of `Avoid.lean`.  A goal that finds the tank short marks it, and a
+marked tank is the recursion limit, not a rejection by the rules.
 
-## The four functions
+## Candidates
 
-`synth?` reads a type off a term.  `check?` tests a term against a type.
-`checkVar?` tests a *variable* against a type, which is a separate function
-because two rules of the calculus conclude about a variable and are not reached
-by subsumption: `And-I` and `Rec-I` (`lean/Coercions/DotMNF/Typing.lean:109-120`).
-`checkDefs?` matches a definition list against a type in lockstep, which is what
-`DefsTy` does (`Typing.lean:124-127`).
+Synthesis returns a list of candidates, each a type with its derivation, with
+no two of one type.  The compiler merges two members of one name
+(`TypeBounds.&` in core/Types.scala).  DOT-MNF has no rule for that, so the
+typer keeps every choice.
 
-The block is well-founded on `(fuel, size, tag)`, lexicographically, the
-second and last well-founded definition in this library.  `check?` calls
-`synth?` on the same
-term at a lower tag, `synth?` calls `check?` on proper subterms at a smaller
-size, `checkDefs?` calls `check?` on a field body which is smaller than the
-definition list that holds it, `check?` and `synth?` call `checkVar?` at second
-component zero, which is smaller because `sizeATm` is at least one, and
-`checkVar?` recurses either at a smaller type or at a smaller fuel.
+- A variable has the type its context declares.
+- `λ(x : S). t` has `∀(x : S) T` for every candidate `T` of the body.
+- `ν(x : T. d)` checks the definitions against `T` under the self binder.
+- `x y` tries every function type the lookup finds in the declared type of
+  `x`, and keeps each one whose domain `y` meets.
+- `x.a` returns every field at `a` the lookup finds.
+- `let x = t in u` returns every pair of a candidate of `t` and a candidate of
+  `u`.  The type of the body is approximated by one free of `x` (`avoidLet`),
+  as `TypeOps.avoid` does.
+- `let x : U = t in u` has the type `U`.  The annotation binds, and the body is
+  checked against it.
 
-## The avoidance ladder
+Checking a variable asks the `var` goal of `Sub.lean`, which reaches the rules
+`HasTy.andI` and `HasTy.recI` that subsumption does not.  Checking any other
+term takes the first candidate that the subtyping goal takes to the type asked
+for.
 
-`HasTy.let` takes `HasTy (Γ.cons T) u U.weaken` for a `U` the rule does not
-determine (`Typing.lean:103-108`).  Three rungs are tried in order: the surface
-annotation, the strengthening of the body's synthesized type, and `⊤`.  The
-third always applies and always loses information, which is what the vanilla E2
-derivation does at its outer `let` (`Examples.lean:124-129`).
+## The theorems
 
-## The kernel
+Every computation is framed (`synthF_framed`): it keeps a marked tank, never
+adds fuel, and does the same with more fuel.  So a typing that ends unmarked
+gives the same answer at every larger fuel (`synthTop?_mono`,
+`synthTop?_stable`), and an unmarked rejection is a rejection at every fuel.
 
-`synth?` and its three companions are well-founded, so they do not reduce in the
-kernel, exactly as `sub?` does not.  The checks at the end of this module
-run compiled code through `expect`, never `by decide` and never `by rfl`.
+The typer has no completeness theorem.  It finds no derivation through a middle
+type the program does not write, as the compiler does not.  It does not merge
+two fields, so a projection tries each.  It does not find a judgment whose
+search needs more than the fuel.  A lookup through a cyclic member is cut.
+
+All definitions are structural on the term, so the kernel evaluates the typer.
+The checks at the end type the example programs at `defaultFuel`.
 -/
 
 namespace Frontend
 
+open Frontend.Fuel Frontend.Core
 open FCdot (Kind Sig BVar Rename Label)
 open DotMNF (Path Ty Tm Value Defs Ctx Sub HasTy DefsTy)
 
-/-! ## The result of a synthesis
+/-- The fuel of a typing: the size of the tank every entry point starts from. -/
+structure Budget where
+  fuel : Nat := defaultFuel
 
-The derivation is a field, so a caller that gets a `Synth` has the typing and
-not merely an answer. -/
-
-/-- A type a term has, with the derivation that it has it. -/
-structure Synth {s : Sig} (Γ : Ctx s) (t : Tm s) where
+/-- A type a term has, with the derivation. -/
+structure Cand {s : Sig} (Γ : Ctx s) (t : Tm s) where
   /-- The type. -/
   ty : Ty s
   /-- The derivation. -/
   deriv : HasTy Γ t ty
 
-/-! ## The size of a type
+/-! ## Pieces the clauses use -/
 
-The third component of the measure.  `checkVar?` recurses on the two operands of
-an intersection, which are strictly smaller, and every other clause of the block
-measures a term or a definition list with the functions of `Ann.lean`. -/
+/-- Keep the first candidate of each type. -/
+def dedupTy {s : Sig} {Γ : Ctx s} {t : Tm s} : List (Cand Γ t) → List (Cand Γ t)
+  | [] => []
+  | c :: cs => c :: (dedupTy cs).filter fun c' => !decide (c'.ty = c.ty)
 
-/-- The node count of a type. -/
-def sizeTy : {s : Sig} → Ty s → Nat
-  | _, .top => 1
-  | _, .bot => 1
-  | _, .typ _ S T => sizeTy S + sizeTy T + 1
-  | _, .fld _ T => sizeTy T + 1
-  | _, .sel _ _ => 1
-  | _, .mu T => sizeTy T + 1
-  | _, .all S T => sizeTy S + sizeTy T + 1
-  | _, .and S T => sizeTy S + sizeTy T + 1
+/-- The types of a variable that carry the key, looked up from its declared
+type.  The index of the lookup is the fuel left. -/
+def lookVar {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) :
+    Fu (List (Found Γ x (Γ.lookup x))) :=
+  fun t => look Γ t.left [] x (Γ.lookup x) k t
 
-/-- Every type has at least one node. -/
-theorem sizeTy_pos : ∀ {s : Sig} (T : Ty s), 0 < sizeTy T
-  | _, .top => Nat.zero_lt_one
-  | _, .bot => Nat.zero_lt_one
-  | _, .typ _ _ _ => Nat.succ_pos _
-  | _, .fld _ _ => Nat.succ_pos _
-  | _, .sel _ _ => Nat.zero_lt_one
-  | _, .mu _ => Nat.succ_pos _
-  | _, .all _ _ => Nat.succ_pos _
-  | _, .and _ _ => Nat.succ_pos _
+/-- Read a function type off a found type. -/
+def Core.Found.all? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Ty s} (e : Found Γ x V) :
+    Option ((S : Ty s) × (T : Ty (s,x)) × (Var Γ x V → Var Γ x (.all S T))) :=
+  match h : e.ty with
+  | .all S T => some ⟨S, T, fun d => h ▸ e.f d⟩
+  | _ => none
 
-/-- The left operand of an intersection is smaller. -/
-theorem sizeTy_lt_andLeft {s : Sig} (S T : Ty s) : sizeTy S < sizeTy (.and S T) := by
-  show sizeTy S < sizeTy S + sizeTy T + 1
-  omega
-
-/-- The right operand of an intersection is smaller. -/
-theorem sizeTy_lt_andRight {s : Sig} (S T : Ty s) : sizeTy T < sizeTy (.and S T) := by
-  show sizeTy T < sizeTy S + sizeTy T + 1
-  omega
-
-/-! ## Casts across a decided equality
-
-Three derivations that move across an equality of labels or of types.  They are
-written with `cases` rather than with `▸` because a label occurs twice in the
-conclusion of the rule that carries it, and a rewrite would hit both
-occurrences.  This is the idiom `Search.lean` uses for the same reason. -/
-
-/-- A field view read at the label the projection asks for. -/
-def hasFldAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} {a c : Label} {T : Ty s}
-    (h : c = a) (d : HasTy Γ (.path (.var x)) (.fld c T)) :
-    HasTy Γ (.path (.var x)) (.fld a T) := by
-  cases h; exact d
+/-- Read a field at `a` off a found type. -/
+def Core.Found.fld? {s : Sig} {Γ : Ctx s} {x : BVar s .var} {V : Ty s} (a : Label) (e : Found Γ x V) :
+    Option ((T : Ty s) × (Var Γ x V → Var Γ x (.fld a T))) :=
+  match h : e.ty with
+  | .fld b T => if hb : b = a then some ⟨T, fun d => hb ▸ h ▸ e.f d⟩ else none
+  | _ => none
 
 /-- A type member definition against a declaration whose two bounds are the
-definition's own type.  `DefsTy.typ` is the only rule for a type member and it
-concludes at exactly those bounds (`lean/Coercions/DotMNF/Typing.lean:125`). -/
+definition's own type, as `DefsTy.typ` concludes.  The proof takes the
+equalities apart, since a label occurs twice in the conclusion. -/
 def defsTypAt {s : Sig} {Γ : Ctx s} {A B : Label} {S L U : Ty s}
     (hA : A = B) (hL : S = L) (hU : S = U) : DefsTy Γ (.typ A S) (.typ B L U) := by
   cases hA; cases hL; cases hU; exact .typ
@@ -136,383 +109,432 @@ def defsTrmAt {s : Sig} {Γ : Ctx s} {a c : Label} {t : Tm s} {T : Ty s}
     (h : a = c) (ht : HasTy Γ t T) : DefsTy Γ (.trm a t) (.fld c T) := by
   cases h; exact .trm ht
 
-/-- `⊤` is its own weakening, which is what the third rung of the avoidance
-ladder needs to hand `HasTy.let` a body typing at `U.weaken`. -/
-theorem weaken_top {s : Sig} {k : Kind} : (Ty.top : Ty s).weaken (k := k) = .top := rfl
+/-- Check a term against `T`, given the computation of its candidates.  A
+variable asks the `var` goal.  Any other term takes the first candidate that
+the subtyping goal takes to `T`, through `HasTy.sub`. -/
+def checkOf {s : Sig} (Γ : Ctx s) (t : ATm s) (T : Ty s) (cs : Fu (List (Cand Γ t.erase))) :
+    Fu (Option (HasTy Γ t.erase T)) :=
+  match t, cs with
+  | .path (.var x), _ => varF Γ x T
+  | _, cs => Fu.bind cs fun l =>
+      Fu.firstSome (fun c => mapO (subF Γ c.ty T) fun e => HasTy.sub c.deriv e) l
 
-/-! ## Reading a view
+/-- The candidate of a `let` with annotation `U`, from a candidate of the
+bound term and the body checked against `U` under the binder at its type. -/
+def letAnn {s : Sig} {Γ : Ctx s} {t : Tm s} {u : Tm (s,x)} (U : Ty s) (c1 : Cand Γ t)
+    (h2 : HasTy (Γ.cons c1.ty) u U.weaken) : Cand Γ (.let t u) :=
+  ⟨U, .let c1.deriv h2⟩
 
-Four ways the typer consults the view closure.  All four walk a list with
-`List.findSome?`, none of them recurses, and none is part of the well-founded
-block. -/
+/-- The candidate of a `let` without annotation: the body's type avoided. -/
+def letAvoid {s : Sig} {Γ : Ctx s} {t : Tm s} {u : Tm (s,x)} (c1 : Cand Γ t)
+    (c2 : Cand (Γ.cons c1.ty) u) (r : LetTy Γ c1.ty c2.ty) : Cand Γ (.let t u) :=
+  ⟨r.1, .let c1.deriv (.sub c2.deriv r.2)⟩
 
-/-- A function type a variable has, with the derivation. -/
-structure AllView {s : Sig} (Γ : Ctx s) (x : BVar s .var) where
-  /-- The domain. -/
-  dom : Ty s
-  /-- The codomain, under the domain's binder. -/
-  cod : Ty (s,x)
-  /-- The derivation. -/
-  deriv : HasTy Γ (.path (.var x)) (.all dom cod)
+/-- An optional answer as a list of at most one. -/
+def listO {α : Type} : Option α → List α
+  | some a => [a]
+  | none => []
 
-/-- A field a variable has at a given label, with the derivation. -/
-structure FldView {s : Sig} (Γ : Ctx s) (x : BVar s .var) (a : Label) where
-  /-- The type of the field. -/
-  ty : Ty s
-  /-- The derivation. -/
-  deriv : HasTy Γ (.path (.var x)) (.fld a ty)
+/-! ## Synthesis and checking
 
-/-- The first view that is a function type.  Only the first is tried: an
-application whose function variable reaches `∀` further down the list is on the
-list of what the typer will not find. -/
-def allView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (vs : List (View Γ x)) :
-    Option (AllView Γ x) :=
-  vs.findSome? (fun v =>
-    match hv : v.ty with
-    | .all S T => some ⟨S, T, hv ▸ v.deriv⟩
-    | _ => none)
-
-/-- The first view that is a field declaration at the label asked for. -/
-def fldView {s : Sig} {Γ : Ctx s} {x : BVar s .var} (a : Label)
-    (vs : List (View Γ x)) : Option (FldView Γ x a) :=
-  vs.findSome? (fun v =>
-    match hv : v.ty with
-    | .fld c T => if h : c = a then some ⟨T, hasFldAt h (hv ▸ v.deriv)⟩ else none
-    | _ => none)
-
-/-- The first view at exactly the type asked for. -/
-def viewAt {s : Sig} {Γ : Ctx s} {x : BVar s .var} (T : Ty s)
-    (vs : List (View Γ x)) : Option (HasTy Γ (.path (.var x)) T) :=
-  vs.findSome? (fun v => if h : v.ty = T then some (h ▸ v.deriv) else none)
-
-/-- The first view that the subtyping search takes to the type asked for,
-through `HasTy.sub` (`lean/Coercions/DotMNF/Typing.lean:121`). -/
-def viewSub {s : Sig} {Γ : Ctx s} {x : BVar s .var} (D : DeclTable Γ) (n : Nat)
-    (T : Ty s) (vs : List (View Γ x)) : Option (HasTy Γ (.path (.var x)) T) :=
-  vs.findSome? (fun v => (sub? D n v.ty T).map (fun e => .sub v.deriv e))
-
-/-! ## The typer
-
-Four mutually recursive functions, well-founded on `(fuel, size, tag)`.  The
-fuel is the typer's own, `Budget.typer` at the entry point; the subtyping search
-is always called at `Budget.sub`, its own counter, never at the typer's fuel.
-
-Like `sub?`, `synth?` ends its fuel level with a retry at the previous level.
-That is not a rule of the calculus and changes no answer the clauses give, since
-every clause is tried here at strictly more fuel than it was tried there.  What
-it buys is `synth?_le`, which is otherwise an induction through every clause of
-every function. -/
-
-/-- The three size functions of the measure are ordinary definitions, so the
-default tactic that discharges the decreasing goals has to be told to unfold
-them.  This is the documented extension point, and it is local to this file.  No
-`decreasing_by` appears below: every goal of the block is closed by this. -/
-local macro_rules
-  | `(tactic| decreasing_trivial) =>
-    `(tactic| simp only [sizeTy, sizeATm, sizeADefs]; omega)
+`synthF` returns the candidates of a term.  `checkDefsF` matches a definition
+list against a type in lockstep, as `DefsTy` does.  A field body is checked by
+`checkOf` from the candidates of `synthF`.  Both are structural on the term. -/
 
 mutual
 
-/-- Synthesis, clause by clause.
+/-- The candidates of a term, each with its derivation, on the tank. -/
+def synthF {s : Sig} (Γ : Ctx s) : (a : ATm s) → Fu (List (Cand Γ a.erase))
+  | .path (.var x) => Fu.ret [⟨Γ.lookup x, .var⟩]
+  | .lam S t =>
+      Fu.bind (synthF (Γ.cons S) t) fun cs =>
+        Fu.ret (cs.map fun c => ⟨.all S c.ty, .lam c.deriv⟩)
+  | .obj T d =>
+      Fu.bind (checkDefsF (Γ.consSelf d.erase T) d T) fun
+        | some hd =>
+            if hdist : Defs.Distinct d.erase then Fu.ret [⟨.mu T, .obj hd hdist⟩]
+            else Fu.ret []
+        | none => Fu.ret []
+  | .app x y =>
+      Fu.bind (lookVar Γ x .fn) fun es =>
+        Fu.bind (Fu.flatMapL (fun e =>
+            match e.all? with
+            | some ⟨S, T, f⟩ =>
+                Fu.bind (varF Γ y S) fun o =>
+                  Fu.ret (listO (o.map fun hy => (⟨T.substVar y, .app (f .var) hy⟩ :
+                    Cand Γ (.app x y))))
+            | none => Fu.ret []) es) fun cs =>
+          Fu.ret (dedupTy cs)
+  | .proj x a =>
+      Fu.bind (lookVar Γ x (.fld a)) fun es =>
+        Fu.ret (dedupTy (es.filterMap fun e =>
+          (e.fld? a).map fun r => (⟨r.1, .proj (r.2 .var)⟩ : Cand Γ (.proj x a))))
+  | .let (some U) t u =>
+      Fu.bind (synthF Γ t) fun c1s =>
+        Fu.bind (Fu.firstSome (fun c1 =>
+            mapO (checkOf (Γ.cons c1.ty) u U.weaken (synthF (Γ.cons c1.ty) u))
+              (letAnn U c1)) c1s) fun o =>
+          Fu.ret (listO o)
+  | .let none t u =>
+      Fu.bind (synthF Γ t) fun c1s =>
+        Fu.bind (Fu.flatMapL (fun c1 =>
+            Fu.bind (synthF (Γ.cons c1.ty) u) fun c2s =>
+              Fu.flatMapL (fun c2 =>
+                Fu.bind (avoidLet Γ c1.ty c2.ty) fun o =>
+                  Fu.ret (listO (o.map (letAvoid c1 c2)))) c2s) c1s) fun cs =>
+          Fu.ret (dedupTy cs)
 
-- a variable returns `Ctx.lookup` and `HasTy.var` (`Typing.lean:88`), exact,
-  nothing guessed;
-- `λ(x : S). t` synthesizes the body under `Γ.cons S` against a table rebuilt
-  there.  Upstream `HasTy.lam` has no premise on the annotation `S`.
-- `ν(x : T. d)` checks the definitions under `Γ.consSelf d.erase T` against a
-  table rebuilt there and decides `Defs.Distinct` (`Typing.lean:97-101`);
-- `x y` reads the first function view of `x` off the closure and checks `y`
-  against its domain (`Typing.lean:92-96`);
-- `x.a` reads the first field view of `x` at `a` (`Typing.lean:102`);
-- `let x (: U)? = t in u` climbs the three rung avoidance ladder
-  (`Typing.lean:103-108`). -/
-def synth? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
-    (a : ATm s) : Option (Synth Γ a.erase) :=
-  match n with
-  | 0 => none
-  | n + 1 =>
-      ((match a with
-        | .path (.var x) => some ⟨Ctx.lookup Γ x, .var⟩
-        | .lam S t =>
-            (synth? (decls b (Γ.cons S)) b (n + 1) t).map (fun c =>
-              ⟨.all S c.ty, .lam c.deriv⟩)
-        | .obj T d =>
-            (checkDefs? (decls b (Γ.consSelf d.erase T)) b (n + 1) d T).bind (fun hd =>
-              if hdist : Defs.Distinct d.erase then some ⟨.mu T, .obj hd hdist⟩
-              else none)
-        | .app x y =>
-            (allView (views D b x)).bind (fun v =>
-              (checkVar? D b (n + 1) y v.dom).map (fun hy =>
-                ⟨v.cod.substVar y, .app v.deriv hy⟩))
-        | .proj x a => (fldView a (views D b x)).map (fun v => ⟨v.ty, .proj v.deriv⟩)
-        | .let ann t u =>
-            (synth? D b (n + 1) t).bind (fun c1 =>
-              -- rung one: the surface annotation
-              ((match ann with
-                | some U =>
-                    (check? (decls b (Γ.cons c1.ty)) b (n + 1) u U.weaken).map (fun h2 =>
-                      ⟨U, .let c1.deriv h2⟩)
-                | none => none) :
-                  Option (Synth Γ (ATm.let ann t u).erase)).orElse fun _ =>
-              ((synth? (decls b (Γ.cons c1.ty)) b (n + 1) u).bind (fun c2 =>
-                -- rung two: the strengthening of the body's type
-                ((match tyStrengthenW? c2.ty with
-                  | some w => some ⟨w.val, .let c1.deriv (w.property ▸ c2.deriv)⟩
-                  | none => none) :
-                    Option (Synth Γ (ATm.let ann t u).erase)).orElse fun _ =>
-                -- rung three: `⊤`, which always applies and always loses
-                some ⟨.top, .let c1.deriv (weaken_top ▸ HasTy.sub c2.deriv Sub.top)⟩) :
-                  Option (Synth Γ (ATm.let ann t u).erase)))
-        : Option (Synth Γ a.erase))).orElse fun _ => synth? D b n a
-termination_by (n, sizeATm a, 1)
-
-/-- Checking.  A variable goes to `checkVar?`, which reaches the two rules
-subsumption does not.  Everything else is synthesized and then moved to the goal
-by a decided equality or by the subtyping search, through `HasTy.sub`
-(`lean/Coercions/DotMNF/Typing.lean:121`). -/
-def check? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
-    (a : ATm s) (T : Ty s) : Option (HasTy Γ a.erase T) :=
-  ((match a with
-    | .path (.var x) => checkVar? D b n x T
-    | _ => none) : Option (HasTy Γ a.erase T)).orElse fun _ =>
-  (synth? D b n a).bind (fun c =>
-    if h : c.ty = T then some (h ▸ c.deriv)
-    else (sub? D b.sub c.ty T).map (fun e => .sub c.deriv e))
-termination_by (n, sizeATm a, 2)
-
-/-- Checking a variable.  Three rules, in order.
-
-1. an intersection goal splits by `HasTy.andI` (`Typing.lean:117-120`), the one
-   rule that combines two typings of a single variable; it recurses at a
-   strictly smaller type;
-2. a `μ` goal folds by `HasTy.recI`, whose body is unrestricted upstream.  `Sub` has no rule for `μ` (`Typing.lean:69`), so a
-   `μ` goal is otherwise unreachable from an opened type.  `Ty.substVar` is a
-   renaming, so the type does not shrink and the fuel must;
-3. otherwise the closure is consulted, first for a view at exactly the goal and
-   then for a view the subtyping search takes there. -/
-def checkVar? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
-    (x : BVar s .var) (T : Ty s) : Option (HasTy Γ (.path (.var x)) T) :=
-  ((match T with
-    | .and T1 T2 =>
-        (checkVar? D b n x T1).bind (fun h1 =>
-          (checkVar? D b n x T2).map (fun h2 => .andI h1 h2))
-    | _ => none) : Option (HasTy Γ (.path (.var x)) T)).orElse fun _ =>
-  ((match n, T with
-    | m + 1, .mu U => (checkVar? D b m x (U.substVar x)).map (fun h => .recI h)
-    | _, _ => none) : Option (HasTy Γ (.path (.var x)) T)).orElse fun _ =>
-  (viewAt T (views D b x)).orElse fun _ => viewSub D b.sub T (views D b x)
-termination_by (n, 0, sizeTy T)
-
-/-- Checking a definition list.  `DefsTy` is syntax directed on both the
-definitions and the type (`lean/Coercions/DotMNF/Typing.lean:124-127`), so the
-two are matched in lockstep: a type member against a declaration with its own
-type on both bounds, a term member against a field declaration at the same
-label, and an intersection against an intersection. -/
-def checkDefs? {s : Sig} {Γ : Ctx s} (D : DeclTable Γ) (b : Budget) (n : Nat)
-    (d : ADefs s) (T : Ty s) : Option (DefsTy Γ d.erase T) :=
-  match d, T with
+/-- A definition list against a type, in lockstep: a type member against a
+declaration with its own type on both bounds, a term member against a field
+at the same label, an intersection against an intersection. -/
+def checkDefsF {s : Sig} (Γ : Ctx s) : (d : ADefs s) → (T : Ty s) →
+    Fu (Option (DefsTy Γ d.erase T))
   | .typ A S, .typ B L U =>
-      if hA : A = B then
+      Fu.ret (if hA : A = B then
         if hL : S = L then
           if hU : S = U then some (defsTypAt hA hL hU) else none
         else none
-      else none
+      else none)
   | .trm a t, .fld c U =>
-      if h : a = c then (check? D b n t U).map (fun ht => defsTrmAt h ht) else none
+      if h : a = c then mapO (checkOf Γ t U (synthF Γ t)) (defsTrmAt h) else Fu.ret none
   | .and d1 d2, .and T1 T2 =>
-      (checkDefs? D b n d1 T1).bind (fun h1 =>
-        (checkDefs? D b n d2 T2).map (fun h2 => .and h1 h2))
-  | _, _ => none
-termination_by (n, sizeADefs d, 2)
+      bindO (checkDefsF Γ d1 T1) fun h1 =>
+        mapO (checkDefsF Γ d2 T2) fun h2 => DefsTy.and h1 h2
+  | _, _ => Fu.ret none
 
 end
 
-/-- The entry point.  It builds the declaration table of the context once and
-runs the typer at `Budget.typer`. -/
-def synthTop? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Synth Γ a.erase) :=
-  synth? (decls b Γ) b b.typer a
+/-- Checking a term against a type on the tank. -/
+def checkF {s : Sig} (Γ : Ctx s) (a : ATm s) (T : Ty s) : Fu (Option (HasTy Γ a.erase T)) :=
+  checkOf Γ a T (synthF Γ a)
 
-/-! ## Fuel monotonicity
+/-! ## The entry points -/
 
-This theorem lets a caller raise the typer's fuel without redoing the
-argument.  It is the shape the target already uses for its
-normalizer, `FCdot.closedAtomForm_le`
-(`lean/Coercions/FCdot/FormAlgebra.lean:1472-1473`).  The statement is about
-`isSome` and not about derivations, because more fuel may find another
-derivation of the same judgment and `HasTy` is `Type` valued with no decidable
-equality (`lean/Coercions/DotMNF/Typing.lean:7-9,67-129`).
+/-- The first candidate, and `none` if the tank ended marked. -/
+def firstCand {α : Type} : List α × Tank → Option α × Tank
+  | (c :: _, t) => if t.out then (none, t) else (some c, t)
+  | ([], t) => (none, t)
 
-The retry at the end of `synth?`'s fuel level is what makes this an induction on
-the difference rather than a walk through every clause of all four functions.
-`isSome_orElse_right` is `Search.lean`'s. -/
+/-- The first candidate of a term in `Γ`, from a full tank of `n` units, with
+the tank left. -/
+def synthInF {s : Sig} (Γ : Ctx s) (a : ATm s) (n : Nat) : Option (Cand Γ a.erase) × Tank :=
+  firstCand (synthF Γ a ⟨n, false⟩)
 
-/-- One more unit of fuel never loses an answer. -/
-theorem synth?_succ {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} {n : Nat}
-    {a : ATm s} (h : (synth? D b n a).isSome) : (synth? D b (n + 1) a).isSome := by
-  rw [synth?.eq_def]
-  exact isSome_orElse_right h
+/-- The first candidate of a closed term, from a full tank of `n` units, with
+the tank left. -/
+def synthTopF (n : Nat) (a : ATm []) : Option (Cand Ctx.nil a.erase) × Tank :=
+  synthInF Ctx.nil a n
 
-/-- More fuel never loses an answer. -/
-theorem synth?_le {s : Sig} {Γ : Ctx s} {D : DeclTable Γ} {b : Budget} :
-    ∀ {n n' : Nat}, n ≤ n' → ∀ {a : ATm s},
-      (synth? D b n a).isSome → (synth? D b n' a).isSome := by
-  intro n n'
-  induction n' with
-  | zero =>
-      intro h a hs
-      have hn : n = 0 := Nat.le_zero.mp h
-      subst hn
-      exact hs
-  | succ k ih =>
-      intro h a hs
-      cases Nat.lt_or_ge n (k + 1) with
-      | inl hlt => exact synth?_succ (ih (Nat.lt_succ_iff.mp hlt) hs)
-      | inr hge =>
-          have hn : n = k + 1 := Nat.le_antisymm h hge
-          subst hn
-          exact hs
+/-- A type of a term in `Γ`, at the budget's fuel. -/
+def synthIn? {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) : Option (Cand Γ a.erase) :=
+  (synthInF Γ a b.fuel).1
 
-/-! ## Eight example programs
+/-- A type of a closed term, at the budget's fuel. -/
+def synthTop? (b : Budget) (a : ATm []) : Option (Cand Ctx.nil a.erase) :=
+  (synthTopF b.fuel a).1
 
-`synthTop? b .nil` is run on each of eight example surface programs,
-resolved by `Frontend.resolve`
-(`lean/Coercions/Frontend/Resolve.lean`), and the type it returns is compared
-against the type the hand written derivation of
-`lean/Coercions/DotMNF/Examples.lean` concludes.  The typer returns the
-derivation, so a success here is a `DotMNF.HasTy` and not an answer.
+/-! ## The frame lemmas
 
-None of these is a `decide` or a `rfl`.  The typer is well-founded and does not
-reduce in the kernel, so every check runs compiled code through `expect`,
-where a false result throws and fails the build.
+Each clause is built from the combinators of `Fuel.lean` and from the framed
+`varF`, `subF`, `avoidLet` and lookup.  So each clause is framed, by induction
+on the term. -/
 
-The budget of each is the smallest at which it passes, measured over all
-budgets with `decls` and `views` in `0..3`, `sub` in `0..4` and `typer` in
-`1..3`, ordered by the sum.
-Every one of the eight also passes at the single budget
-`(decls 2, views 2, sub 2, typer 2)`, where the slowest is E4 at about two and a
-half milliseconds.  The nominal defaults of `Budget` are not that budget and
-should not be passed: E7, which searches for nothing at all, takes 0.4 seconds
-at `(3, 3, 6, 8)` against 8 microseconds at its own budget.  A caller measures.
+/-- The lookup from the fuel left is framed, as `declsAt` is. -/
+theorem lookVar_framed {s : Sig} (Γ : Ctx s) (x : BVar s .var) (k : Key) :
+    Framed (lookVar Γ x k) where
+  absorbs t ht := (look_framed Γ t.left [] x _ k).absorbs t ht
+  spends t := (look_framed Γ t.left [] x _ k).spends t
+  shift := by
+    intro t r t' h ho j
+    exact (look_agree Γ t.left (t.left + j) (Nat.le_add_right _ _) [] x (Γ.lookup x) k).sim
+      t r t' h ho j
 
-Three of the checks are negative, one unit of one counter short of the budget
-above it, so that each of those three budgets measures the search and not an
-accident of the table. -/
+theorem checkOf_framed {s : Sig} (Γ : Ctx s) (t : ATm s) (T : Ty s)
+    {cs : Fu (List (Cand Γ t.erase))} (hcs : Framed cs) : Framed (checkOf Γ t T cs) := by
+  cases t with
+  | path p =>
+    cases p with
+    | var x => exact varF_framed Γ x T
+  | lam _ _ =>
+    exact bind_framed hcs fun l => firstSome_framed (fun _ => mapO_framed _ (subF_framed _ _ _)) l
+  | obj _ _ =>
+    exact bind_framed hcs fun l => firstSome_framed (fun _ => mapO_framed _ (subF_framed _ _ _)) l
+  | app _ _ =>
+    exact bind_framed hcs fun l => firstSome_framed (fun _ => mapO_framed _ (subF_framed _ _ _)) l
+  | proj _ _ =>
+    exact bind_framed hcs fun l => firstSome_framed (fun _ => mapO_framed _ (subF_framed _ _ _)) l
+  | «let» _ _ _ =>
+    exact bind_framed hcs fun l => firstSome_framed (fun _ => mapO_framed _ (subF_framed _ _ _)) l
 
-section Checks
+mutual
+
+theorem synthF_framed {s : Sig} (Γ : Ctx s) : (a : ATm s) → Framed (synthF Γ a)
+  | .path (.var x) => by
+    rw [synthF]
+    exact ret_framed _
+  | .lam S t => by
+    rw [synthF]
+    exact bind_framed (synthF_framed _ t) fun _ => ret_framed _
+  | .obj T d => by
+    rw [synthF]
+    refine bind_framed (checkDefsF_framed _ d T) fun o => ?_
+    cases o with
+    | none => exact ret_framed _
+    | some _ => exact (dite_agree (fun _ => ret_agree _) (fun _ => ret_agree _)).left
+  | .app x y => by
+    rw [synthF]
+    refine bind_framed (lookVar_framed _ _ _) fun es => bind_framed (flatMapL_framed ?_ es)
+      fun _ => ret_framed _
+    intro e
+    dsimp only
+    split
+    · exact bind_framed (varF_framed _ _ _) fun _ => ret_framed _
+    · exact ret_framed _
+  | .proj x a => by
+    rw [synthF]
+    exact bind_framed (lookVar_framed _ _ _) fun _ => ret_framed _
+  | .let (some U) t u => by
+    rw [synthF]
+    refine bind_framed (synthF_framed Γ t) fun c1s =>
+      bind_framed (firstSome_framed (fun c1 => ?_) c1s) fun _ => ret_framed _
+    exact mapO_framed _ (checkOf_framed _ u _ (synthF_framed _ u))
+  | .let none t u => by
+    rw [synthF]
+    refine bind_framed (synthF_framed Γ t) fun c1s =>
+      bind_framed (flatMapL_framed (fun c1 => ?_) c1s) fun _ => ret_framed _
+    exact bind_framed (synthF_framed _ u) fun c2s =>
+      flatMapL_framed (fun _ => bind_framed (avoidLet_framed _ _ _) fun _ => ret_framed _) c2s
+
+theorem checkDefsF_framed {s : Sig} (Γ : Ctx s) : (d : ADefs s) → (T : Ty s) →
+    Framed (checkDefsF Γ d T)
+  | .typ A S, T => by
+    cases T with
+    | typ B L U => rw [checkDefsF]; exact ret_framed _
+    | _ => exact ret_framed _
+  | .trm a t, T => by
+    cases T with
+    | fld c U =>
+      rw [checkDefsF]
+      exact (dite_agree (fun _ => Agree.refl (mapO_framed _ (checkOf_framed _ t _ (synthF_framed _ t))))
+        (fun _ => ret_agree _)).left
+    | _ => exact ret_framed _
+  | .and d1 d2, T => by
+    cases T with
+    | and T1 T2 =>
+      rw [checkDefsF]
+      exact bind_framed (checkDefsF_framed _ d1 T1) fun
+        | some _ => mapO_framed _ (checkDefsF_framed _ d2 T2)
+        | none => ret_framed _
+    | _ => exact ret_framed _
+
+end
+
+/-- A typing that ends unmarked does the same with more fuel. -/
+theorem synthF_frame {s : Sig} {Γ : Ctx s} {a : ATm s} {t t' : Tank}
+    {r : List (Cand Γ a.erase)} (h : synthF Γ a t = (r, t')) (ho : t'.out = false) (k : Nat) :
+    synthF Γ a (t.add k) = (r, t'.add k) :=
+  (synthF_framed Γ a).shift t r t' h ho k
+
+theorem checkF_framed {s : Sig} (Γ : Ctx s) (a : ATm s) (T : Ty s) : Framed (checkF Γ a T) :=
+  checkOf_framed Γ a T (synthF_framed Γ a)
+
+/-- A first candidate leaves the tank unmarked. -/
+theorem firstCand_some {α : Type} {r : List α × Tank} {c : α} (h : (firstCand r).1 = some c) :
+    (firstCand r).2.out = false := by
+  obtain ⟨l, t⟩ := r
+  cases l with
+  | nil => simp [firstCand] at h
+  | cons c' l =>
+    cases ht : t.out with
+    | false => simp [firstCand, ht]
+    | true => simp [firstCand, ht] at h
+
+theorem firstCand_add {α : Type} (l : List α) (t : Tank) (k : Nat) :
+    firstCand (l, t.add k) = ((firstCand (l, t)).1, (firstCand (l, t)).2.add k) := by
+  cases l with
+  | nil => rfl
+  | cons c l => cases ht : t.out <;> simp [firstCand, ht]
+
+/-- The tank `firstCand` leaves is the one it is handed. -/
+theorem firstCand_snd {α : Type} (r : List α × Tank) : (firstCand r).2 = r.2 := by
+  obtain ⟨l, t⟩ := r
+  cases l with
+  | nil => rfl
+  | cons c l => cases ht : t.out <;> simp [firstCand, ht]
+
+theorem synthInF_stable {s : Sig} {Γ : Ctx s} {a : ATm s} {n k : Nat} {r : Option (Cand Γ a.erase)}
+    (h : synthInF Γ a n = (r, ⟨k, false⟩)) (m : Nat) : (synthInF Γ a (n + m)).1 = r := by
+  unfold synthInF at h ⊢
+  cases hs : synthF Γ a ⟨n, false⟩ with
+  | mk l t' =>
+    have ht' : t' = ⟨k, false⟩ := by
+      have := firstCand_snd (synthF Γ a ⟨n, false⟩)
+      rw [h, hs] at this
+      exact this.symm
+    have hf := synthF_frame hs (by rw [ht']) m
+    have hn : (⟨n + m, false⟩ : Tank) = (⟨n, false⟩ : Tank).add m := rfl
+    rw [hn, hf, firstCand_add]
+    rw [hs] at h
+    rw [h]
+
+theorem synthInF_mono {s : Sig} {Γ : Ctx s} {a : ATm s} {n m : Nat} {c : Cand Γ a.erase}
+    (h : (synthInF Γ a n).1 = some c) (hnm : n ≤ m) : (synthInF Γ a m).1 = some c := by
+  have ho : (synthInF Γ a n).2.out = false := firstCand_some h
+  have he : synthInF Γ a n = (some c, ⟨(synthInF Γ a n).2.left, false⟩) := by
+    rw [← h, ← ho]
+  have := synthInF_stable he (m - n)
+  rw [Nat.add_sub_cancel' hnm] at this
+  exact this
+
+/-- More fuel keeps the answer of a closed typing. -/
+theorem synthTop?_mono {n m : Nat} {a : ATm []} {c : Cand Ctx.nil a.erase}
+    (h : (synthTopF n a).1 = some c) (hnm : n ≤ m) : (synthTopF m a).1 = some c :=
+  synthInF_mono h hnm
+
+/-- A closed typing that ends unmarked gives the same verdict at every larger
+fuel.  So a rejection that ends unmarked is a rejection by the rules. -/
+theorem synthTop?_stable {n k : Nat} {a : ATm []} {r : Option (Cand Ctx.nil a.erase)}
+    (h : synthTopF n a = (r, ⟨k, false⟩)) (m : Nat) : (synthTopF (n + m) a).1 = r :=
+  synthInF_stable h m
+
+/-! ## Checks
+
+Each check types a surface program of `Resolve.lean`, or one written here, at
+`defaultFuel`.  It states the type, or that there is none, and the tank left.
+An unmarked tank means the fuel played no part in the verdict. -/
+
+section TyperChecks
 
 open DotMNF.Examples
 
-/-- The check: the typer synthesizes the type the hand written derivation
-concludes.  `Ty` has `DecidableEq` (`lean/Coercions/DotMNF/Syntax.lean:62`), so
-the comparison is a decision on the type, not on the derivation. -/
-def synthsAt {s : Sig} (b : Budget) (Γ : Ctx s) (a : ATm s) (T : Ty s) : Bool :=
-  match synthTop? b Γ a with
-  | some c => decide (c.ty = T)
-  | none => false
+/-- The type of a closed program after resolution, with the tank left. -/
+def typeAt (e : STm) (n : Nat := defaultFuel) : Option (Ty []) × Tank :=
+  match resolve exampleTable e with
+  | some a => ((synthTopF n a).1.map (·.ty), (synthTopF n a).2)
+  | none => (none, ⟨n, true⟩)
 
-/-- The whole front end so far, end to end: a surface program is resolved and
-then typed, and the type is compared against the vanilla one.
-`Resolve.lean` proves `resolve exampleTable E1src = some E1ann` and its seven
-companions by `rfl`, so this runs on exactly the resolutions named there. -/
-def compilesAt (b : Budget) (tbl : LabelTable) (e : STm) (T : Ty []) : Bool :=
-  match resolve tbl e with
-  | some a => synthsAt b Ctx.nil a T
-  | none => false
+/-- E1 with the middle written.  A `let` annotation ascribes its type. -/
+def E1ssrc : STm :=
+  dot% λ(x : {A : ⊤..⊥}).
+         let y : {B : {a : ⊤} .. {a : ⊤}} = (let u : x.A = (let t : ⊤ = x in t) in u) in y
 
-/-- E1, `λ(x : {A : ⊤..⊥}). let y : {B : Int..Int} = x in y`.  The `let` is
-annotated, so the first rung of the ladder applies, and the body is retyped by
-the bad bounds chain of `badBounds` (`Examples.lean:53-57`).  The type is the
-one `E1` concludes (`Examples.lean:68-71`). -/
-def bE1 : Budget := { decls := 1, views := 0, sub := 2, typer := 1 }
+/-- E3 with the middle written. -/
+def E3ssrc : STm :=
+  dot% λ(x : {A : ⊥ .. {a : ⊤}} ∧ {A : {b : ⊤} .. ⊤}).
+         λ(z : {b : ⊤}). let y : {a : ⊤} = (let u : x.A = z in u) in y
 
-#eval expect (compilesAt bE1 exampleTable E1src (.all E1Dom E1Res))
-  "E1: the typer does not conclude ∀(x : E1Dom) E1Res"
+/-- `λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)`, E10 with a function type at
+its binders. -/
+def E10tsrc : STm :=
+  dot% λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)
 
--- One round of `sub` short, the chain is not found, so the budget measures the
--- search and not an accident of the table.
-#eval expect
-  (! compilesAt { bE1 with sub := 1 } exampleTable E1src (.all E1Dom E1Res))
-  "E1: the typer succeeds at sub fuel 1, so the budget is not measured"
+/-- `let i = λ(x : ⊤). x in (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i`. -/
+def E11src : STm :=
+  dot% let i = λ(x : ⊤). x in
+       (λ(f : ∀(x : ⊤) ⊤). λ(g : ∀(x : ⊤) ⊤). f (g f)) i i
 
-/-- E2, the recursive literal allocated by a `let`, its member selected and
-applied to itself.  The inner `let` takes the second rung of the ladder and is
-typed at `x.A`; the outer one falls to the third rung, since `x.A` mentions the
-binder it would escape, and is typed at `⊤`, which is what `E2` concludes
-(`Examples.lean:124-129`). -/
-def bE2 : Budget := { decls := 1, views := 2, sub := 2, typer := 1 }
+/-- A function at an intersection of two function types, applied to an
+argument only the second accepts. -/
+def P5src : STm :=
+  dot% λ(f : (∀(x : {a : ⊤}) ⊤) ∧ (∀(x : ⊤) ⊤)). λ(y : ⊤). f y
 
-#eval expect (compilesAt bE2 exampleTable E2src .top)
-  "E2: the typer does not conclude ⊤"
+/-- A projection with two fields, the first through `x.A`'s upper bound.  Only
+the second has the member `b`. -/
+def R1src : STm :=
+  dot% λ(x : {A : ⊥ .. {a : ⊤}}). λ(y : x.A ∧ {a : {b : ⊤}}). let z = y.a in z.b
 
--- One round of the closure short: the literal's `μ` is opened but its field is
--- not reached, so `x.a` has no view to read.
-#eval expect (! compilesAt { bE2 with views := 1 } exampleTable E2src .top)
-  "E2: the typer succeeds at one round of the closure, so the budget is not measured"
+/-- A projection with two written fields.  Only the second has the member `b`. -/
+def R2src : STm :=
+  dot% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). let z = y.a in z.b
 
-/-- E3, the intersection with a shared member.  The annotated `let` is checked
-against `{a : ⊤}` through the two declarations of one variable at one label,
-which is rule 11 with `d₁ ≠ d₂` and the chain of `E3sub`
-(`Examples.lean:151`).  The type is `E3`'s (`Examples.lean:162-166`). -/
-def bE3 : Budget := { decls := 1, views := 1, sub := 2, typer := 1 }
+/-- A written `let` annotation that the bound value does not meet. -/
+def A1src : STm :=
+  dot% λ(x : ⊤). let y : {a : ⊤} = x in y
 
-#eval expect (compilesAt bE3 exampleTable E3src (.all E3Dom (.all E3T2 E3T1)))
-  "E3: the typer does not conclude ∀(x : E3Dom) ∀(z : E3T2) E3T1"
+/-- A field reached only through a middle the program does not write:
+`n : {a : ⊤}` below `x.A`, and `x.A` below `{b : ⊤}`. -/
+def B1src : STm :=
+  dot% λ(x : {A : {a : ⊤} .. {b : ⊤}}). λ(n : {a : ⊤}). n.b
 
-/-- E4, the counterexample of the paper's first section.  Two rounds of the
-table are the minimum: the second adds `w`'s member `A` at `Int..⊤` through the
-detour view step, and `g n` then typechecks by `E4nA` (`Examples.lean:213-216`).
-The unannotated `let` takes the second rung of the ladder, since `w.A` does not
-mention `g`.  The type is `E4`'s (`Examples.lean:228-234`). -/
-def bE4 : Budget := { decls := 2, views := 1, sub := 2, typer := 1 }
+/-- The function type of G: its result has two members `A` and a field at one
+of them. -/
+def GFun : Ty [] :=
+  .all .top (.mu (.and (.and (.typ lA .bot (.fld la .top)) (.typ lA .bot (.fld lb .top)))
+    (.fld lv (.sel (.var .here) lA))))
 
-#eval expect
-  (compilesAt bE4 exampleTable E4src
-    (.all E4X (.all E4S (.all E4Int (.sel (.var (.there .here)) lA)))))
-  "E4: the typer does not conclude E4's type"
+/-- The inner `let` of G: `z.v` has the type `z.A`, which avoidance replaces
+by the meet of the upper bounds of `z`'s two members `A`. -/
+def Ginsrc : STm :=
+  dot% λ(f : ∀(y : ⊤) μ(s. ({A : ⊥ .. {a : ⊤}} ∧ {A : ⊥ .. {b : ⊤}}) ∧ {v : s.A})). λ(w : ⊤).
+         let z = f w in z.v
 
--- One round of the table short: `w` never reaches `{A : Int..⊤}`, so `g n`
--- has no argument derivation.
-#eval expect
-  (! compilesAt { bE4 with decls := 1 } exampleTable E4src
-    (.all E4X (.all E4S (.all E4Int (.sel (.var (.there .here)) lA)))))
-  "E4: the typer succeeds at one round of the table, so the budget is not measured"
+/-- G: the inner `let`, then the member `b` of its type. -/
+def Gsrc : STm :=
+  dot% λ(f : ∀(y : ⊤) μ(s. ({A : ⊥ .. {a : ⊤}} ∧ {A : ⊥ .. {b : ⊤}}) ∧ {v : s.A})). λ(w : ⊤).
+         let r = (let z = f w in z.v) in r.b
 
-/-- E5, an object returned from a function and selected after a `let`.  Both
-`let`s take the second rung: the result `w.A` mentions neither binder, so
-strengthening carries it out twice.  The type is `E5`'s
-(`Examples.lean:296-300`). -/
-def bE5 : Budget := { decls := 1, views := 1, sub := 2, typer := 1 }
+/-- A check through `∀` bodies that never ends: `x : p.A` against `q.B`. -/
+def LPsrc : STm :=
+  dot% λ(p : μ(s. {A : ⊥ .. ∀(y : ⊤) s.A})). λ(q : μ(s. {B : ∀(y : ⊤) s.B .. ⊤})).
+         λ(x : p.A). let r : q.B = x in r
 
-#eval expect (compilesAt bE5 exampleTable E5src (.all E5AT (.sel (.var .here) lA)))
-  "E5: the typer does not conclude ∀(w : E5AT) w.A"
+-- The ten programs of `Resolve.lean`.  E1, E3 and E4 need a middle the program does
+-- not write.  E10 applies a variable at `⊤`.
+example : typeAt E1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : typeAt E2src = (some (.all (.all .top .bot) .top), ⟨defaultFuel - 58, false⟩) := by
+  decide +kernel
+example : typeAt E3src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : typeAt E4src = (none, ⟨defaultFuel - 6, false⟩) := by decide +kernel
+example : typeAt E5src = (some (.all E5AT (.sel (.var .here) lA)), ⟨defaultFuel - 14, false⟩) := by
+  decide +kernel
+example : typeAt E6src = (some (.all E6Int (.mu E6Self)), ⟨defaultFuel - 12, false⟩) := by
+  decide +kernel
+example : typeAt E7src = (some (.mu E7Self), ⟨defaultFuel, false⟩) := by decide +kernel
+example : typeAt E8src = (some (.all E8Dom (.all (E8Ref .here) .top)), ⟨defaultFuel - 11, false⟩) := by
+  decide +kernel
+example : typeAt E9src =
+    (some (.all E8Dom (.all (.sel (.var .here) lA) .top)), ⟨defaultFuel - 5, false⟩) := by
+  decide +kernel
+example : typeAt E10src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
-/-- E6, a field typed at its own literal's type member.  The surface program is
-`E6` under the lambda that binds the `n` its context holds, so the type is
-`E6`'s conclusion under one `∀` (`Examples.lean:341-342`).  The field `v` is
-checked against `x.T` by rule 9 through the self binder's own member,
-which is `E6nT` (`Examples.lean:335-337`). -/
-def bE6 : Budget := { decls := 1, views := 2, sub := 2, typer := 1 }
+-- The middles written, E10t, E11 and P5.
+example : typeAt E1ssrc = (some (.all E1Dom E1Res), ⟨defaultFuel - 14, false⟩) := by decide +kernel
+example : typeAt E3ssrc = (some (.all E3Dom (.all E3T2 E3T1)), ⟨defaultFuel - 16, false⟩) := by
+  decide +kernel
+example : typeAt E10tsrc =
+    (some (.all (.all .top .top) (.all (.all .top .top) .top)), ⟨defaultFuel - 7, false⟩) := by
+  decide +kernel
+example : typeAt E11src = (some .top, ⟨defaultFuel - 14, false⟩) := by decide +kernel
+example : typeAt P5src =
+    (some (.all (.and (.all (.fld la .top) .top) (.all .top .top)) (.all .top .top)),
+      ⟨defaultFuel - 9, false⟩) := by
+  decide +kernel
 
-#eval expect (compilesAt bE6 exampleTable E6src (.all E6Int (.mu E6Self)))
-  "E6: the typer does not conclude ∀(n : Int) μ(x. E6Self)"
+-- The projection reaches the field that has `b`.
+example : typeAt R1src =
+    (some (.all (.typ lA .bot (.fld la .top))
+      (.all (.and (.sel (.var .here) lA) (.fld la (.fld lb .top))) .top)),
+      ⟨defaultFuel - 14, false⟩) := by
+  decide +kernel
+example : typeAt R2src =
+    (some (.all (.and (.fld la .top) (.fld la (.fld lb .top))) .top), ⟨defaultFuel - 8, false⟩) := by
+  decide +kernel
 
-/-- E7, the two element alias cycle.  Nothing is searched: both definitions are
-type members and `DefsTy.typ` reads them off directly.  The type is `E7`'s
-(`Examples.lean:367`). -/
-def bE7 : Budget := { decls := 0, views := 0, sub := 0, typer := 1 }
+-- A written annotation binds (A1), and the middle of B1 is not written.
+example : typeAt A1src = (none, ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : typeAt B1src = (none, ⟨defaultFuel - 1, false⟩) := by decide +kernel
 
-#eval expect (compilesAt bE7 exampleTable E7src (.mu E7Self))
-  "E7: the typer does not conclude μ(x. E7Self)"
+-- G: avoidance meets the two upper bounds, so the member `b` is found.
+example : typeAt Ginsrc =
+    (some (.all GFun (.all .top (.and (.fld la .top) (.fld lb .top)))), ⟨defaultFuel - 41, false⟩) := by
+  decide +kernel
+example : typeAt Gsrc = (some (.all GFun (.all .top .top)), ⟨defaultFuel - 47, false⟩) := by
+  decide +kernel
 
-/-- E8, refining an abstract type.  One round of the closure takes the right
-operand of the intersection, which is `E8yFld2` (`Examples.lean:405`), and the
-projection reads the field off it.  The type is `E8`'s
-(`Examples.lean:427-430`). -/
-def bE8 : Budget := { decls := 0, views := 1, sub := 0, typer := 1 }
+-- LP ends with the tank marked.
+example : (typeAt LPsrc).1 = none := by decide +kernel
+example : (typeAt LPsrc).2.out = true := by decide +kernel
 
-#eval expect (compilesAt bE8 exampleTable E8src (.all E8Dom (.all (E8Ref .here) .top)))
-  "E8: the typer does not conclude E8's type"
-
-end Checks
+end TyperChecks
 
 end Frontend
