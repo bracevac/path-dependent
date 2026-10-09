@@ -2074,7 +2074,8 @@ def W1_outer_param_absorbed :
 /-- **W1, outer does not absorb inner.**  The inner body root is not `LvlLe`
 the outer one, and neither is a binder of the inner body.  This is the failure
 of the premise of `Subcap.level` for `{any₃} <: {any₂}`.  It refutes the level
-rule only and does not rule out a `Subcap` derivation by other rules. -/
+rule only.  `FCdot.Examples.W1_no_escape` refutes every member-free `Subcap`
+derivation, through the translation. -/
 theorem W1_outer_not_inner :
     ¬ W1Ctx2.LvlLe (.cvar W1inRoot) (.cvar W1outRoot) ∧
     ¬ W1Ctx2.LvlLe (.var W1inParam) (.cvar W1outRoot) :=
@@ -2219,8 +2220,11 @@ Two parts.  `W5_no_level` is at a context with an enclosing root: the level
 rule has no instance that puts the callback's parameter below the root of
 the scope outside the call.  Over `platCtx` alone there is no root at all,
 since the source names no universal root, so there is nothing to decide
-there.  `W5_no_escape` is an instance of `source_lvl_safety` and is stated
-on the target side, at `r = ⊤ᶜ`, an atom the source cannot name. -/
+there.  `W5_no_escape` is stated in `FCdot/Examples.lean`, through the
+translation, at `r = ⊤ᶜ`, an atom the source cannot name.  It says that no
+subcapturing derivation at all puts the parameter below the platform
+capability: in the callback's body every subcapturing is member free, and
+`source_lvl_safety` covers member-free ones. -/
 
 /-- `File ^ {κ_f}`, the domain of the callback. -/
 def W5File : Dom ([],c,c,c) := fileS ^ [CapAtom.cvar .here]

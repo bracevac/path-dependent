@@ -39,7 +39,7 @@ described in `../../CapturesCC/DotMNF/README.md`.
 | `Typing` | contexts with `consC`, `consRoot`, `consInst` and `consCls`, levels `Ctx.lvl` and `Ctx.lvlLeB`, the classifier reader `Ctx.ClsOf`, and the mutual block `Subcap`, `SubShape`, `Sub`, `ESub`, `HasTy`, `DefsTy`, `CapKind`, with the member-free predicates `Subcap.MemberFree` and `CapKind.MemberFree` |
 | `Machine` | stores with a data-free capture slot, continuations, `Step` with the `unbox`, `letex`, `unpack` and `allocE` steps, `State.inspects`, platforms with `Platform.consCls` and `Platform.classOf` |
 | `Erasure` | erasure into the runtime, `erase_step`, `erase_reflect`, `State.inspects_erase` |
-| `Examples` | the examples of the base, then the classifier examples `E1`, `E2` and `E3` |
+| `Examples` | the examples of the base, then the classifier examples `E1`, `E2` and `E3`, and the programs `E1r` and `E2r` |
 
 ## Main theorems
 
@@ -66,8 +66,10 @@ something to capture.  `E3` is a capture-polymorphic client whose capture member
 `only[Control]` instead of an explicit set.  `E3_stable_clsOf` and the declarations after it check
 that a third `Control` capability added to the platform keeps the declared classifiers, the kinding
 of the platform set (`E3_kind3`) and the retyping of a third literal at the kind bound.  The client is
-not typed again over the extended platform.  The run-time facts of the three examples are stated
-on the target side, in `../FCdot/Examples.lean`.
+not typed again over the extended platform.  `E1r` and `E2r` are programs over the platforms of E1
+and E2 that call a closure `b` declared at the filtered platform set, so the variable the call reads
+has a root.  The run-time facts of the examples are stated on the target side, in
+`../FCdot/Examples.lean`.
 
 Four `example`s at the end of `Syntax.lean` check the treatment of filtered notations: a filtered
 `any` in a type-member bound is refused, and would otherwise expand to the empty set, while a

@@ -15,7 +15,7 @@ bounds are shapes, so a capturing type enters a type member through a box.
 
 | module | contents |
 |---|---|
-| `Syntax` | capture atoms `{x}`, `{κ}`, `{x.C}`, `any`, and capture sets with union and decided inclusion. Shapes, types, terms with `C ⊸ x`, values with `□ x`, definitions with `{C = c}`. `Shape.Decl`, `Ty.Wf`, `Defs.Distinct`. The expansion of `any` (`Ty.expand`, `Ty.AnyOk`, `Ty.NoAny`) |
+| `Syntax` | capture atoms `{x}`, `{κ}`, `{x.C}`, `any`, and capture sets with union and decided inclusion. Shapes, types, terms with `C ⊸ x`, values with `□ x`, definitions with `{C = c}`. `Shape.Decl`, `Ty.Wf`, `Defs.Distinct`. The expansion of `any` (`Ty.expand`, `Ty.expandWith`, `Ty.AnyOk`, `Ty.NoAny`) |
 | `Typing` | contexts, with `Ctx.consC` for a platform capture binder. `Subcap`, `SubShape`, `Sub`, `HasTy`, `DefsTy`, Type-valued and mutual. Derived rules `Subcap.ofVar`, `HasTy.widen` |
 | `Machine` | store with data-free capture slots, continuations, `Step` with the `unbox` step, `State.inspects`, the platform prefix `Platform` and its store |
 | `Erasure` | erasure to `Runtime`, a box to the runtime's box and an unboxing to its `unbox`. `erase_step`, `erase_reflect` |
@@ -69,9 +69,10 @@ bound, in a capture-member lower bound and under a box.
 - `Tm.inspects_erase`, `State.inspects_erase`: erasure keeps the root a state reads next.
 - `Subcap.ofVar`: from any typing of `x` at `S ^ C`, `{x} <:ᶜ C`.  It is derived, because `sc-var`
   reads the context instead.
-- `Ty.noAny_expand`: a type that is `AnyOk` expands, at a set with no `any`, to a type with no `any`.
-  The conclusion does not need the premise `AnyOk`.  No theorem states what `AnyOk` secures, that
-  no `any` is read as `{}`.
+- `Ty.noAny_expand`: every type expands, at a set with no `any`, to a type with no `any`.
+- `Ty.expandWith_of_anyOk`: what `AnyOk` secures, that no `any` is read as `{}`.  `Ty.expandWith D E`
+  is `Ty.expand D` with `E` given to the four positions that `expand` reads as `{}`.  For an `AnyOk`
+  type it equals `Ty.expand D` for every `E`.  For `□ (⊤ ^ {any})`, which is not `AnyOk`, it differs from `Ty.expand D` at `E = {κ}`.
 - `Ty.expand_of_noAny`, `Ty.expand_rename`: expansion is the identity without `any` and commutes
   with renaming.
 - `S1_typed`: `withFile` with an explicit capture parameter, its result `any` read as `{fs, cp, op}`

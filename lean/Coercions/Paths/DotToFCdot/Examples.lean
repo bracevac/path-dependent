@@ -730,11 +730,11 @@ and there is none. -/
 namespace Z9
 
 /-- No template proves an inclusion proposition out of the singleton
-telescope.  Every `le` template names a source `⊑` or `≐` entry, and `[≈ q]`
-has none. -/
+telescope, whatever entries precede it in the target.  Every `le` template
+names a source `⊑` or `≐` entry, and `[≈ q]` has none. -/
 theorem no_le_out_of_sngl {s : Sig} {Γ : FCdot.Ctx s} {q : FCdot.Path (s,x)}
-    {m : FCdot.Morphism s} {S T : FCdot.Ty (s,x)} :
-    ¬ FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons .nil (.le S T)) := by
+    {m : FCdot.Morphism s} {Tel : FCdot.Telescope (s,x)} {S T : FCdot.Ty (s,x)} :
+    ¬ FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons Tel (.le S T)) := by
   intro h
   cases h with
   | le _ hj _ _ => cases hj with | there h' => cases h'
@@ -742,10 +742,11 @@ theorem no_le_out_of_sngl {s : Sig} {Γ : FCdot.Ctx s} {q : FCdot.Path (s,x)}
   | leEqSym _ hj _ _ => cases hj with | there h' => cases h'
 
 /-- A template copies an alias and never rewrites it.  Out of `[≈ q]` it
-proves `≈ q'` only at `q' = q`. -/
+proves a last entry `≈ q'` only at `q' = q`, whatever entries precede it in
+the target. -/
 theorem alias_template_fixed {s : Sig} {Γ : FCdot.Ctx s} {q q' : FCdot.Path (s,x)}
-    {m : FCdot.Morphism s}
-    (h : FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons .nil (.alias q'))) :
+    {m : FCdot.Morphism s} {Tel : FCdot.Telescope (s,x)}
+    (h : FCdot.Morphism.HasType Γ (.cons .nil (.alias q)) m (.cons Tel (.alias q'))) :
     q' = q := by
   cases h with
   | aliasCopy _ hj =>

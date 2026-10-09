@@ -681,60 +681,231 @@ theorem Ty.expand_of_noAny {s : Sig} :
 
 end
 
-/-! ### Expansion of an `AnyOk` type leaves no `any` -/
+/-! ### Expansion at a set with no `any` leaves no `any`
+
+The reading set of every position is built from the outer reading set, the
+empty set, and binder variables.  So expansion at a set with no `any` leaves
+no `any`, whatever type it expands. -/
 
 mutual
 
-/-- Expanding an `AnyOk` shape by a set with no `any` leaves no `any`. -/
+/-- Expanding a shape by a set with no `any` leaves no `any`. -/
 theorem Shape.noAny_expand {s : Sig} :
-    ∀ (S : Shape s) (D₀ : CaptureSet s), S.AnyOk → D₀.NoAny → Shape.NoAny (S.expand D₀)
+    ∀ (S : Shape s) (D₀ : CaptureSet s), D₀.NoAny → Shape.NoAny (S.expand D₀)
+  | .top, _, _ => rfl
+  | .bot, _, _ => rfl
+  | .sel _ _, _, _ => rfl
+  | .typ A S T, _, _ => by
+      rw [Shape.expand, Shape.noAny_typ]
+      exact ⟨Shape.noAny_expand S [] CaptureSet.noAny_nil,
+        Shape.noAny_expand T [] CaptureSet.noAny_nil⟩
+  | .fld a T, D₀, hD => by
+      rw [Shape.expand, Shape.noAny_fld]
+      exact Ty.noAny_expand T D₀ hD
+  | .cap A c1 c2, D₀, hD => by
+      rw [Shape.expand, Shape.noAny_cap]
+      exact ⟨CaptureSet.noAny_expand CaptureSet.noAny_nil c1, CaptureSet.noAny_expand hD c2⟩
+  | .mu S, D₀, hD => by
+      rw [Shape.expand, Shape.noAny_mu]
+      exact Shape.noAny_expand S _ (CaptureSet.noAny_self hD)
+  | .all T1 T2, D₀, hD => by
+      rw [Shape.expand, Shape.noAny_all]
+      exact ⟨Ty.noAny_expand T1 [] CaptureSet.noAny_nil,
+        Ty.noAny_expand T2 _ (CaptureSet.noAny_self hD)⟩
+  | .and S T, D₀, hD => by
+      rw [Shape.expand, Shape.noAny_and]
+      exact ⟨Shape.noAny_expand S D₀ hD, Shape.noAny_expand T D₀ hD⟩
+  | .box T, _, _ => by
+      rw [Shape.expand, Shape.noAny_box]
+      exact Ty.noAny_expand T [] CaptureSet.noAny_nil
+
+/-- Expanding a type by a set with no `any` leaves no `any`. -/
+theorem Ty.noAny_expand {s : Sig} :
+    ∀ (T : Ty s) (D : CaptureSet s), D.NoAny → Ty.NoAny (T.expand D)
+  | .capt C S, D, hD => by
+      rw [Ty.expand, Ty.noAny_capt]
+      exact ⟨CaptureSet.noAny_expand hD C,
+        Shape.noAny_expand S _ (CaptureSet.noAny_expand hD C)⟩
+
+end
+
+/-! ### What `AnyOk` secures: no `any` is read as the empty set
+
+`expand` gives four positions no reading and passes them the empty set: the
+outer set of a parameter type, a type-member bound, the lower bound of a
+capture member, and everything under a box.  `expandWith D₀ E` is `expand D₀`
+with `E` passed to those positions instead of the empty set, weakened under
+binders.  At `E = []` it is `expand`.  For an `AnyOk` type the set passed
+there is never read: the expansion is the same for every `E`.  So no `any`
+of an `AnyOk` type is read as the empty set.  A type that is not `AnyOk` can
+have an `any` the empty set reads, as the example after the theorem shows. -/
+
+mutual
+
+/-- `S.expandWith D₀ E`: `S.expand D₀`, with `E` passed to the positions that
+`expand` gives the empty set. -/
+def Shape.expandWith : Shape s → CaptureSet s → CaptureSet s → Shape s
+  | .top, _, _ => .top
+  | .bot, _, _ => .bot
+  | .sel p A, _, _ => .sel p A
+  | .typ A S T, _, E => .typ A (S.expandWith E E) (T.expandWith E E)
+  | .fld a T, D₀, E => .fld a (T.expandWith D₀ E)
+  | .cap A c1 c2, D₀, E =>
+      .cap A (CaptureSet.expand c1 E) (CaptureSet.expand c2 D₀)
+  | .mu S, D₀, E =>
+      .mu (S.expandWith (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]) (CaptureSet.weaken E))
+  | .all T1 T2, D₀, E =>
+      .all (T1.expandWith E E)
+        (T2.expandWith (CaptureSet.weaken D₀ ∪ [CapAtom.var .here]) (CaptureSet.weaken E))
+  | .and S T, D₀, E => .and (S.expandWith D₀ E) (T.expandWith D₀ E)
+  | .box T, _, E => .box (T.expandWith E E)
+
+/-- `T.expandWith D E`: `T.expand D`, with `E` passed to the positions that
+`expand` gives the empty set. -/
+def Ty.expandWith : Ty s → CaptureSet s → CaptureSet s → Ty s
+  | .capt C S, D, E =>
+      .capt (CaptureSet.expand C D) (S.expandWith (CaptureSet.expand C D) E)
+
+end
+
+mutual
+
+/-- At the empty set, `expandWith` is `expand`. -/
+theorem Shape.expandWith_nil {s : Sig} :
+    ∀ (S : Shape s) (D₀ : CaptureSet s), S.expandWith D₀ [] = S.expand D₀
+  | .top, _ => rfl
+  | .bot, _ => rfl
+  | .sel _ _, _ => rfl
+  | .typ A S T, _ => by
+      simp only [Shape.expandWith, Shape.expand, Shape.expandWith_nil S [],
+        Shape.expandWith_nil T []]
+  | .fld a T, D₀ => by
+      simp only [Shape.expandWith, Shape.expand, Ty.expandWith_nil T D₀]
+  | .cap A c1 c2, D₀ => rfl
+  | .mu S, D₀ => by
+      simp only [Shape.expandWith, Shape.expand, CaptureSet.weaken_nil,
+        Shape.expandWith_nil S _]
+  | .all T1 T2, D₀ => by
+      simp only [Shape.expandWith, Shape.expand, CaptureSet.weaken_nil,
+        Ty.expandWith_nil T1 [], Ty.expandWith_nil T2 _]
+  | .and S T, D₀ => by
+      simp only [Shape.expandWith, Shape.expand, Shape.expandWith_nil S D₀,
+        Shape.expandWith_nil T D₀]
+  | .box T, _ => by
+      simp only [Shape.expandWith, Shape.expand, Ty.expandWith_nil T []]
+
+/-- At the empty set, `expandWith` is `expand`. -/
+theorem Ty.expandWith_nil {s : Sig} :
+    ∀ (T : Ty s) (D : CaptureSet s), T.expandWith D [] = T.expand D
+  | .capt C S, D => by
+      simp only [Ty.expandWith, Ty.expand, Shape.expandWith_nil S _]
+
+end
+
+mutual
+
+/-- `expandWith` is the identity on a shape with no `any`. -/
+theorem Shape.expandWith_of_noAny {s : Sig} :
+    ∀ (S : Shape s), S.NoAny → ∀ D₀ E : CaptureSet s, S.expandWith D₀ E = S
   | .top, _, _, _ => rfl
   | .bot, _, _, _ => rfl
   | .sel _ _, _, _, _ => rfl
-  | .typ A S T, _, h, _ => by
-      rw [Shape.anyOk_typ] at h
-      rw [Shape.expand, Shape.noAny_typ, Shape.expand_of_noAny S h.1,
-        Shape.expand_of_noAny T h.2]
-      exact h
-  | .fld a T, D₀, h, hD => by
-      rw [Shape.anyOk_fld] at h
-      rw [Shape.expand, Shape.noAny_fld]
-      exact Ty.noAny_expand T D₀ h hD
-  | .cap A c1 c2, D₀, h, hD => by
-      rw [Shape.anyOk_cap] at h
-      rw [Shape.expand, Shape.noAny_cap, CaptureSet.expand_of_noAny h]
-      exact ⟨h, CaptureSet.noAny_expand hD c2⟩
-  | .mu S, D₀, h, hD => by
-      rw [Shape.anyOk_mu] at h
-      rw [Shape.expand, Shape.noAny_mu]
-      exact Shape.noAny_expand S _ h (CaptureSet.noAny_self hD)
-  | .all (.capt C1 S1) T2, D₀, h, hD => by
-      rw [Shape.anyOk_all] at h
-      rw [Shape.expand, Shape.noAny_all]
-      refine ⟨Ty.noAny_expand (S1 ^ C1) [] ?_ CaptureSet.noAny_nil,
-        Ty.noAny_expand T2 _ h.2.2 (CaptureSet.noAny_self hD)⟩
-      rw [Ty.anyOk_capt]
-      exact h.2.1
-  | .and S T, D₀, h, hD => by
-      rw [Shape.anyOk_and] at h
-      rw [Shape.expand, Shape.noAny_and]
-      exact ⟨Shape.noAny_expand S D₀ h.1 hD, Shape.noAny_expand T D₀ h.2 hD⟩
-  | .box T, _, h, _ => by
-      rw [Shape.anyOk_box] at h
-      rw [Shape.expand, Shape.noAny_box, Ty.expand_of_noAny T h]
-      exact h
+  | .typ A S T, h, _, E => by
+      rw [Shape.noAny_typ] at h
+      simp only [Shape.expandWith, Shape.expandWith_of_noAny S h.1,
+        Shape.expandWith_of_noAny T h.2]
+  | .fld a T, h, D₀, E => by
+      rw [Shape.noAny_fld] at h
+      simp only [Shape.expandWith, Ty.expandWith_of_noAny T h]
+  | .cap A c1 c2, h, D₀, E => by
+      rw [Shape.noAny_cap] at h
+      simp only [Shape.expandWith, CaptureSet.expand_of_noAny h.1,
+        CaptureSet.expand_of_noAny h.2]
+  | .mu S, h, D₀, E => by
+      rw [Shape.noAny_mu] at h
+      simp only [Shape.expandWith, Shape.expandWith_of_noAny S h]
+  | .all T1 T2, h, D₀, E => by
+      rw [Shape.noAny_all] at h
+      simp only [Shape.expandWith, Ty.expandWith_of_noAny T1 h.1,
+        Ty.expandWith_of_noAny T2 h.2]
+  | .and S T, h, D₀, E => by
+      rw [Shape.noAny_and] at h
+      simp only [Shape.expandWith, Shape.expandWith_of_noAny S h.1,
+        Shape.expandWith_of_noAny T h.2]
+  | .box T, h, _, E => by
+      rw [Shape.noAny_box] at h
+      simp only [Shape.expandWith, Ty.expandWith_of_noAny T h]
 
-/-- Expanding a type by a set with no `any` leaves no `any`.  The premise
-`AnyOk` is not needed for the conclusion, and no theorem states what `AnyOk` secures. -/
-theorem Ty.noAny_expand {s : Sig} :
-    ∀ (T : Ty s) (D : CaptureSet s), T.AnyOk → D.NoAny → Ty.NoAny (T.expand D)
-  | .capt C S, D, h, hD => by
-      rw [Ty.anyOk_capt] at h
-      rw [Ty.expand, Ty.noAny_capt]
-      exact ⟨CaptureSet.noAny_expand hD C,
-        Shape.noAny_expand S _ h (CaptureSet.noAny_expand hD C)⟩
+/-- `expandWith` is the identity on a type with no `any`. -/
+theorem Ty.expandWith_of_noAny {s : Sig} :
+    ∀ (T : Ty s), T.NoAny → ∀ D E : CaptureSet s, T.expandWith D E = T
+  | .capt C S, h, D, E => by
+      rw [Ty.noAny_capt] at h
+      simp only [Ty.expandWith, CaptureSet.expand_of_noAny h.1,
+        Shape.expandWith_of_noAny S h.2]
 
 end
+
+mutual
+
+/-- **No `any` of an `AnyOk` shape is read as the empty set.**  Whatever set
+`E` the positions without a reading are given, the expansion of an `AnyOk`
+shape is its `expand`. -/
+theorem Shape.expandWith_of_anyOk {s : Sig} :
+    ∀ (S : Shape s), S.AnyOk → ∀ D₀ E : CaptureSet s, S.expandWith D₀ E = S.expand D₀
+  | .top, _, _, _ => rfl
+  | .bot, _, _, _ => rfl
+  | .sel _ _, _, _, _ => rfl
+  | .typ A S T, h, _, E => by
+      rw [Shape.anyOk_typ] at h
+      simp only [Shape.expandWith, Shape.expand, Shape.expandWith_of_noAny S h.1,
+        Shape.expandWith_of_noAny T h.2, Shape.expand_of_noAny S h.1,
+        Shape.expand_of_noAny T h.2]
+  | .fld a T, h, D₀, E => by
+      rw [Shape.anyOk_fld] at h
+      simp only [Shape.expandWith, Shape.expand, Ty.expandWith_of_anyOk T h]
+  | .cap A c1 c2, h, D₀, E => by
+      rw [Shape.anyOk_cap] at h
+      simp only [Shape.expandWith, Shape.expand, CaptureSet.expand_of_noAny h]
+  | .mu S, h, D₀, E => by
+      rw [Shape.anyOk_mu] at h
+      simp only [Shape.expandWith, Shape.expand, Shape.expandWith_of_anyOk S h]
+  | .all (.capt C1 S1) T2, h, D₀, E => by
+      rw [Shape.anyOk_all] at h
+      simp only [Shape.expandWith, Shape.expand, Ty.expandWith, Ty.expand,
+        CaptureSet.expand_of_noAny h.1, Shape.expandWith_of_anyOk S1 h.2.1,
+        Ty.expandWith_of_anyOk T2 h.2.2]
+  | .and S T, h, D₀, E => by
+      rw [Shape.anyOk_and] at h
+      simp only [Shape.expandWith, Shape.expand, Shape.expandWith_of_anyOk S h.1,
+        Shape.expandWith_of_anyOk T h.2]
+  | .box T, h, _, E => by
+      rw [Shape.anyOk_box] at h
+      simp only [Shape.expandWith, Shape.expand, Ty.expandWith_of_noAny T h,
+        Ty.expand_of_noAny T h]
+
+/-- **No `any` of an `AnyOk` type is read as the empty set.**  Whatever set
+`E` the positions without a reading are given, the expansion of an `AnyOk`
+type is its `expand`. -/
+theorem Ty.expandWith_of_anyOk {s : Sig} :
+    ∀ (T : Ty s), T.AnyOk → ∀ D E : CaptureSet s, T.expandWith D E = T.expand D
+  | .capt C S, h, D, E => by
+      rw [Ty.anyOk_capt] at h
+      simp only [Ty.expandWith, Ty.expand, Shape.expandWith_of_anyOk S h]
+
+end
+
+/-- A type that is not `AnyOk`: `□ (⊤ ^ {any})` over one capture binder.
+`expand` reads its `any` as the empty set, and `expandWith` at `{κ}` reads it
+as `{κ}`, so the two differ. -/
+example :
+    ¬ (Ty.capt [] (.box (Ty.capt [CapAtom.any] .top)) : Ty ([],c)).AnyOk ∧
+      (Ty.capt [] (.box (Ty.capt [CapAtom.any] .top)) : Ty ([],c)).expand []
+        = Ty.capt [] (.box (Ty.capt [] .top)) ∧
+      (Ty.capt [] (.box (Ty.capt [CapAtom.any] .top)) : Ty ([],c)).expandWith []
+          [CapAtom.cvar .here]
+        = Ty.capt [] (.box (Ty.capt [CapAtom.cvar .here] .top)) :=
+  ⟨by decide, rfl, rfl⟩
 
 /-! ### Expansion commutes with renaming -/
 

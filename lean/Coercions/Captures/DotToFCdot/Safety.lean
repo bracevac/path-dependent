@@ -178,8 +178,9 @@ theorem Simulated.progress {s : Sig} {st : State s} (hsim : Simulated st) :
 /-- **Safety of DOT-MNF.**  From the initial state of a term well-typed in the
 empty context, every reachable state is final or steps: the source machine
 never gets stuck.  A program over a platform prefix is not in the empty
-context.  Nothing is proved about DOT-MNF directly.  The whole content is the
-translation, its typedness, and its erasure. -/
+context, and `dot_safety_platform` in `Prediction` covers it.  Nothing is
+proved about DOT-MNF directly.  The whole content is the translation, its
+typedness, and its erasure. -/
 theorem dot_safety {U : CaptureSet []} {t : Tm []} {T : Ty []} (d : HasTy U .nil t T)
     {s : Sig} {st : State s} (run : Steps (⟨.nil, .nil, t⟩ : State []) st) :
     st.Final ∨ ∃ (s' : Sig) (st' : State s'), Step st st' :=

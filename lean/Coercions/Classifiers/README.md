@@ -10,8 +10,8 @@ classifier `φ` admits.  Kinding is an explicit proof term that erases to nothin
 
 The tree is a copy of `../CapturesCC/` at the commit in `BASE`, under the namespace `Classifiers`, and
 keeps every theorem of that base.  The directory READMEs name the few statements that changed form.
-Three kept theorems, `lvl_canon`, `lvl_safety` and `no_inner_escape`, hold trivially over a typed store,
-as `FCdot/README.md` explains.
+The three level theorems `lvl_canon`, `lvl_safety` and `no_inner_escape` are stated for member-free
+evidence in any context and carry no store, as `FCdot/README.md` explains.
 
 ## What is proved
 
@@ -21,14 +21,15 @@ as `FCdot/README.md` explains.
 - `checkKindCo_iff_hasType`: the checker decides the kinding judgment.
 - `Ctx.roots_proj`: the roots of a capture set filtered by a kind are the roots of the set that the kind admits.
 - `CapKind.translate_typed`: a kinding derivation of the source over a well-formed context (`Ctx.Wf`, which every platform context is) translates to typed kinding evidence of the target.
-- `dot_classified_prediction`, `dot_classified_effect_safety`: the two run-time theorems for source programs. Their primed forms take a source kinding derivation as the hypothesis.
+- `dot_classified_prediction`, `dot_classified_effect_safety`: the two run-time theorems for source programs typed over a platform. The target state they match to a source state is reached by a run of the translated program from the platform's target store, and it is typed. Their primed forms take a source kinding derivation as the hypothesis.
+- `E1r_read_has_root`, `E2r_read_has_root`: at a program that calls a closure declared at a filtered platform set, the variable the call reads has a root in the matched state (`κ_ctl` and `κ_io`), and the effect theorem holds of it. At the programs `Try.apply` and `Future.apply` the variable read has no root in any matched state (`E1_reads_pure`, `E2_reads_pure`).
 
 ## What it leaves out
 
 - Control effects. A classifier is a label and nothing more. There are no boundaries and no handlers.
 - Classifiers chosen at run time. A classifier is fixed where its capability is declared, and a run never allocates a classified capability.
 - Kind-bounded capture binders. A capture member may be declared at a kind, `{C : only[Control]}`, but that is a proposition in an object type, not a new binder.
-- Completeness. Only the sound direction of kind subtraction is proved, so subkinding is a sound test that is not known to be complete. The converse would need a port of the subtraction proof of Capless(K), which relies on Mathlib and `aesop`. The kinding rules do not kind a rigid capability that declares no classifier at a kind that excludes some classifier, even where the semantics would allow it.  Lean checks this for the example `K6x` only, where the rules `kcls` and `kproj` reject it.  No theorem excludes the other rules. Capless(K)'s `s-merge`, which matters only for completeness, is absent.
+- Completeness. Only the sound direction of kind subtraction is proved, so subkinding is a sound test that is not known to be complete. The converse would need a port of the subtraction proof of Capless(K), which relies on Mathlib and `aesop`. The kinding rules do not kind a rigid capability that declares no classifier at a kind that excludes some classifier, even where the semantics would allow it.  `K6x_no_kindCo` proves this for the example `K6x`: for every evidence term `g`, `¬ K6Ctx ⊢ᵏ g : [K6p] ⊑ᵏ except[ThreadLocal]`, while `K6x_kindLe` shows the semantics holds. Capless(K)'s `s-merge`, which matters only for completeness, is absent.
 - A filtered `fresh`. The source refuses a filter on a result `fresh`, while a filtered `any` is legal.
 - Reach capabilities and scoped capabilities.
 
@@ -40,7 +41,7 @@ exclusions.  Every operation is a `Bool` function, so `by decide` settles a conc
 
 | module | contents |
 |---|---|
-| `Core` | the classifier tree `Classifier`, the subclass order `leB` with reflexivity, transitivity and antisymmetry, disjointness, `subclass_or_disjoint` (which holds by the definition of `disjointB` as neither direction of `leB`) |
+| `Core` | the classifier tree `Classifier`, the subclass order `leB` with reflexivity, transitivity and antisymmetry, disjointness, the chain lemma, and `subclass_or_disjoint`: two classifiers are disjoint exactly when no classifier lies below both |
 | `Kind` | `Subtree`, `Kind`, `Kind.top`, union, membership `Contains`, emptiness, intersection, and the facts the calculi use about them |
 | `Ops` | subtraction, subkinding `Subkind` and kind disjointness, the sound direction `Kind.contains_subtract_of`, `Kind.Admits`, `Kind.AdmitsStep`, and the example classifiers `Control`, `ThreadLocal`, `IO` with the kind formers `only` and `except` |
 

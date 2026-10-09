@@ -165,7 +165,7 @@ theorem step?_sound {st : State s} {st' : State s'}
           | some t => rw [hd] at h; exact step_of_some h (.proj hl hd)
       next S t hl => nomatch h
 
-/-- The converse.  It holds because `Paths.DotMNF.Step` is deterministic: the
+/-- The converse.  It holds because `Paths.DotMNF.Step` is deterministic (`Step.det`): the
 state's shape selects the rule, and the other premises are functional
 lookups. -/
 theorem step?_complete {st : State s} {st' : State s'}

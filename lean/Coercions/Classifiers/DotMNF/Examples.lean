@@ -2644,6 +2644,64 @@ theorem E1_try_freshOk : (E1TryTy E1ctl E1io).FreshOk := by decide
 theorem E1_try_expand (D : CaptureSet ([],c,c)) :
     (E1TryTy E1ctl E1io).expand D = E1TryTy E1ctl E1io := rfl
 
+/-! ### E1r, a call that reads a filtered closure
+
+The run of E1 reads one variable, `f`, which holds `Try.apply`, and
+`Try.apply` is declared at the empty set.  So the variable E1 reads has no
+root.  The program below reads a closure declared at the filtered platform
+set `{κ_ctl, κ_io} ↾ only[Control]`, so the variable it reads has a root.
+
+```text
+let u = λ(x : Unit). x in
+let b = λ(x : Unit). x in
+let r = b u in
+r
+```
+
+`u` is declared at `{}` and `b` at the filtered platform set.  The call
+charges `b`'s set to the use set, and passes `u` at `Unit`.  The declared use
+set of the program is the filtered platform set, as in E1, and `E1_kind`
+kinds it. -/
+
+/-- The context after `let u`. -/
+def E1rCtx1 : Ctx ([],c,c,x) := E1PlatCtx.cons (arrowS ^ [])
+/-- The context after `let b`. -/
+def E1rCtx2 : Ctx ([],c,c,x,x) := E1rCtx1.cons (arrowS ^ CaptureSet.weaken E1Filt)
+/-- The context after `let r`. -/
+def E1rCtx3 : Ctx ([],c,c,x,x,x) := E1rCtx2.cons unitTy
+
+/-- `b u`: the closure is charged its declared set, and the argument is passed
+at `Unit`. -/
+def E1rCall : HasTyP (CaptureSet.weaken (CaptureSet.weaken E1Filt)) E1rCtx2
+    (.app .here (.there .here)) unitTy :=
+  .app (T1 := unitTy) (T2 := .ty unitTy)
+    (HasTy.useSub (varAt .here rfl) Subcap.var)
+    ((subS (var' (.there .here) rfl) .top).widen _)
+
+/-- `let r = b u in r`. -/
+def E1rInner : HasTyP (CaptureSet.weaken (CaptureSet.weaken E1Filt)) E1rCtx2
+    (.let (.app .here (.there .here)) (.path (.var .here))) unitTy :=
+  .let E1rCall ((var' .here rfl).widen _) unitWf
+
+/-- `let b = λ(x : Unit). x in let r = b u in r`, with `b` at the filtered
+platform set. -/
+def E1rMid : HasTyP (CaptureSet.weaken E1Filt) E1rCtx1
+    (.let (.val (.lam unitTy (.path (.var .here))))
+      (.let (.app .here (.there .here)) (.path (.var .here)))) unitTy :=
+  .let ((E1IdVal (CaptureSet.weaken E1Filt)).widen _) E1rInner unitWf
+
+/-- The term of E1r. -/
+def E1rtm : Tm ([],c,c) :=
+  .let (.val (.lam unitTy (.path (.var .here))))
+    (.let (.val (.lam unitTy (.path (.var .here))))
+      (.let (.app .here (.there .here)) (.path (.var .here))))
+
+/-- **E1r.**  The program allocates a pure closure `u` and a closure `b` at the
+filtered platform set, and calls `b` on `u`.  Its declared use set is the
+filtered platform set. -/
+def E1r_typed : HasTyP E1Filt E1PlatCtx E1rtm unitTy :=
+  .let ((E1IdVal []).widen _) E1rMid unitWf
+
 /-! ## E2, except-thread-local
 
 `exceptions.tex:74-92`, `object Future: def apply[T](body: ->{cap.except[ThreadLocal]} T):
@@ -2967,6 +3025,58 @@ def E2Ty : Ty ([],c,c,c) := (Shape.mu E2SelfS) ^ E2Filt
 the object back.  Its declared use set is the filtered platform set. -/
 def E2_typed : HasTyP E2Filt E2PlatIOCtx E2tm E2Ty :=
   HasTy.let (T' := E2Ty) ((E2IdVal E2Filt).widen _) E2outer E2ObjWf
+
+/-! ### E2r, a call that reads a filtered closure
+
+As E1r for E1: the run of E2 reads `Future.apply`, which is declared at the
+empty set, and the program below reads a closure declared at the filtered
+platform set `{κ_tl, κ_ctl, κ_io} ↾ except[ThreadLocal]`.
+
+```text
+let u = λ(x : Unit). x in
+let b = λ(x : Unit). x in
+let r = b u in
+r
+```
+-/
+
+/-- The context after `let u`. -/
+def E2rCtx1 : Ctx ([],c,c,c,x) := E2PlatIOCtx.cons (arrowS ^ [])
+/-- The context after `let b`. -/
+def E2rCtx2 : Ctx ([],c,c,c,x,x) := E2rCtx1.cons (arrowS ^ CaptureSet.weaken E2Filt)
+/-- The context after `let r`. -/
+def E2rCtx3 : Ctx ([],c,c,c,x,x,x) := E2rCtx2.cons unitTy
+
+/-- `b u`. -/
+def E2rCall : HasTyP (CaptureSet.weaken (CaptureSet.weaken E2Filt)) E2rCtx2
+    (.app .here (.there .here)) unitTy :=
+  .app (T1 := unitTy) (T2 := .ty unitTy)
+    (HasTy.useSub (varAt .here rfl) Subcap.var)
+    ((subS (var' (.there .here) rfl) .top).widen _)
+
+/-- `let r = b u in r`. -/
+def E2rInner : HasTyP (CaptureSet.weaken (CaptureSet.weaken E2Filt)) E2rCtx2
+    (.let (.app .here (.there .here)) (.path (.var .here))) unitTy :=
+  .let E2rCall ((var' .here rfl).widen _) unitWf
+
+/-- `let b = λ(x : Unit). x in let r = b u in r`, with `b` at the filtered
+platform set. -/
+def E2rMid : HasTyP (CaptureSet.weaken E2Filt) E2rCtx1
+    (.let (.val (.lam unitTy (.path (.var .here))))
+      (.let (.app .here (.there .here)) (.path (.var .here)))) unitTy :=
+  .let ((E2IdVal (CaptureSet.weaken E2Filt)).widen _) E2rInner unitWf
+
+/-- The term of E2r. -/
+def E2rtm : Tm ([],c,c,c) :=
+  .let (.val (.lam unitTy (.path (.var .here))))
+    (.let (.val (.lam unitTy (.path (.var .here))))
+      (.let (.app .here (.there .here)) (.path (.var .here))))
+
+/-- **E2r.**  The program allocates a pure closure `u` and a closure `b` at the
+filtered platform set, and calls `b` on `u`.  Its declared use set is the
+filtered platform set. -/
+def E2r_typed : HasTyP E2Filt E2PlatIOCtx E2rtm unitTy :=
+  .let ((E2IdVal []).widen _) E2rMid unitWf
 
 /-! ## E3, C2 with a kind bound
 

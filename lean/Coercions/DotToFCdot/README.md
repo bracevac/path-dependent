@@ -9,7 +9,7 @@ that function, and DOT-MNF's type safety is transported from FCdot's.
 
 | module | contents |
 |---|---|
-| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and `Ty.translate_isObj`/`Ty.tel_of_not_isObj`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
+| `Types` | `Ty.translate`, `Ty.tel`/`Ty.telSelf` (a type as a telescope over a self block: declaration shapes proposition by proposition, everything else as one self-bound), the shape test `Ty.isObj` and its characterizations `Ty.isObj_iff_translate`/`Ty.not_isObj_iff_tel`, `Ty.witnesses`, `Ty.fieldLabels`, `Ty.literalTy`, `Ctx.translate` |
 | `TypesLemmas` | renaming and instantiation commute with the translation; `Ty.isDecl_rename`, `Ty.isObj_rename`; `Ty.translate_decl`; `Ty.tel_substVar` (opening a body at the root) |
 | `Evidence` | `Sub.translate`, `HasTy.translateAtom`, `litCo` (the cast from a literal's precise type to its declaration type), `identityMorphism`, `into`/`intoAtom` (an operand put into its own telescope), `recIAtom`/`recEAtom` (arbitrary recursive bodies), `Ctx.varAtom` |
 | `EvidenceTyped` | `Sub.translate_typed`, `HasTy.translateAtom_typed`, `HasTy.translateAtom_root`, `litCo_typed`, `Ctx.varAtom_typed`, `Ty.tel_closedBnds` (bounds in `tel` are weakened under its fresh self); the well-formedness `Ctx.Wf` of contexts |
@@ -46,10 +46,15 @@ tel B        =  [ ⊑ ⟦B⟧↑ ]            B a selection, a function type, �
 
 Intersections are unrestricted: an operand that is not an object shape
 contributes the single *self-bound* proposition `⊑ ⟦B⟧` of FCdot (plan §13
-item 9).  `Ty.isObj` is the shape test that decides between the two.  If it
-holds then `⟦T⟧ = μ (tel T)` (`Ty.translate_isObj`).  If it fails then `tel T`
-is the one-bound telescope above (`Ty.tel_of_not_isObj`).  The converses are
-not stated as lemmas.  Neither test restricts the source language.
+item 9).  `Ty.isObj` is the shape test that decides between the two.  It
+holds exactly when `⟦T⟧ = μ (tel T)` (`Ty.isObj_iff_translate`, from
+`Ty.translate_isObj` and its converse `Ty.isObj_of_translate`).  It fails
+exactly when `tel T` is the one-bound telescope `[ ⊑ ⟦T⟧↑ ]`
+(`Ty.not_isObj_iff_tel`, from `Ty.tel_of_not_isObj` and its converse
+`Ty.not_isObj_of_tel`).  The converses rest on a size argument: a telescope
+is never the one-bound telescope of its own object type, since renaming
+keeps the number of constructors (`FCdot.Telescope.ne_bnd_obj_weaken`).
+Neither test restricts the source language.
 In particular, recursive bodies may be functions, selections, arbitrary
 intersections, or nested recursive types.
 

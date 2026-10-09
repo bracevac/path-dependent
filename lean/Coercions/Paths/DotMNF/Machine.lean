@@ -80,6 +80,24 @@ inductive Steps : State s → State s' → Prop where
   | refl : Steps st st
   | tail : Steps st st' → Step st' st'' → Steps st st''
 
+/-- **Determinism.**  A state has at most one successor.  The shape of the
+running term and the continuation selects the rule, and the store and
+definition lookups are functions.  The successors may live at different
+signatures a priori, so the equation is between dependent pairs. -/
+theorem Step.det {st : State s} {st₁ : State s₁} {st₂ : State s₂}
+    (h₁ : Step st st₁) (h₂ : Step st st₂) :
+    (⟨s₁, st₁⟩ : (s : Sig) × State s) = ⟨s₂, st₂⟩ := by
+  cases h₁ with
+  | «let» => cases h₂; rfl
+  | alloc => cases h₂; rfl
+  | rename => cases h₂; rfl
+  | app hx =>
+      cases h₂ with
+      | app hx' => rw [hx] at hx'; cases hx'; rfl
+  | proj hx ha =>
+      cases h₂ with
+      | proj hx' ha' => rw [hx] at hx'; cases hx'; rw [ha] at ha'; cases ha'; rfl
+
 /-- Answers with an empty continuation are final. -/
 def State.Final (st : State s) : Prop :=
   st.K = .nil ∧ ((∃ v, st.t = .val v) ∨ (∃ p, st.t = .path p))

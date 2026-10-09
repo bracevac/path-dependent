@@ -51,7 +51,8 @@ a kinding proposition with its own evidence.  The first two layers are described
 | `FormTyping`, `FormAlgebra` | typed normal forms, their composition and application, `kindCle_semantic` |
 | `CanonicalForms` | canonical forms of all evidence, `cap_canon`, `kind_canon`, `atom_canon`, `mor_canon`, `preservation'` |
 | `Progress` | `progress`, `not_stuck` |
-| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, `lvl_canon`, `lvl_safety` and `no_inner_escape`, which hold trivially over a typed store |
+| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, and the level theorems `lvl_canon`, `lvl_safety` and `no_inner_escape` for member-free evidence in any context |
+| `Runs` | a step is determined (`Step.det`), two runs from one state are prefixes of each other (`Steps.linear`), every state a run reaches at one signature has one store (`Steps.store_of_reach`), and a variable holding a pure literal has no root (`root_var_pure`) |
 | `Prediction` | `capture_prediction`, `effect_safety`, `classified_prediction`, `classified_effect_safety` |
 | `Examples` | examples decided in the kernel, from the vanilla ones to the classifier examples |
 
@@ -91,16 +92,22 @@ Kept from the base with their statements: `checkTm_iff`, `cap_canon`, `atom_cano
 `progress`, `not_stuck`, `erase_step`, `erase_reflect'`, `capture_prediction`, `effect_safety`,
 `level_inversion`.
 
-Three more theorems of the base are kept and hold trivially over a typed store, which is the only
-context they are stated over: `lvl_canon`, `lvl_safety` and `no_inner_escape`.  A typed store has no
-scope root (`Store.Typed.rootFree`), so its only root is `⊤ᶜ` and every atom is at the outermost level.  The conclusions of `lvl_canon`
-and `lvl_safety` then hold for every set.  The premise `¬ Γ.LvlLe (.cvar κ) r` of `no_inner_escape`
-never holds.  `level_inversion` carries the content, for member-free evidence and without a store.  For source programs
-`source_lvl_safety` (in `../DotToFCdot/`) does the same, and `W5_no_escape` in `Examples` instantiates it.
+A typed store has no scope root (`Store.Typed.rootFree`), so every atom is at the outermost level
+there, and a level theorem that assumed a typed store would hold for want of a scope root.  The three
+level theorems are stated for member-free evidence in any context, with no store, as
+`level_inversion` is, and they read it through expansion:
+
+- `lvl_canon`: if `f` is member free and `Γ ⊢ᶜ f : C₁ ⊑ C₂`, and every resolution of `C₂` at every fuel is at or outside `r`, then every root of `C₁` at every fuel is at or outside `r`.
+- `lvl_safety`: if `r` is a root and member-free `f` has `Γ ⊢ᶜ f : C ⊑ [r]`, every root of `C` at every fuel is at or outside `r`.
+- `no_inner_escape`: if `r` is a root and the opaque binder `κ` is not at or outside `r`, no member-free `f` has `Γ ⊢ᶜ f : [κ] ⊑ [r]`.
+
+`X3_no_escape` in `Examples` instantiates `no_inner_escape` in a context with a scope root, which no
+store types (`X3_no_store`).  For source programs `source_lvl_safety` (in `../DotToFCdot/`) is the
+same statement, and `W5_no_escape` in `Examples` instantiates it.
 
 Base statements that changed form:
 
-- `rigid_target` concludes about `Γ.roots` where it concluded about `Γ.caps`, which is stronger on unfiltered sets.  `lvl_canon` and `lvl_safety` changed the same way, and they hold trivially, as above.
+- `rigid_target` concludes about `Γ.roots` where it concluded about `Γ.caps`, which is stronger on unfiltered sets.  `lvl_canon` and `lvl_safety` conclude about `Γ.roots` too, as above.
 - `Ctx.expandAtom_of_not_root`, `Ctx.expand_eq_self` assume the atoms are unfiltered (`a.base = a`), which every atom of the base is.
 - `Ctx.caps_subset_roots`, `Ctx.Root.of_mem_caps`, `Ctx.roots_eq_caps_of_rootFree` read an atom through its base and its kind, and say what they said on unfiltered sets.
 
@@ -109,16 +116,27 @@ Base statements that changed form:
 `Examples` keeps every example of the base and adds two groups.  The `K1x_*` to `K6x_*` theorems
 are small facts about resolution and kinding.  `K6x` marks the edge of the rules: a rigid capability
 with no declared classifier is kinded at `except ThreadLocal` by the semantics (`K6x_kindLe`), while
-the two rules that read a rigid binder, `kcls` and `kproj`, reject it (`K6x_kcls_reject`,
-`K6x_kproj_reject`).  No theorem excludes the other rules.  The classifier examples `E1` (`Try.apply`, its body filtered to
+no kinding evidence derives it (`K6x_no_kindCo`: for every `g`,
+`¬ K6Ctx ⊢ᵏ g : [K6p] ⊑ᵏ except[ThreadLocal]`).  The proof carries the context along
+`Ctx.Ren.instC`, which reads the binder as an instance of `{κ_tl}`, and refutes the image by
+`kind_canon` over a store.  The checker rejects the two rules that read the binder
+(`K6x_kcls_reject`, `K6x_kproj_reject`).  The classifier examples `E1` (`Try.apply`, its body filtered to
 `only[Control]`), `E2` (`Future.apply`, its body filtered to `except[ThreadLocal]`) and `E3` (a client
 whose capture parameter is bounded by `only[Control]`) are the target half of the source programs.
 `E1_effect_safety`, `E2_effect_safety` and `E3_prediction` apply the source theorems to them.  In
 the runs of E1 and E2 the one variable that is read holds the closure of `Try.apply` or
-`Future.apply`, whose capture set is empty.  By inspection of the terms, which no theorem states, that
-variable has no root, so the conclusions of `E1_effect_safety` and `E2_effect_safety` hold there for
-want of a root.  Those two examples show that the premises of the source theorems, a typed program and its
-kinding evidence, are met.  They do not exercise the filter.  `E2_tl_not_capKind` shows that no source derivation kinds the
-`ThreadLocal` capability of E2's platform (`E2tl`) at `except[ThreadLocal]`.
+`Future.apply`, whose annotation is empty.  `E1_reads_pure` and `E2_reads_pure` state it: for every
+source run and every variable `x` a reached source state reads, every target state that a run of
+the translated program reaches at the signature of that source state roots `x` nowhere, over any
+context typing its store.  So the conclusions of `E1_effect_safety` and `E2_effect_safety` hold
+there for want of a root.  The programs `E1r` and `E2r` call a closure declared at the filtered
+platform set instead.  `E1r_reads_root` and `E2r_reads_root` show that the variable such a run
+reads is rooted at `κ_ctl` and at `κ_io` in every target state reached at the signature of the call,
+and `E1r_read_has_root` and `E2r_read_has_root` put that root beside the conclusion of
+`E1r_effect_safety` and `E2r_effect_safety` at the call.  These read the store off a run written
+out to the second allocation, through `Steps.store_of_reach`.  `E2_tl_not_capKind` shows that no
+source derivation kinds the `ThreadLocal` capability of E2's platform (`E2tl`) at
+`except[ThreadLocal]`.  `E3_capkI_mor_canon` runs the `kindCle` case of `mor_canon` over E3's
+platform store, at the `capkI` morphism of a member bounded by `{κ₁}`.
 
 Every theorem depends on `propext` and `Quot.sound` at most.

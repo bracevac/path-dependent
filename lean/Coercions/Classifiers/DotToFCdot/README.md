@@ -21,8 +21,8 @@ proposition, and a source kinding derivation becomes target kinding evidence.
 | `TermsTyped` | `HasTy.translate_typed`, `HasTy.translate_uses` |
 | `Erasure` | `HasTy.translate_erase`, `coherence` |
 | `Safety` | the simulation invariant `Simulated`, `dot_safety`, `dot_not_stuck` |
-| `Consistency` | `reachable_consistent`, `reachable_realized` for runs of translated programs |
-| `Prediction` | platforms on both sides (`Platform.ctx`, `Platform.targetStore`, `Platform.classOf_translate`, `Platform.admits_iff`), and the capture and classified theorems for source programs |
+| `Prediction` | platforms on both sides (`Platform.ctx`, `Platform.targetStore`, `Platform.classOf_translate`, `Platform.admits_iff`), the matched run, `dot_safety_platform`, and the capture and classified theorems for source programs |
+| `Consistency` | `reachable_consistent`, `reachable_realized` for runs of programs translated over a platform |
 
 ## The classifier clauses
 
@@ -51,12 +51,13 @@ The `translate_typed` and `translate_uses` theorems assume `Ctx.Wf` of the sourc
 - `HasTy.translate_typed`: a typed source term translates to a typed target term.
 - `HasTy.translate_uses`: the translated term's use set is below the translated declared use set.
 - `HasTy.translate_erase`, `coherence`: the translation erases to the source term, whatever the derivation.
-- `dot_safety`, `dot_not_stuck`: a closed typed source program never gets stuck.
-- `reachable_consistent`, `reachable_realized`: every store a translated closed program reaches is typed, proves no `⊤ ≤ ⊥`, and defines every block name.
+- `dot_safety`, `dot_not_stuck`: a source program typed in the empty context never gets stuck.
+- `dot_safety_platform`, `dot_not_stuck_platform`: the same for a program typed over a platform, along a run from the platform's store.
+- `reachable_consistent`, `reachable_realized`: every store that a run of a program translated over a platform reaches from the platform's target store is typed, proves no `⊤ ≤ ⊥`, and defines every block name.
 - `source_lvl_safety`: member-free source subcapturing never lowers a level.
-- `dot_capture_prediction`, `dot_effect_safety`: capture prediction and effect safety for source programs over a platform.
-- `dot_classified_prediction`: if the declared use set of a source program typed over a platform is kinded at `φ`, the use set of the target state matched to every reached source state is kinded at `φ`.
-- `dot_classified_effect_safety`: along a run of such a program from the platform's initial state, every root of a variable the matched target state reads has a classifier `φ` admits.
+- `dot_capture_prediction`, `dot_effect_safety`: capture prediction and effect safety for source programs over a platform.  Each matches a target state to the reached source state: it is reached by a run of the translated program from the platform's target store, it is typed, and it has the erasure of the source state.  In `dot_effect_safety` it also reads the variable the source state reads.
+- `dot_classified_prediction`: if the declared use set of a source program typed over a platform is kinded at `φ`, the use set of the matched target state is kinded at `φ`.
+- `dot_classified_effect_safety`: along a run of such a program from the platform's initial state, the matched target state reads the variable the source state reads, and every root of that variable has a classifier `φ` admits.
 - `dot_classified_prediction'`, `dot_classified_effect_safety'`: the same, with a source derivation `CapKind P.ctx U φ` as the hypothesis.
 
 Base statements that changed form:
@@ -65,9 +66,11 @@ Base statements that changed form:
 - `CaptureSet.base_of_mem_translate` assumes `C.NoProj`, which every unfiltered set satisfies.
 
 The examples of this directory live in `../FCdot/Examples.lean`, which imports it.  There,
-`E1_effect_safety` and `E2_effect_safety` instantiate `dot_classified_effect_safety'`, and
-`E3_prediction` and `E3_prediction'` instantiate the two prediction theorems.  In E1 and E2 the
-variable that is read holds a closure with the empty capture set, so the conclusion of the two
-effect safety instances holds there for want of a root, as `../FCdot/README.md` says.
+`E1_effect_safety`, `E2_effect_safety`, `E1r_effect_safety` and `E2r_effect_safety` instantiate
+`dot_classified_effect_safety'`, and `E3_prediction` and `E3_prediction'` instantiate the two
+prediction theorems.  In E1 and E2 the variable that is read holds a closure with the empty
+annotation, so the conclusion of the two effect safety instances holds there for want of a root
+(`E1_reads_pure`, `E2_reads_pure`).  In E1r and E2r it is rooted at a platform capability the
+filter keeps (`E1r_read_has_root`, `E2r_read_has_root`), as `../FCdot/README.md` says.
 
 Every theorem depends on `propext` and `Quot.sound` at most.

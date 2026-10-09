@@ -1579,6 +1579,15 @@ theorem C2_erase :
     Tm.erase DotMNF.Examples.C2_typed.translate = DotMNF.Tm.erase DotMNF.Examples.C2tm :=
   DotMNF.HasTy.translate_erase _
 
+/-- **C2, safe.**  C2 uses both platform capabilities, so it is not typed in
+the empty context and `DotMNF.dot_safety` does not apply.  Over the platform
+prefix `plat`, every state a run of C2 reaches is final or steps. -/
+theorem C2_safe {s : Sig} {st : DotMNF.State s}
+    (run : DotMNF.Steps (⟨DotMNF.Examples.plat.store, .nil, DotMNF.Examples.C2tm⟩ :
+      DotMNF.State ([],c,c)) st) :
+    st.Final ∨ ∃ (s' : Sig) (st' : DotMNF.State s'), DotMNF.Step st st' :=
+  DotMNF.dot_safety_platform DotMNF.Examples.plat DotMNF.Examples.C2_typed run
+
 /-! ## S1, S2 and C5: the `any` examples carried across the translation
 
 The two source derivations of `DotMNF.Examples` that are written with `any`

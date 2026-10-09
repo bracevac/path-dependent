@@ -80,8 +80,9 @@ store. The checker rejects it.
   `⊤ ≤ ⊥`. Its third conjunct, that every block name is defined, holds in every typed store, because
   a label the literal does not declare reads `⊤`.
 
-`EqCo.ofAlias_derivable` is a corollary of `alias_eq` and holds trivially. Over a typed store aliased
-paths are equal, so `EqCo.refl` closes it, and its definedness premise is unused.
+`EqCo.ofAlias_derivable` states that over a typed store, when `α` proves `p ≋ q`, some `φ` proves
+`p ∙ ℓ ≡ q ∙ ℓ` at every label `ℓ`. It is a corollary of `alias_eq` and holds trivially. Over a
+typed store aliased paths are equal, so `EqCo.refl` closes it.
 
 The canonical-form twins (`le_canon_of`, `eq_canon_of`, `alias_eq_of`, `closed_le_shapes_of`) assume
 `σ.FieldForms Γ`. The machine twins (`preservation'_of`, `progress_of`, `not_stuck_of`,

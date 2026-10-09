@@ -90,18 +90,6 @@ theorem leB_antisymm : ∀ {a b : Classifier}, leB a b = true → leB b a = true
         simp only [Classifier.child.sizeOf_spec] at s2
         omega
 
-/-- Trichotomy (`Classifier/Core.lean:157-160`): two classifiers are subclass
-related in one direction or disjoint.  This holds by the definition of
-`disjointB` as neither direction of `leB`, for any Boolean relation.  The
-content about the tree is in `chain` and `not_disjoint_of_le`. -/
-theorem subclass_or_disjoint (a b : Classifier) :
-    leB a b = true ∨ leB b a = true ∨ disjointB a b = true := by
-  cases h1 : leB a b
-  · cases h2 : leB b a
-    · exact Or.inr (Or.inr (by simp [disjointB, h1, h2]))
-    · exact Or.inr (Or.inl rfl)
-  · exact Or.inl rfl
-
 /-- The chain lemma: two superclasses of one classifier are comparable. -/
 theorem chain : ∀ {a b c : Classifier}, leB a b = true → leB a c = true →
     leB b c = true ∨ leB c b = true
@@ -128,6 +116,28 @@ the subclass order, so they cannot be disjoint. -/
 theorem not_disjoint_of_le {a b c : Classifier} (h1 : leB a b = true) (h2 : leB a c = true) :
     disjointB b c = false := by
   rcases chain h1 h2 with h | h <;> simp [disjointB, h]
+
+/-- Disjointness is the absence of a common subclass
+(`Classifier/Core.lean:142-145`).  Two classifiers are disjoint exactly when no
+classifier lies below both.  The forward direction is the chain lemma, which
+is a fact about the tree: two superclasses of one classifier are comparable.
+The backward direction takes each of the two as the common subclass. -/
+theorem subclass_or_disjoint (a b : Classifier) :
+    disjointB a b = true ↔ ∀ c, ¬ (leB c a = true ∧ leB c b = true) := by
+  constructor
+  · rintro h c ⟨h1, h2⟩
+    rw [not_disjoint_of_le h1 h2] at h
+    exact Bool.noConfusion h
+  · intro h
+    have hab : leB a b = false := by
+      cases hb : leB a b
+      · rfl
+      · exact absurd ⟨leB_refl a, hb⟩ (h a)
+    have hba : leB b a = false := by
+      cases hb : leB b a
+      · rfl
+      · exact absurd ⟨hb, leB_refl b⟩ (h b)
+    simp [disjointB, hab, hba]
 
 end Classifier
 

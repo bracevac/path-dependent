@@ -19,4 +19,4 @@ System F-sub with explicit coercions, telescope-constrained quantifiers, and hea
 | `Erasure`, `ErasureMetatheory`, `Simulation` | erasure and erasure simulation |
 | `Checker`, `CheckerCompleteness` | executable checker, `checkTerm_iff` |
 | `ClosedArtifact` | proof-free closed artifacts |
-| `Examples` | examples evaluated by `native_decide`, which trusts the compiler and not only the kernel |
+| `Examples` | examples decided in the kernel by `decide +kernel` |

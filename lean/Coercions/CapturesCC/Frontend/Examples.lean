@@ -17,11 +17,11 @@ capabilities `k1` and `k2`, or over `πz`, the same two binders named `fs` and
 ## What is checked
 
 Every function of the front end is structural, so the kernel reduces
-resolution, the typer and the machine.  The exception is a level escape.
-`certify?` reads the well-founded `FCdot.Ctx.caps`, which the kernel does not
-reduce, so the reason of a level-escape rejection is checked by `#eval`, and
-the certificate at the goal is proved by `Esc_rejected'`.  Every check runs at
-`defaultFuel`.
+resolution, the typer and the machine.  That includes a rejection by a level
+escape: `certify?` resolves capture sets with `capsS`, the structural form of
+`FCdot.Ctx.caps`.  `Esc_compile_rejected` and `TopEsc_compile_rejected` state
+the rejection `compile` returns, certificate and goal included.  Every check
+runs at `defaultFuel`.
 
 For a program that compiles:
 
@@ -94,7 +94,7 @@ annotation the bound value does not meet, and a written annotation binds.
 Each has its `¬ Alg` fact.  Rejected with a reason: `any` below a field of a
 domain, an existential answer outside every scope, and the three escapes of
 a callback.  The escape and the escape at the top carry a certificate at the
-goal the typer reached.
+goal the typer reached, and the kernel computes that rejection.
 
 At the recursion limit: LP, a check through `∀` bodies that reaches the same
 goal under one more binder at every level.  PF, Pierce's divergence of F<:,
@@ -104,8 +104,12 @@ whose goal comes back under a new binder that it names.
 
 W1 and W5 ask subcapturing for the steps of the level order.
 `compile_effect_safety_get` at C2 says that a run of C2 never reads a variable
-rooted at `k1`.  The logs `levelSteps` reads off the derivations of C2 and S1
-are pinned in size.  S2 and C2 are run from the platform's initial store,
+rooted at `k1`.  At `ReadK2Src` it says the same of a run that reads a
+variable declared at `{k2}`, next to a variable declared at `{k1}` that the
+run never reads.  The logs `levelSteps` reads off the derivations of C2 and S1
+are pinned in size.  `compile_lvl_safety_get` is applied to an entry of the
+log of C7, whose premise holds at every capture binder, and to an entry of
+the log of `NestSrc`, whose premise holds at one root and fails at another.  S2 and C2 are run from the platform's initial store,
 printed with the platform's own names, and pinned at the step count at which
 they become final.  E2 is run beside them over the empty platform.
 -/
@@ -1356,6 +1360,12 @@ theorem W5_escape_rejected :
     (fun m => by rw [caps_self _ (by decide +kernel) m]; decide +kernel) 0
     (by rw [W5_caps]; decide +kernel)
 
+/-- **The certificate builder answers at W5's goal**, with the older root as
+the root of the rejection.  The kernel computes the answer. -/
+theorem W5_certify : certify? W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kout] =
+    some (.levelEscape W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kout]
+      (FCdot.CapAtom.cvar W5kout) W5_escape_rejected) := rfl
+
 /-! ## The escape
 
 `EscSrc` of `Notation.lean`: `λ(g : ⊤). let cb : A = λ(f : File ^ {any}).
@@ -1414,6 +1424,22 @@ theorem Esc_rejected' :
     (fun m => by rw [caps_self _ (by decide +kernel) m]; decide +kernel) 0
     (by rw [Esc_caps]; decide +kernel)
 
+/-- **The certificate builder answers at the escape goal.**  At `EscGoalCtx`
+and the goal `{f} <: {κ_g}`, `certify?` returns a rejection by a level escape
+at that goal, whose root is the root of `g`'s body.  The kernel computes the
+answer.  A certificate is a proof, so it is `Esc_rejected'`. -/
+theorem Esc_certify : certify? EscGoalCtx [CapAtom.var .here] [CapAtom.cvar escRoot] =
+    some (.levelEscape EscGoalCtx [CapAtom.var .here] [CapAtom.cvar escRoot]
+      (FCdot.CapAtom.cvar escRoot) Esc_rejected') := rfl
+
+set_option maxHeartbeats 4000000 in
+/-- **The escape is rejected by a level escape.**  `compile` returns the
+answer of `Esc_certify` as its rejection: the goal `{f} <: {κ_g}` in
+`EscGoalCtx`, the root of `g`'s body, and the certificate. -/
+theorem Esc_compile_rejected : compile {} Λc πc EscSrc =
+    .rejected (.levelEscape EscGoalCtx [CapAtom.var .here] [CapAtom.cvar escRoot]
+      (FCdot.CapAtom.cvar escRoot) Esc_rejected') := rfl
+
 /-! ## The escape by an ascription
 
 `AscEscSrc` of `Typer.lean` writes the same callback with an ascription in
@@ -1431,6 +1457,11 @@ theorem AscEsc_rejected (b : Budget) : (compile b Λc πc AscEscSrc).isOk = fals
 
 #eval expect ((compile {} Λc πc AscEscSrc).reason?.map Reason.name == some "levelEscape")
   "the escape by an ascription: compile does not reject it"
+
+/-- The escape by an ascription is rejected by a level escape. -/
+theorem AscEsc_levelEscape :
+    (compile {} Λc πc AscEscSrc).reason?.map Reason.name = some "levelEscape" := by
+  decide +kernel
 
 /-! ## The escape at the top of a program
 
@@ -1479,6 +1510,14 @@ theorem top_escape_rejected :
   escape_rejected_at (ctxWf?_sound _ (by decide +kernel)) FCdot.CapAtom.top
     (fun m => by rw [caps_self _ (by decide +kernel) m]; decide +kernel) 0
     (by rw [Top_caps]; decide +kernel)
+
+set_option maxHeartbeats 4000000 in
+/-- **The escape at the top is rejected by a level escape.**  `compile`
+returns the rejection at the goal `{f} <: {fs, k2}` in `TopGoalCtx`, whose root
+is the universal one, with the certificate `top_escape_rejected`. -/
+theorem TopEsc_compile_rejected : compile {} Λc πc TopEscSrc =
+    .rejected (.levelEscape TopGoalCtx [CapAtom.var .here] topPlat
+      FCdot.CapAtom.top top_escape_rejected) := rfl
 
 /-! ## A callback that keeps its capture inside its own scope
 
@@ -1863,28 +1902,244 @@ hold `k1`, is decided by the kernel.  The elaborated term equals DotMNF's
 term, so the run transfers. -/
 
 /-- **C2 never reads `k1`.**  Along any run of `C2tm` from the platform's
-initial store, a variable the reached state reads is not rooted at `k1` in
-the matched target state. -/
+initial store, at a state that reads `x`, there is a typed target state with
+the same erasure that the run of the translated derivation reaches, and in it
+`x` is not rooted at `k1`. -/
 theorem C2_never_reads_k1 {s : Sig} {st : State s}
     (r : Steps (⟨πc.plat.store, .nil, C2tm⟩ : State πc.sig) st)
     {x : BVar s .var} (hin : st.inspects = some x) :
     ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
-      FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc C2src).get C2_compiles).2.deriv.translate⟩ :
+          FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
         FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
           ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] := by
   have he : ((compile {} Λc πc C2src).get C2_compiles).2.tm.erase = C2tm := by
     decide +kernel
   exact compile_effect_safety_get C2_compiles (κ := k1) (by decide +kernel) (he ▸ r) hin
 
+/-! ## The effect theorem at a variable declared at a platform capability
+
+In C2 no variable the run reads is declared at a set that names `k1` or `k2`.
+`ReadK2Src` binds `a` at `{k1}` and `f` at `{k2}`, by ascriptions, and calls
+`f` on itself.  The typer boxes the argument, since `f` is tracked.  The run
+reads `f`, never `a`.  The use set the typer finds is `{k2}`, so
+`compile_effect_safety_get` applies at `k1`: the variable the run reads, which
+is declared at `{k2}`, is not rooted at `k1`. -/
+
+/-- `a` at `{k1}`, `f` at `{k2}`, then `f f`. -/
+def ReadK2Src : STm :=
+  cc% let a = ((λ(u : ⊤). u) : (∀(u : ⊤) ⊤) ^ {k1}) in
+      let f = ((λ(u : ⊤). u) : (∀(u : ⊤) ⊤) ^ {k2}) in
+      f f
+
+/-- The term `a` is bound to. -/
+def ReadK2aSrc : STm := cc% ((λ(u : ⊤). u) : (∀(u : ⊤) ⊤) ^ {k1})
+
+/-- The term `f` is bound to. -/
+def ReadK2fSrc : STm := cc% ((λ(u : ⊤). u) : (∀(u : ⊤) ⊤) ^ {k2})
+
+/-- The capture set of the type the typer finds for a closed term, if it
+finds a plain type. -/
+def judgSet? (e : STm) : Option (CaptureSet πc.sig) :=
+  match (judgAt πc e).1 with
+  | some (_, .ty T) => some T.captureSet
+  | _ => none
+
+/-- The typer types the term bound to `a` at a set `{k1}`. -/
+theorem ReadK2a_set : judgSet? ReadK2aSrc = some [CapAtom.cvar k1] := by decide +kernel
+
+/-- The typer types the term bound to `f` at a set `{k2}`. -/
+theorem ReadK2f_set : judgSet? ReadK2fSrc = some [CapAtom.cvar k2] := by decide +kernel
+
+theorem ReadK2_compiles : (compile {} Λc πc ReadK2Src).isOk = true := by decide +kernel
+
+/-- The use set is `{k2}`: the program uses `f`, and not `a`. -/
+theorem ReadK2_uses :
+    ((compile {} Λc πc ReadK2Src).get ReadK2_compiles).2.use = [CapAtom.cvar k2] := by
+  decide +kernel
+
+/-- The compiled term: `a`, `f`, the box of `f`, and the call. -/
+example : ppTmWith Λc (namesOver ["k1", "k2"] _)
+    ((compile {} Λc πc ReadK2Src).get ReadK2_compiles).2.tm.erase =
+      "let x = λ(x : ⊤). x in let y = λ(y : ⊤). y in let z = □ y in y z" := by
+  decide +kernel
+
+/-- After six steps the run calls `x3`, the closure bound to `f`.  The store
+holds `x2`, the closure bound to `a`, which the run does not read. -/
+example : ppRunOver Λc ["k1", "k2"] (compileAndRun {} 6 Λc πc ReadK2Src) =
+    "⟨k1, k2, x2 = λ(x : ⊤). x, x3 = λ(x : ⊤). x, x4 = □ x3 | · | x3 x4⟩" := by
+  decide +kernel
+
+/-- The state after six steps reads a variable. -/
+theorem ReadK2_reads6 :
+    ((run 6 πc.sig ⟨πc.plat.store, .nil,
+      ((compile {} Λc πc ReadK2Src).get ReadK2_compiles).2.tm.erase⟩).2.inspects).isSome =
+      true := by
+  decide +kernel
+
+/-- **`ReadK2Src` never reads `k1`.**  Along any run of the compiled term
+from the platform's initial store, at a state that reads `x`, there is a typed
+target state with the same erasure that the run of the translated derivation
+reaches, and in it `x` is not rooted at `k1`. -/
+theorem ReadK2_never_reads_k1 {s : Sig} {st : State s}
+    (r : Steps (⟨πc.plat.store, .nil,
+      ((compile {} Λc πc ReadK2Src).get ReadK2_compiles).2.tm.erase⟩ : State πc.sig) st)
+    {x : BVar s .var} (hin : st.inspects = some x) :
+    ∃ (stt : FCdot.State s) (Γ' : FCdot.Ctx s) (ρ : Rename πc.sig s),
+      FCdot.Steps (⟨πc.plat.targetStore, .nil,
+          ((compile {} Λc πc ReadK2Src).get ReadK2_compiles).2.deriv.translate⟩ :
+          FCdot.State πc.sig) stt ∧
+        (∃ V, FCdot.State.Typed stt V) ∧
+        FCdot.State.erase stt = st.erase ∧ FCdot.Store.Typed stt.σ Γ' ∧
+        FCdot.Store.Ext πc.plat.targetStore stt.σ ρ ∧
+          ¬ Γ'.Root (FCdot.CapAtom.cvar (ρ.var k1)) [FCdot.CapAtom.var x] :=
+  compile_effect_safety_get ReadK2_compiles (κ := k1) (by decide +kernel) r hin
+
+/-- The instance at the state that calls `f`, six steps in. -/
+example := ReadK2_never_reads_k1 (run_steps 6 _) (Option.some_get ReadK2_reads6).symm
+
 /-! ## The log of a compiled program
 
 `compile_lvl_safety` speaks of each entry of the log `levelSteps` reads off the
-derivation.  C2 has 121 entries and S1 has 92.  The counts show that the logs
-are not empty.  No example here applies the theorem to an entry. -/
+derivation.  C2 has 121 entries and S1 has 92. -/
 
 example : (compileLog {} Λc πc C2src).length = 121 := by decide +kernel
 
 example : (compileLog {} Λc πz S1progSrc).length = 92 := by decide +kernel
+
+/-! ## Level safety at two entries
+
+`compile_lvl_safety_get` is applied to two entries `lo <: hi` and a root `ρ`
+of the entry's context.  In both, `lo` as written is not confined to `ρ`, so
+the conclusion, that the resolution of `lo` is confined to `ρ`, is not read
+off `lo`.
+
+Entry 6 of the log of C7 has `hi` a platform capability.  It is confined to
+every capture binder of the entry's context, so the premise holds at every
+root.
+
+The first entry of the log of `NestSrc` separates the roots.  The program is
+`λ(g : ⊤). λ(f : ⊤ ^ {any}). let h = ((λ(u : ⊤ ^ {f}). u) : A) in f`, where
+the ascription `A` reads its `any`s as the root of `f`'s body.  The entry is
+`{u} <: {κ_f}` under the scope of `u`, with `κ_f` that root.  The premise
+holds at `κ_f`, and fails at the root of `g`'s body, which is older.  The
+parameter `u` lives inside the scope of `u`, so it is not confined to `κ_f` as
+written.  It resolves through `f` to the capture binder of `f`, which is. -/
+
+/-- The capture binders of a signature, newest first. -/
+def capVars : (s : Sig) → List (BVar s .cap)
+  | [] => []
+  | .cap :: s => .here :: (capVars s).map .there
+  | .var :: s => (capVars s).map .there
+
+/-- The capture binder at de Bruijn depth `d`, as an atom, or the universal
+root when there is none. -/
+def cvarAt (s : Sig) (d : Nat) : FCdot.CapAtom s :=
+  match (capVars s).find? (fun κ => κ.depth == d) with
+  | some κ => .cvar κ
+  | none => .top
+
+theorem C7_log_drop : (compileLog {} Λc πc C7src).drop 6 ≠ [] := by decide +kernel
+
+/-- Entry 6 of the log of C7. -/
+def C7entry : LevelStep := ((compileLog {} Λc πc C7src).drop 6).head C7_log_drop
+
+theorem C7entry_mem : C7entry ∈ compileLog {} Λc πc C7src :=
+  List.mem_of_mem_drop (List.head_mem _)
+
+/-- The root the entry is read against: the capture binder at depth 7. -/
+def C7root : FCdot.CapAtom C7entry.sig := cvarAt C7entry.sig 7
+
+/-- It is a scope root, not the universal one. -/
+theorem C7root_isRoot : C7entry.ctx.translate.IsRoot C7root ∧ C7root ≠ .top := by
+  decide +kernel
+
+/-- `hi` is confined to every capture binder of the context. -/
+theorem C7entry_hi_all :
+    ∀ κ ∈ capVars C7entry.sig, C7entry.ctx.translate.Confined C7entry.hi.translate (.cvar κ) := by
+  decide +kernel
+
+/-- `lo` as written is not confined to the root. -/
+theorem C7entry_lo_not : ¬ C7entry.ctx.translate.Confined C7entry.lo.translate C7root := by
+  decide +kernel
+
+/-- The premise, at every depth. -/
+theorem C7entry_premise :
+    ∀ m, C7entry.ctx.translate.Confined
+      (C7entry.ctx.translate.caps m C7entry.hi.translate) C7root := by
+  intro m
+  rw [caps_self _ (by decide +kernel) m]
+  decide +kernel
+
+/-- **Level safety at entry 6 of C7.** -/
+theorem C7entry_lvl :
+    ∀ n, C7entry.ctx.translate.Confined
+      (C7entry.ctx.translate.caps n C7entry.lo.translate) C7root :=
+  compile_lvl_safety_get C7_compiles C7entry C7entry_mem C7root C7entry_premise
+
+/-- A callback ascribed at the root of an inner scope. -/
+def NestSrc : STm :=
+  cc% λ(g : ⊤). λ(f : ⊤ ^ {any}).
+        let h = ((λ(u : ⊤ ^ {f}). u) : (∀(u : ⊤ ^ {f}) ⊤ ^ {any}) ^ {any}) in f
+
+theorem Nest_compiles : (compile {} Λc πc NestSrc).isOk = true := by decide +kernel
+
+theorem Nest_log_ne : compileLog {} Λc πc NestSrc ≠ [] := by decide +kernel
+
+/-- The first entry of the log of `NestSrc`. -/
+def NestEntry : LevelStep := (compileLog {} Λc πc NestSrc).head Nest_log_ne
+
+theorem NestEntry_mem : NestEntry ∈ compileLog {} Λc πc NestSrc := List.head_mem _
+
+/-- `lo` is the parameter `u` and `hi` is the root of `f`'s body, each a
+single atom. -/
+example : NestEntry.lo.length = 1 ∧ NestEntry.hi.length = 1 ∧
+    NestEntry.hi.translate = [cvarAt NestEntry.sig 5] := by
+  decide +kernel
+
+/-- The root of `f`'s body, at depth 5. -/
+def NestRoot : FCdot.CapAtom NestEntry.sig := cvarAt NestEntry.sig 5
+
+/-- The root of `g`'s body, at depth 8. -/
+def NestOuter : FCdot.CapAtom NestEntry.sig := cvarAt NestEntry.sig 8
+
+/-- Both are scope roots, and neither is the universal one. -/
+theorem Nest_roots :
+    NestEntry.ctx.translate.IsRoot NestRoot ∧ NestRoot ≠ .top ∧
+      NestEntry.ctx.translate.IsRoot NestOuter ∧ NestOuter ≠ .top := by
+  decide +kernel
+
+/-- The premise at the root of `f`'s body, at every depth. -/
+theorem NestEntry_premise :
+    ∀ m, NestEntry.ctx.translate.Confined
+      (NestEntry.ctx.translate.caps m NestEntry.hi.translate) NestRoot := by
+  intro m
+  rw [caps_self _ (by decide +kernel) m]
+  decide +kernel
+
+/-- The premise fails at the root of `g`'s body. -/
+theorem NestEntry_separates :
+    ¬ ∀ m, NestEntry.ctx.translate.Confined
+      (NestEntry.ctx.translate.caps m NestEntry.hi.translate) NestOuter := by
+  intro h
+  have h0 := h 0
+  rw [← capsS_eq] at h0
+  revert h0
+  decide +kernel
+
+/-- `lo` as written is not confined to the root of `f`'s body. -/
+theorem NestEntry_lo_not :
+    ¬ NestEntry.ctx.translate.Confined NestEntry.lo.translate NestRoot := by
+  decide +kernel
+
+/-- **Level safety at the first entry of `NestSrc`.** -/
+theorem NestEntry_lvl :
+    ∀ n, NestEntry.ctx.translate.Confined
+      (NestEntry.ctx.translate.caps n NestEntry.lo.translate) NestRoot :=
+  compile_lvl_safety_get Nest_compiles NestEntry NestEntry_mem NestRoot NestEntry_premise
 
 /-! ## The run tests
 

@@ -1083,7 +1083,7 @@ theorem resolveTy_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {P : Captur
   by_cases hok : T''.anyOk = true
   · simp only [hok, if_true, Option.pure_def, Option.some.injEq] at h
     subst h
-    exact Captures.DotMNF.Ty.noAny_expand T'' P hok hP
+    exact Captures.DotMNF.Ty.noAny_expand T'' P hP
   · simp [hok] at h
 
 /-- A resolved domain holds no `any`. -/
@@ -1095,8 +1095,7 @@ theorem resolveDom_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {P : Captu
   by_cases hok : (CaptureSet.noAny T''.captureSet && T''.anyOk) = true
   · simp only [hok, if_true, Option.pure_def, Option.some.injEq] at h
     subst h
-    simp only [Bool.and_eq_true] at hok
-    exact Captures.DotMNF.Ty.noAny_expand T'' P hok.2 hP
+    exact Captures.DotMNF.Ty.noAny_expand T'' P hP
   · simp [hok] at h
 
 /-- A resolved self annotation and its set hold no `any`. -/
@@ -1113,7 +1112,7 @@ theorem resolveSelf_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {P : Capt
       cases U with
       | none => rfl
       | some C => exact CaptureSet.noAny_expand hP C
-    refine ⟨Captures.DotMNF.Shape.noAny_expand Sh _ hok (CaptureSet.noAny_self hU), ?_⟩
+    refine ⟨Captures.DotMNF.Shape.noAny_expand Sh _ (CaptureSet.noAny_self hU), ?_⟩
     cases U with
     | none => rfl
     | some C => exact CaptureSet.noAny_expand hP C

@@ -1611,9 +1611,8 @@ notion, so the source's scope safety is stated through the translation.
 It is store free, and it asks for no context predicate beyond `Ctx.Wf`,
 which `Subcap.translate_typed` already asks for.
 
-It is not a store-carrying `lvl_safety` because over a typed store the
-context is root free, so the store-carrying form is vacuous
-(`FCdot.Store.Typed.rootFree`), and the content of the sentence lives in
+It reads no store.  A typed store's context is root free
+(`FCdot.Store.Typed.rootFree`), so the content of the sentence lives in
 rooted contexts, which no store types. -/
 
 theorem source_lvl_safety {s : FCdot.Sig} {Γ : Ctx s} {C D : CaptureSet s} (hwf : Γ.Wf)
@@ -1621,6 +1620,147 @@ theorem source_lvl_safety {s : FCdot.Sig} {Γ : Ctx s} {C D : CaptureSet s} (hwf
     (hD : ∀ m, Γ.translate.Confined (Γ.translate.caps m D.translate) r) :
     ∀ n, Γ.translate.Confined (Γ.translate.caps n C.translate) r :=
   FCdot.level_inversion (d.translate_typed hwf) (Subcap.translate_memberFree hd) hD
+
+/-! ## Contexts where every subcapturing is member free
+
+The three rules `Subcap.MemberFree` excludes need a context that can supply
+them.  `inst` reads an instance binder.  `selLower` and `selUpper` read a
+variable typed at a capture member declaration.  A context with no instance
+binder, whose variables are declared at shapes with no member declaration on
+their spine, supplies neither.  The second half needs an inversion: the
+shapes a variable can be typed at, through `sub`, `recE`, `recI` and
+`andI`, are the shapes subtyping reaches from its declared shape, and
+subtyping out of such a shape never reaches a member declaration.  The one
+rule that could, `<:-Sel`, needs a variable typed at a type member, which is
+the same inversion again.  So in such a context every subcapturing is member
+free, and `source_lvl_safety` covers every derivation. -/
+
+/-- A shape with no member declaration on its spine: no type member, no
+capture member, no selection and no `⊥`, looking through `μ` and `∧`. -/
+def Shape.plain : Shape s → Bool
+  | .top => true
+  | .bot => false
+  | .typ _ _ _ => false
+  | .fld _ _ => true
+  | .cap _ _ _ => false
+  | .sel _ _ => false
+  | .mu S => S.plain
+  | .all _ _ => true
+  | .and S T => S.plain && T.plain
+  | .box _ => true
+
+/-- Renaming keeps every former, so it keeps plainness. -/
+theorem Shape.plain_rename : ∀ {s1 s2 : Sig} (S : Shape s1) (ρ : Rename s1 s2),
+    (S.rename ρ).plain = S.plain
+  | _, _, .top, _ => rfl
+  | _, _, .bot, _ => rfl
+  | _, _, .typ _ _ _, _ => rfl
+  | _, _, .fld _ _, _ => rfl
+  | _, _, .cap _ _ _, _ => rfl
+  | _, _, .sel _ _, _ => rfl
+  | _, _, .mu S, ρ => by
+      show (S.rename ρ.lift).plain = S.plain
+      exact Shape.plain_rename S ρ.lift
+  | _, _, .all _ _, _ => rfl
+  | _, _, .and S T, ρ => by
+      show ((S.rename ρ).plain && (T.rename ρ).plain) = (S.plain && T.plain)
+      rw [Shape.plain_rename S ρ, Shape.plain_rename T ρ]
+  | _, _, .box _, _ => rfl
+
+/-- Every variable of the context is declared at a plain shape. -/
+def Ctx.Plain (Γ : Ctx s) : Prop := ∀ x : BVar s .var, (Γ.lookup x).shape.plain = true
+
+/-- The context has no instance binder. -/
+def Ctx.NoInst (Γ : Ctx s) : Prop := ∀ (κ : BVar s .cap) (C : CaptureSet s), ¬ Γ.InstOf κ C
+
+mutual
+
+/-- In a plain context, subtyping out of a plain shape reaches only plain
+shapes. -/
+theorem SubShape.plain {s : Sig} {Γ : Ctx s} {S T : Shape s} (h : SubShape Γ S T)
+    (hΓ : Γ.Plain) (hS : S.plain = true) : T.plain = true := by
+  match h with
+  | .top => rfl
+  | .bot => exact absurd hS (by simp [Shape.plain])
+  | .refl => exact hS
+  | .trans h₁ h₂ => exact SubShape.plain h₂ hΓ (SubShape.plain h₁ hΓ hS)
+  | .and1 => simp [Shape.plain] at hS; exact hS.1
+  | .and2 => simp [Shape.plain] at hS; exact hS.2
+  | .and h₁ h₂ =>
+      simp only [Shape.plain, Bool.and_eq_true]
+      exact ⟨SubShape.plain h₁ hΓ hS, SubShape.plain h₂ hΓ hS⟩
+  | .fld _ => rfl
+  | .typ _ _ => exact absurd hS (by simp [Shape.plain])
+  | .cap _ _ => exact absurd hS (by simp [Shape.plain])
+  | .box _ => rfl
+  | .selUpper _ => exact absurd hS (by simp [Shape.plain])
+  | .selLower hx =>
+      have h1 := HasTy.plain_path hx hΓ rfl rfl
+      exact absurd h1 (by simp [Shape.plain])
+  | .all _ _ => rfl
+termination_by sizeOf h
+
+/-- In a plain context, a variable is typed only at plain shapes. -/
+theorem HasTy.plain_path {s : Sig} {Γ : Ctx s} {U : CaptureSet s} {t : Tm s} {E : ETy s}
+    (h : HasTy U Γ t E) (hΓ : Γ.Plain) {x : BVar s .var} {S : Shape s} {C : CaptureSet s}
+    (ht : t = .path (.var x)) (hE : E = .ty (S ^ C)) : S.plain = true := by
+  match h with
+  | .var =>
+      cases ht; cases hE
+      exact hΓ _
+  | .lam _ _ => cases ht
+  | .app _ _ => cases ht
+  | .obj _ _ => cases ht
+  | .box _ => cases ht
+  | .proj _ => cases ht
+  | .let _ _ _ => cases ht
+  | .unbox _ _ => cases ht
+  | .letex _ _ _ => cases ht
+  | .recI hx _ =>
+      have h1 := HasTy.plain_path hx hΓ rfl rfl
+      cases ht; cases hE
+      show (Shape.mu _).plain = true
+      simp only [Shape.plain]
+      rw [Shape.substVar, Shape.plain_rename] at h1
+      exact h1
+  | .recE hx _ =>
+      have h1 := HasTy.plain_path hx hΓ rfl rfl
+      cases ht; cases hE
+      rw [Shape.substVar, Shape.plain_rename]
+      exact h1
+  | .andI h₁ h₂ =>
+      have e1 := HasTy.plain_path h₁ hΓ rfl rfl
+      have e2 := HasTy.plain_path h₂ hΓ rfl rfl
+      cases ht; cases hE
+      simp only [Shape.plain, Bool.and_eq_true]
+      exact ⟨e1, e2⟩
+  | .sub h' (.ty (.capt hsub _)) _ =>
+      have h1 := SubShape.plain hsub hΓ (HasTy.plain_path h' hΓ ht rfl)
+      cases hE
+      exact h1
+  | .sub _ (.pack _ _) _ => cases hE
+  | .sub _ (.exist _ _) _ => cases hE
+termination_by sizeOf h
+decreasing_by
+  all_goals first
+    | decreasing_tactic
+    | (simp only [HasTy.sub.sizeOf_spec, ESub.ty.sizeOf_spec, Sub.capt.sizeOf_spec]; omega)
+
+end
+
+/-- **Every subcapturing is member free** in a plain context with no instance
+binder. -/
+theorem Subcap.memberFree_of_plain {s : Sig} {Γ : Ctx s} (hΓ : Γ.Plain) (hI : Γ.NoInst) :
+    ∀ {C D : CaptureSet s} (d : Subcap Γ C D), d.MemberFree
+  | _, _, .refl => .refl
+  | _, _, .trans d e => .trans (memberFree_of_plain hΓ hI d) (memberFree_of_plain hΓ hI e)
+  | _, _, .elem h => .elem h
+  | _, _, .union d e => .union (memberFree_of_plain hΓ hI d) (memberFree_of_plain hΓ hI e)
+  | _, _, .var => .var
+  | _, _, .inst h => absurd h (hI _ _)
+  | _, _, .level h₁ h₂ => .level h₁ h₂
+  | _, _, .selLower hx => absurd (HasTy.plain_path hx hΓ rfl rfl) (by simp [Shape.plain])
+  | _, _, .selUpper hx => absurd (HasTy.plain_path hx hΓ rfl rfl) (by simp [Shape.plain])
 
 end DotMNF
 
