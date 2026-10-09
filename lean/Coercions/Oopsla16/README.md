@@ -35,10 +35,13 @@ The safety proofs are in `../FCdotR` and conclude in namespace `Oopsla16`.
   each location its recorded type.  The theorems also ask that the object each location was typed
   from calls methods on variables only and annotates every method.
 - `stp_consistent`: over any store, subtyping in the empty context derives no `⊤ <: ⊥`.
-- `PackingCounterexample.packing_is_unsound`: adding packing to `htp` breaks safety.  Over a
-  two-object store a closed program is typed at `⊤`, is not an answer, and cannot step.
-  `coq/oopsla16/packing` proves the same in the reference's own definitions.
-- `Stp.refl`: subtyping is reflexive, by structural recursion on the type.
+- `PackingCounterexample.packing_is_unsound`: adding packing to `htp` breaks safety.  The Lean
+  statement is about a subsystem of the extended calculus that repeats only the rules the
+  construction uses.  Over a two-object store a closed program is typed at `⊤` in it, is not an
+  answer, and cannot step.  `coq/oopsla16/packing` proves the same in the reference's own
+  definitions.
+- `Stp.refl`: subtyping is reflexive at every store, context and type, by structural recursion on
+  the type.
 
 ## Where it departs from `dot.v`
 
@@ -89,4 +92,4 @@ described in [`coq/oopsla16`](../../../coq/oopsla16/README.md).
 | `Typing` | the reference's 32 typing rules, under its names |
 | `Lemmas` | reflexivity of subtyping |
 | `Examples` | example derivations, among them recursive subtyping through a method whose result type mentions the self |
-| `PackingCounterexample` | packing in `htp` is unsound: a well-typed program that is stuck |
+| `PackingCounterexample` | packing in `htp` is unsound: in a subsystem of the extended calculus, a well-typed program that is stuck |

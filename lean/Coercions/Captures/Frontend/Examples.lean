@@ -1343,8 +1343,8 @@ theorem B1_not_alg : ¬ Alg ⟨_, B1Ctx, .var .here (.fld la (.top ^ [])) (.fld 
 `x0 : {C^ : {k1}..{k1}}`, each `xk` at two copies of
 `{C^ : {x(k-1).C}..{x(k-1).C}}`, and `f` at `{x12.C}`.  Each step through an
 upper bound tries both members.  Ascribed at `{k1}`, the first member of
-every link leads to the answer.  Ascribed at `{k2}`, the goal is false, and
-the typer tries both members at every link until the tank runs out. -/
+every link leads to the answer.  Ascribed at `{k2}`, the typer tries both
+members at every link until the tank runs out. -/
 
 /-- A link with two equal capture members. -/
 def doubledLink {s : Sig} : Shape (s,x) := .and aliasLink aliasLink

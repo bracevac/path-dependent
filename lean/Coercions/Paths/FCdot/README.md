@@ -31,7 +31,7 @@ evidence use the forest: path evidence `Γ ⊢ᵖ P : T` and alias evidence `Γ 
 | `Erasure` | erasure into the shared runtime, unchanged |
 | `ErasureMetatheory` | forward and backward simulation, `erase_step`, `erase_reflect` |
 | `CanonicalForms` | canonical forms for evidence, atoms and paths, `preservation'`, `erase_reflect'` |
-| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, block names are defined |
+| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, `Store.Typed.realized` (a block name of a store binder reads its literal's witness, `⊤` when the literal declares none) |
 | `Progress` | `progress`, `not_stuck` |
 | `Examples` | E1 to E8 ported to paths, and the path examples Y1 to Y9 |
 
@@ -48,8 +48,10 @@ evidence use the forest: path evidence `Γ ⊢ᵖ P : T` and alias evidence `Γ 
 ## How paths are typed
 
 A path extends by one field only through a stable presence `∋ᵛ a` (`PathCo.HasType.sel`). A field
-that holds a computation gives `∋ a` and no step, so a name below it stays abstract. A singleton is
-introduced at a path or an atom (`PathCo.sngl`, `Atom.sngl`), never by widening a type. So over a
+that holds a computation gives `∋ a` and no step, so a name below it stays abstract in the
+literal's own type. A binder assumed at the singleton of that path, with a stable presence of its
+own, can still type the path (`PathCo.HasType.alias`).
+A singleton is introduced at a path or an atom (`PathCo.sngl`, `Atom.sngl`), never by widening a type. So over a
 store, alias evidence relates a path only to itself (`alias_eq`).
 
 A field is stable when its body is an object literal under casts that use no `member` evidence
@@ -60,20 +62,31 @@ store. The checker rejects it.
 
 ## Main theorems
 
-- `le_canon`, `eq_canon`, `has_canon`, `mor_canon`, `atom_canon`: typed normal forms of closed evidence.
-- `Store.Typed.pathView`: over a typed store, typed path evidence has a typed view of its object.
+- `le_canon`, `has_canon`, `mor_canon`, `atom_canon`: over a typed store, typed normal forms of
+  closed evidence.
+- `eq_canon`: over a typed store, closed equality evidence relates two types with one resolution.
+- `Store.Typed.pathView`: over a typed store, typed path evidence has a view of its object. The view
+  is typed at every object type that the path's type resolves to.
 - `alias_eq`: over a typed store, `Γ ⊢ α : p ≋ q` implies `p = q`.
-- `EqCo.ofAlias_derivable`: aliased paths have equal members wherever a member is defined.
 - `le_canon_ne`: table-only evidence normalizes with no hypothesis on the store.
-- `Store.Typed.fieldCo`: a stable field of a node has a typed coercion into `p ∙ a`.
+- `Store.Typed.fieldCo`: over a typed store, a stable field of a node has a typed coercion into `p ∙ a`.
 - `Store.Typed.no_top_le_bot`, `closed_le_shapes`: over a typed store there is no closed
   `⊤ ≤ ⊥`, and closed inclusions relate compatible shapes.
 - `checkTm_iff`: the checker accepts a term exactly when it is typed.
-- `preservation'`, `progress`, `not_stuck`: type safety of the machine.
-- `erase_step`, `erase_reflect'`: the machine and the runtime simulate each other.
-- `reachable_consistent`: along a run, the store stays typed and consistent.
+- `preservation'`, `progress`, `not_stuck`: type safety of the machine, for typed states.
+- `erase_step`, `erase_reflect'`: a machine step erases to a runtime step or to a cast shuffle. Over
+  a typed store and a typed term, a runtime step is realized by a run of the machine.
+- `reachable_consistent`: from a typed state, along a run, the store stays typed and has no closed
+  `⊤ ≤ ⊥`. Its third conjunct, that every block name is defined, holds in every typed store, because
+  a label the literal does not declare reads `⊤`.
 
-Each `_of` twin (`le_canon_of` and so on) assumes `FieldFormsHold`, which `fieldFormsHold` proves for every typed store.
+`EqCo.ofAlias_derivable` is a corollary of `alias_eq` and holds trivially. Over a typed store aliased
+paths are equal, so `EqCo.refl` closes it, and its definedness premise is unused.
+
+The canonical-form twins (`le_canon_of`, `eq_canon_of`, `alias_eq_of`, `closed_le_shapes_of`) assume
+`σ.FieldForms Γ`. The machine twins (`preservation'_of`, `progress_of`, `not_stuck_of`,
+`reachable_consistent_of`) assume `FieldFormsHold`. `Store.Typed.fieldForms` and `fieldFormsHold`
+prove them for every typed store.
 
 ## Base statements whose form changed
 

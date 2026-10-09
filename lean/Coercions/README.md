@@ -19,9 +19,10 @@ type safety back to the source.
 **`DotMNF/`** is WadlerFest DOT in monadic normal form: objects with type and
 term members, recursive self types, unrestricted intersections, type
 selections on variables, and bad bounds admitted.  The body of a recursive
-self type is still restricted to declaration shapes.  It has subtyping, term
+self type is restricted to declaration shapes.  It has subtyping, term
 and definition typing, a store machine, and an erasure into the runtime.
-It has no metatheory of its own.
+It has no safety proof of its own.  Its metatheory is renaming, the erasure
+simulation, and a correspondence with the annotated WadlerFest rules.
 
 **`FCdot/`** is the target.  Types are `⊤`, `⊥`, block names `x ∙ ℓ`,
 dependent functions, and object types, i.e. telescopes of propositions
@@ -94,10 +95,10 @@ and [`FCdotR/README.md`](FCdotR/README.md).
 **`coq/oopsla16/`** at the repository root proves, in the reference's own Coq definitions, that
 packing in `htp` is unsound and what the port's restrictions cost.
 
-Axioms throughout: `propext` and `Quot.sound`.  Neither line contains `sorry`, `axiom`, `partial`
-or `native_decide`.  The main line's examples E1 to E5 and its acceptance test E8 (the refinement
-`x.A ∧ {a : ⊤}` of an abstract type) are decided in the kernel on both sides and have equal
-erasures.
+Axioms throughout both lines: `propext` and `Quot.sound`.  Neither line contains `sorry`, `axiom`,
+`partial` or `native_decide`.  The main line's examples E1 to E5 and its acceptance test E8 (the
+refinement `x.A ∧ {a : ⊤}` of an abstract type) have equal erasures on the two sides.  The
+target side is decided in the kernel.  The source side is a derivation built by hand.
 
 ## Extensions
 
@@ -105,9 +106,11 @@ Each extension copies a base tree, named in its `BASE` file, into a library of i
 every theorem of that base, and is a default target.
 
 **`Captures/`** models Scala 3's capture checking the DOT way.  A type is a shape with a capture
-set, `S ^ C`, and a capture parameter is a capture member of an object.  The target proves that a
-run reads only what its use set predicts (`capture_prediction`) and that a capability left out of
-the use set is never read (`effect_safety`).  The source inherits both as `dot_capture_prediction`
+set, `S ^ C`, and a capture parameter is a capture member of an object.  The target proves that along a
+run from a typed state the use set only shrinks, up to renaming (`capture_prediction`), that the
+root a state reads lies in its use set (`inspects_covered`), and, from the two, that a capability
+that is not a root of the use set is never read (`effect_safety`, which also assumes a typed
+store and has content at a rigid or star capability binder only).  The source inherits the first and the last over a platform as `dot_capture_prediction`
 and `dot_effect_safety`.  Library `Captures`, see [Captures/README.md](Captures/README.md).  Its front end, the library
 `CapturesFrontend` in [Captures/Frontend/](Captures/Frontend/README.md), writes, types, checks and
 runs programs in the paper's notation, and its typer inserts the boxes and unboxings a program
@@ -116,9 +119,11 @@ is complete up to its recursion limit.
 
 **`CapturesCC/`** models capture checking the way the Scala 3 compiler does it, with scopes, levels
 and fresh capabilities, as a copy of `Captures/`.  `source_lvl_safety` says that
-source subcapturing that reads no capture bound never lowers a capability's level, and its instance
-`W5_no_escape` rules out the `withFile` escape.  Every prediction theorem of
-`Captures/` still holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).  Its front end, the library
+in a well-formed context, if a source subcapturing `C <: D` reads no capture bound and every
+resolution of `D` is confined to a root `r`, then so is every resolution of `C`.  Its instance `W5_no_escape` says that no such subcapturing
+puts `{f}` below the platform capability in the `withFile` callback's context.  It says nothing
+about a derivation that reads a capture bound.  Every prediction theorem of
+`Captures/` holds.  Library `CapturesCC`, see [CapturesCC/README.md](CapturesCC/README.md).  Its front end, the library
 `CapturesCCFrontend` in [CapturesCC/Frontend/](CapturesCC/Frontend/README.md), writes, types,
 checks and runs programs in the paper's notation, and rejects the `withFile` escape with a
 certificate at the goal its typer reached.  The typer follows the subtype checker, the
@@ -146,7 +151,7 @@ checker of the Scala 3 compiler and is complete up to its recursion limit.
 ## Earlier targets, standalone
 
 **`FCsub/`** is System F-sub with explicit coercions, telescope-constrained
-quantifiers, and guarded recursive projections, with preservation, progress,
+quantifiers, and head-contractive recursive projections, with preservation, progress,
 and a complete checker.
 
 **`ManySortedFC/`** is the static layer of a two-sorted target with type and

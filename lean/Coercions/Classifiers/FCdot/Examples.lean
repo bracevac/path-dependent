@@ -3586,14 +3586,15 @@ not, so the canonical form kinds such a binder at the first kind and not at
 the second: an unwritten classifier is the root one, and the strict reading
 keeps it out of `only Control`.
 
-No evidence term derives the first fact, and the gap is forced.  `kcls`
+The classifier rule and the kind rule do not derive the first fact, and the gap is by design.  `kcls`
 reads a classifier a binder *declares*, and this binder declares none.
 `kproj` asks that the target kind admit every classifier, which
 `except ThreadLocal` does not.  A rule that read the root classifier off a
 binder with no declaration would not survive `Ctx.Ren.instC`, which reads
 such a binder as an instance of an arbitrary set: the fact below is true
 here and false in the image of that map, so the kinding family would lose
-its renaming lemma.  Both halves are machine checked below. -/
+its renaming lemma.  The two rejections are machine checked below.  No theorem
+excludes the other rules. -/
 
 /-- `κ_tl ⊑ᶜ cls ThreadLocal, κ_p ⊚`: a classified capability, then a rigid
 binder with no declared classifier. -/
@@ -3628,8 +3629,8 @@ theorem K6x_not_kindLe : ¬ K6Ctx.KindLe [K6p] (Cls.only Cls.Control) := by
   revert hc
   decide
 
-/-- The evidence family stops short of the first fact: the classifier rule
-rejects the binder, because it declares nothing. -/
+/-- The classifier rule does not derive the first fact: it rejects the binder,
+because the binder declares nothing. -/
 theorem K6x_kcls_reject :
     checkKindCo K6Ctx (.kcls K6p) [K6p] (Cls.except Cls.ThreadLocal) = false := by decide
 
@@ -3848,7 +3849,9 @@ theorem E1_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
     DotMNF.Examples.E1Plat.targetStore_typed E1_initial_kindLe run hin hσ'
 
 /-- **The run never reads `κ_io`.**  `only[Control]` does not contain `IO`, so
-no root of a read variable is classified `IO`. -/
+no root of a read variable is classified `IO`.  The variable this program reads
+holds a closure with the empty capture set, so by inspection of the term (no
+theorem states it) it has no root and the statement holds for want of one. -/
 theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E1TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -3860,7 +3863,10 @@ theorem E1_never_io {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var
 
 /-- **E1 at the source**, through `DotMNF.dot_classified_effect_safety'`: the
 source program, its own kinding evidence, and any source run.  The matched
-target state reads only capabilities `only[Control]` admits. -/
+target state reads only capabilities `only[Control]` admits.  In the runs of this
+program the variable read holds the `Try.apply` closure, whose capture set is
+empty, so by inspection of the term (no theorem states it) the conclusion holds
+for want of a root. -/
 theorem E1_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨DotMNF.Examples.E1Plat.store, .nil, DotMNF.Examples.E1tm⟩ : DotMNF.State ([],c,c)) st)
@@ -4060,10 +4066,9 @@ theorem E2_kproj_projRoot_accept :
 /-! ### The thread-local argument is refused
 
 A body charged to the thread-local capability cannot be passed: the kinding
-premise of `sc-proj` fails.  The checker rejects both rules that could conclude
-it, and no source derivation exists at all, because the semantics of kinding
-refutes it and every source derivation translates into semantics through
-`CapKind.translate_typed`. -/
+premise of `sc-proj` fails.  No source derivation
+exists, because the semantics of kinding refutes it and every source derivation
+translates into semantics through `CapKind.translate_typed`. -/
 
 theorem E2_caps_tl (n : Nat) :
     E2PlatIO.ctx.translate.caps n [CapAtom.cvar E2Ttl] = [CapAtom.cvar E2Ttl] := by
@@ -4080,7 +4085,8 @@ theorem E2_tl_not_kindLe :
   revert hc
   decide
 
-/-- **No source derivation kinds it either.**  `CapKind.translate_typed`
+/-- **No source derivation kinds the thread-local capability `E2tl` of E2's
+platform at `except[ThreadLocal]`.**  `CapKind.translate_typed`
 reads a translated derivation as the semantics, and the semantics is
 refuted. -/
 theorem E2_tl_not_capKind
@@ -4252,7 +4258,9 @@ theorem E2_target_effect_safety {s' : Sig} {st' : State s'} {Γ' : Ctx s'}
     (DotMNF.Platform.initial_typed E2PlatIO DotMNF.Examples.E2_typed)
     E2PlatIO.targetStore_typed E2_initial_kindLe run hin hσ'
 
-/-- **The run never reads a thread-local capability.** -/
+/-- **The run never reads a thread-local capability.**  The variable this program
+reads holds a closure with the empty capture set, so by inspection of the term
+(no theorem states it) it has no root and the statement holds for want of one. -/
 theorem E2_never_tl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -4263,7 +4271,8 @@ theorem E2_never_tl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var
   exact absurd hc (by decide)
 
 /-- And never a control capability, because `Control` lies below
-`ThreadLocal`. -/
+`ThreadLocal`.  As for `E2_never_tl`, the variable read has no root, so this
+holds for want of a root. -/
 theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : E2TgtInit ⟶* st') (hin : st'.inspects = some x)
     (hσ' : Store.Typed st'.σ Γ') (a : CapAtom s') (ha : Γ'.Root a [CapAtom.var x]) :
@@ -4275,7 +4284,10 @@ theorem E2_never_ctl {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .va
 
 /-- **E2 at the source**, through `DotMNF.dot_classified_effect_safety'`:
 the source program, its own kinding evidence, and any source run.  The
-matched target state reads only capabilities `except[ThreadLocal]` admits. -/
+matched target state reads only capabilities `except[ThreadLocal]` admits.  In the
+runs of this program the variable read holds the `Future.apply` closure, whose
+capture set is empty, so by inspection of the term (no theorem states it) the
+conclusion holds for want of a root. -/
 theorem E2_effect_safety {s : Sig} {st : DotMNF.State s}
     (run : DotMNF.Steps
       (⟨E2PlatIO.store, .nil, DotMNF.Examples.E2tm⟩ : DotMNF.State ([],c,c,c)) st)
@@ -4471,7 +4483,11 @@ theorem E3_capkI_mor :
 
 /-- **The kinding entry, canonically.**  `mor_canon` normalizes the morphism to
 an entry list typed between the two telescopes.  The `kindCle` case is the one
-that runs here, and the semantic step it carries is `kindCle_semantic`. -/
+that `mor_canon` would run, and the semantic step it carries is `kindCle_semantic`.
+This statement holds trivially.  It assumes a store typing `E3CtxB.translate`,
+which binds its term variables opaque, while a typed store binds them
+transparent, so no such store exists (no theorem of the tree states this) and
+the case does not run here. -/
 theorem E3_capkI_mor_canon {σ : Store ([],c,c,x,x,x)}
     (hσ : Store.Typed σ E3CtxB.translate) :
     MorConcl σ E3CtxB.translate (DotMNF.Shape.cap lC E3aSet E3aSet).tel E3capkIMor

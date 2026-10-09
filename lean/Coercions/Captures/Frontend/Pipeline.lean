@@ -16,8 +16,9 @@ a prefix of capture binders, one per capability the program may use.  Box
 inference may insert `□ x` and `C ⊸ x`, so the typed term is not the resolved
 one.  `Compiled` holds the elaborated term, its use set, its type, the
 derivation about its erasure and the proof that its skeleton is that of the
-resolved term.  So the elaborated program is the written one up to what box
-inference adds.
+resolved term.  `ATm.skel` forgets annotations, ascriptions, boxes and
+unboxings, and inlines a `let` of a variable.  So the check says that the
+elaborated program has the skeleton of the resolved one.
 
 The typer types under `platformCtx`.  `platformCtx_eq` equates it with the
 calculus's `Platform.ctx`, and `compile` moves the derivation across, so the
@@ -34,7 +35,7 @@ from the platform's initial store, at a step budget.
 * `compile_checks`.  The target checker accepts the translation of the
   derivation.
 * `compile_uses_checks`.  It accepts the use set evidence as well.
-* `compile_erase`.  The translation erases to the compiled term.
+* `compile_erase`.  The translation erases to the erasure of the compiled term.
 * `compile_faithful`.  The elaborated term has the skeleton of the resolved one.
 * `compile_safe`.  Every state a run reaches is final or has a step.
   `DotMNF.dot_safety` is stated at the empty context only, so this is composed
@@ -43,10 +44,11 @@ from the platform's initial store, at a step budget.
 * `compile_not_stuck`.  No reachable state is stuck.
 * `compile_run_progress`.  The state the driver `run` returns is final or the
   executable machine finds a step from it.
-* `compile_capture_prediction`.  Along any run, the matched target state uses
-  no more than the translated use set the typer found.
+* `compile_capture_prediction`.  Along any run, a target state with the same
+  erasure and a typed store exists, and it uses no more than the translated
+  use set the typer found, renamed along the store extension.
 * `compile_effect_safety`.  A platform capability that is not in the use set
-  is never the root of a variable a run reads.
+  is not a root, in the matched target state, of a variable a run reads.
 * `compile_checks_get` and `compile_effect_safety_get`.  The same for a
   program whose compile succeeds by a decided test.  For a concrete program
   the kernel reduces the compile, so `decide +kernel` closes the premises.
@@ -158,12 +160,14 @@ theorem compile_uses_checks (h : compile b Λ π e = some ⟨a, c⟩) :
       c.uses.translate = true :=
   FCdot.checkCap_complete (c.deriv.translate_uses (Platform.ctx_wf π.plat))
 
-/-- **The translation erases to the compiled term.** -/
+/-- **The translation erases to the erasure of the compiled term.** -/
 theorem compile_erase (h : compile b Λ π e = some ⟨a, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the written one up to box inference.** -/
+/-- **The compiled term has the skeleton of the resolved one.**  This names the
+field `Compiled.skel`.  The check is in `compile`, which builds the record only
+when the skeletons agree. -/
 theorem compile_faithful (h : compile b Λ π e = some ⟨a, c⟩) : ATm.skel c.tm = ATm.skel a :=
   c.skel
 
@@ -200,7 +204,7 @@ theorem compile_run_progress (h : compile b Λ π e = some ⟨a, c⟩) (m : Nat)
     | none => exact absurd hstep (step?_eq_none_iff.mp hs)
 
 /-- **Capture prediction.**  For a run `r` from the platform's initial store, a
-typed target state with the same erasure exists, its store extends the
+target state with the same erasure and a typed store exists, its store extends the
 platform's along a renaming `ρ`, and its use set is below the translation of
 the typer's use set, renamed by `ρ`. -/
 theorem compile_capture_prediction (h : compile b Λ π e = some ⟨a, c⟩) {s : Sig}

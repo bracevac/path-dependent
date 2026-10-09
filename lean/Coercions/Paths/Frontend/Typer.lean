@@ -596,7 +596,8 @@ theorem synthTop?_mono {n m : Nat} {a : ATm []} {c : Cand Ctx.nil a.erase}
   synthInF_mono h hnm
 
 /-- A closed typing that ends unmarked gives the same verdict at every larger
-fuel.  So a rejection that ends unmarked is a rejection by the rules. -/
+fuel.  So a rejection of the typer's search that ends unmarked stays a
+rejection at every larger fuel. -/
 theorem synthTop?_stable {n k : Nat} {a : ATm []} {r : Option (Cand Ctx.nil a.erase)}
     (h : synthTopF n a = (r, ⟨k, false⟩)) (m : Nat) : (synthTopF (n + m) a).1 = r :=
   synthInF_stable h m

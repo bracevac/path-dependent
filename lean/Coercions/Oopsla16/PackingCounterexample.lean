@@ -278,7 +278,8 @@ theorem badTerm_stuck :
   | ST_App1 h => cases h
   | ST_App2 h => cases h
 
-/-- Adding the packing rule to `Htp` breaks type safety.  Over an ordinary
+/-- Adding the packing rule to `Htp` breaks type safety, in the subsystem
+`HasTypeP` that repeats only the rules the construction uses.  Over an ordinary
 store, a closed program is well typed at `⊤`, is not an answer, and cannot
 step, so the progress half of the reference's `type_safety`
 (`dot_soundness.v:1131`) fails.  Every rule but `htp_pack` is a rule of

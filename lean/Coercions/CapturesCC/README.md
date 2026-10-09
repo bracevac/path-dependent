@@ -4,27 +4,40 @@ Scala 3's capture checker tracks in a type `T^{c}` which capabilities a value ma
 compiler reads the universal capability `any` by scope.  Every method body and every class has a
 local root of its own, a capability may only be absorbed by a root whose scope encloses it, a
 parameter `any` is a capture parameter, and a result `fresh` is a new capability for each call.
-This development models that reading on top of DOT and FCdot.  The classic escape
-`withFile[() => File^]("test.txt")(f => () => f)` is then rejected by the compiler's own level
-check, and every subcapturing step is an explicit proof term that erases to nothing.
+This development models that reading on top of DOT and FCdot.  For the classic escape
+`withFile[() => File^]("test.txt")(f => () => f)`, the level premise fails for the callback's
+parameter (`X4_no_level`).  No member-free capture evidence puts the parameter below the universal
+root in the target (`X4_no_escape`) or below the platform capability in the source
+(`W5_no_escape`).  These are statements about one subcapturing question.  The claim that the whole
+program is rejected belongs to `Frontend/`.  Every subcapturing step is an explicit proof term
+that erases to nothing.
 
 The tree is a copy of `../Captures/`, which models capture checking the DOT way, at the commit
 named in `BASE`.  It keeps every theorem of that base.
 
 ## What is proved
 
-- `level_inversion`: capture evidence that reads no capture bound never lets a capability of an
-  inner scope pass for one of an outer scope.  It needs no store.
-- `source_lvl_safety`: the same for source subcapturing, through the translation.
-- `no_ex_le_ty`: an existential answer is never included in a plain type, so a `fresh` result
-  cannot be forgotten into an outer `any`.
-- `two_calls_incomparable`: two calls of a function with a `fresh` result open capabilities that
-  no evidence in the caller relates.
-- `capture_prediction`, `effect_safety`, and `dot_capture_prediction`, `dot_effect_safety` on the
-  source: the capabilities a program may use only shrink, and an unnamed one is never read.
-- `preservation'`, `progress`: type safety of the target.
-- `dot_safety`, `HasTy.translate_typed`, `HasTy.translate_erase`: type safety of the source, by
-  a typed translation that erases to the source program.
+- `level_inversion`: for capture evidence that reads no capture bound, if the resolution of the
+  upper set is confined to an atom `r` at every depth, so is the resolution of the lower set.  So a
+  capability of an inner scope does not pass for one of an outer scope.  It needs no store.
+- `source_lvl_safety`: the same for source subcapturing, through the translation.  It needs a
+  well-formed context.
+- `no_ex_le_ty`: no evidence includes an existential answer in a plain answer.  A `fresh` result
+  is an existential answer.
+- `two_calls_incomparable`: for `freshCell` called twice at a caller with no scope root, no
+  capture evidence puts the first opened binder below the second, and none puts the first cell
+  below the second.  The reverse direction is not stated.
+- `capture_prediction`, `effect_safety`: along a run from a typed state the roots of the use set
+  only shrink.  `effect_safety` also asks for a typed store: a capability that is not a root of the
+  initial use set is not the root of the variable a later state reads, up to the renaming of the
+  store extension.
+- `dot_capture_prediction`, `dot_effect_safety`: the same through the translation, for a closed
+  source program at a plain answer over a platform prefix.  The conclusions are about the matched
+  target state, since the source machine has no use sets.
+- `preservation'`, `progress`: type safety of the target, for a typed state.
+- `dot_safety`: a closed source program at a plain answer never gets stuck.
+  `HasTy.translate_typed` and `HasTy.translate_erase`: a source derivation over a well-formed
+  context translates to a typed target term, and that term erases to the source program.
 
 ## What it leaves out
 

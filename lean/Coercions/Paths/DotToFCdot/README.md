@@ -54,36 +54,50 @@ the two block builders agree, under `Defs.Distinct d`.
 
 ## Main theorems
 
-- `Sub.translate_typed`: a subtyping derivation becomes inclusion evidence between the images.
-- `PathTy.translatePath_typed`: a path typing becomes path evidence at the translated path.
-- `HasTy.translateAtom_typed`: a variable typing becomes an atom of the translated type.
-- `HasTy.translate_typed`: a term typing becomes a typed FCdot term.
-- `DefsTy.blocks_translate`: a literal's source block equals the block of its translation.
+- `Sub.translate_typed`: in a well-formed context (`Ctx.Wf`), a subtyping derivation becomes
+  inclusion evidence between the images.
+- `PathTy.translatePath_typed`: in a well-formed context, a path typing becomes path evidence at
+  the translated path.
+- `HasTy.translateAtom_typed`: in a well-formed context, a variable typing becomes an atom of the
+  translated type.
+- `HasTy.translate_typed`: in a well-formed context, a term typing becomes a typed FCdot term.
+  Every closed derivation meets the condition.
+- `DefsTy.blocks_translate`: for distinct labels, a literal's source block equals the block of its
+  translation.
 - `HasTy.translate_erase`, `coherence`: the image erases to the source term, so two derivations
-  of one term behave the same.
+  of one term have images with one erasure.
 - `dot_safety`, `dot_not_stuck`: a closed well-typed DOT-MNF program never gets stuck.
-- `reachable_consistent`, `reachable_realized`: reachable stores are typed, have no closed
-  `⊤ ≤ ⊥`, and define every block name.
-- `acceptance_fig2`: the FCdot checker accepts the translation of gDOT's Fig. 2.
+- `reachable_consistent`: along a run of a closed translated program, the store is typed and has no
+  closed `⊤ ≤ ⊥`.
+- `acceptance_fig2`: the FCdot checker accepts the translation of a copy of gDOT's Fig. 2 with four
+  changes, at the type `⊤`.
 - `acceptance_gdot3`, `acceptance_gdot3_any`: no closed literal has type `μ(x. {A : ⊤..⊥})`.
 
 Each of these that the base also proves keeps the base's statement.
 
+`reachable_realized` is the third conjunct of the target's `reachable_consistent`: every block
+name of a store binder is defined. It holds trivially in every typed store, because a label that
+the literal does not declare reads `⊤`. It says nothing about runs.
+
 ## The gDOT acceptance tests
 
-`acceptance_fig2` runs the checker on the translation of `Fig2_prog`, a fragment of the Dotty
-compiler from gDOT's Fig. 2. Two nested literals, `types` and `symbols`, name each other through
+`acceptance_fig2` runs the checker on the translation of `Fig2_prog`, a copy of gDOT's Fig. 2, a
+fragment of the Dotty compiler. It has four changes (see `DotMNF/Examples.lean`): `Nat` is the
+stand-in `{n : ⊤}`, `options` is a closed literal, `newTypeTop` returns its argument, and the two
+constructors let-bind their literal. The program is typed at `⊤`. Two nested literals, `types` and `symbols`, name each other through
 the enclosing module. `acceptance_fig1` and its companions check the pDOT variant `Fig1_prog`.
 
 `acceptance_gdot3_any` refutes gDOT's Sec. 3 counterexample for every closed literal. The source
 has no inversion lemmas, so the proof translates the derivation, allocates the literal in a typed
 store, and applies `Store.Typed.no_top_le_bot`. The claim is about literals, not terms:
-`diverging_at_bad_bounds` is a closed term at the bad type, but its run reaches a state that
-steps to itself (`div_reach`, `div_loop`), so it never allocates a literal at that type.
+`diverging_at_bad_bounds` is a closed term at the bad type. Its run reaches a state that steps to
+itself (`div_reach`, `div_loop`). That one run allocates only X2's literal, which does not have the bad type. The development does
+not prove that every run of the term behaves so.
 
 ## Examples
 
 Z1 to Z9 are kernel-decided facts about translated derivations. Z9 shows why the source leaves out
 replacement and non-singleton uses of a singleton variable: no template reads an inclusion out of
-a singleton (`no_le_out_of_sngl`) or rewrites an alias (`alias_template_fixed`). `Pages` checks
+a singleton (`no_le_out_of_sngl`) or rewrites an alias (`alias_template_fixed`). Both are stated
+for a target telescope of one entry. `Pages` checks
 the translations of E1p to E8p, E9, E10, E11, P2e and P3e.

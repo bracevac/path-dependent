@@ -70,6 +70,8 @@ bound, in a capture-member lower bound and under a box.
 - `Subcap.ofVar`: from any typing of `x` at `S ^ C`, `{x} <:ᶜ C`.  It is derived, because `sc-var`
   reads the context instead.
 - `Ty.noAny_expand`: a type that is `AnyOk` expands, at a set with no `any`, to a type with no `any`.
+  The conclusion does not need the premise `AnyOk`.  No theorem states what `AnyOk` secures, that
+  no `any` is read as `{}`.
 - `Ty.expand_of_noAny`, `Ty.expand_rename`: expansion is the identity without `any` and commutes
   with renaming.
 - `S1_typed`: `withFile` with an explicit capture parameter, its result `any` read as `{fs, cp, op}`
