@@ -85,11 +85,12 @@ insertion in `Resolve.lean` restores monadic normal form. -/
 inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
-  /-- `λ(x : T). t`. -/
-  | lam (x : String) (T : SType) (t : STm)
-  /-- `ν(x : T. d)`.  If `T` is written `S ^ U`, `U` is the object's own
-  capture set.  Otherwise the typer chooses it. -/
-  | obj (x : String) (T : SType) (d : SDefs)
+  /-- `λ(x : T). t`, or `λx. t` with the domain left to inference. -/
+  | lam (x : String) (T : Option SType) (t : STm)
+  /-- `ν(x : T. d)`, or `ν(x. d)` with the self shape left to inference.  If
+  `T` is written `S ^ U`, `U` is the object's own capture set.  Otherwise the
+  typer chooses it. -/
+  | obj (x : String) (T : Option SType) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
   /-- `t.a`, direct style. -/
@@ -106,8 +107,8 @@ inductive STm : Type where
 inductive SDefs : Type where
   /-- `{type A = T}`. -/
   | typ (A : String) (T : SType)
-  /-- `{a = t}`. -/
-  | trm (a : String) (t : STm)
+  /-- `{a = t}`, or `{a : T = t}` with a written type. -/
+  | trm (a : String) (T : Option SType) (t : STm)
   /-- `d ∧ e`. -/
   | and (d e : SDefs)
   /-- `{C^ = c}`, a capture definition. -/
@@ -219,8 +220,12 @@ mutual
 def STm.Scoped (K Γ : List String) (e : STm) : Bool :=
   match e with
   | .var x => Γ.contains x
-  | .lam x T t => SType.Scoped K Γ T && STm.Scoped K (x :: Γ) t
-  | .obj x T d => SType.SelfScoped K Γ x T && SDefs.Scoped K (x :: Γ) d
+  | .lam x T t =>
+      (match T with | none => true | some T => SType.Scoped K Γ T)
+        && STm.Scoped K (x :: Γ) t
+  | .obj x T d =>
+      (match T with | none => true | some T => SType.SelfScoped K Γ x T)
+        && SDefs.Scoped K (x :: Γ) d
   | .app t u => STm.Scoped K Γ t && STm.Scoped K Γ u
   | .proj t _ => STm.Scoped K Γ t
   | .«let» x ann t u =>
@@ -234,7 +239,8 @@ termination_by structural e
 def SDefs.Scoped (K Γ : List String) (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.Scoped K Γ T
-  | .trm _ t => STm.Scoped K Γ t
+  | .trm _ T t =>
+      (match T with | none => true | some T => SType.Scoped K Γ T) && STm.Scoped K Γ t
   | .and d e => SDefs.Scoped K Γ d && SDefs.Scoped K Γ e
   | .cap _ c => SCap.Scoped K Γ c
 termination_by structural d
@@ -266,8 +272,10 @@ mutual
 def STm.LabelsIn (Λ : LabelTable) (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ T t => SType.LabelsIn Λ T && STm.LabelsIn Λ t
-  | .obj _ T d => SType.LabelsIn Λ T && SDefs.LabelsIn Λ d
+  | .lam _ T t =>
+      (match T with | none => true | some T => SType.LabelsIn Λ T) && STm.LabelsIn Λ t
+  | .obj _ T d =>
+      (match T with | none => true | some T => SType.LabelsIn Λ T) && SDefs.LabelsIn Λ d
   | .app t u => STm.LabelsIn Λ t && STm.LabelsIn Λ u
   | .proj t a => STm.LabelsIn Λ t && (labelTrm? Λ a).isSome
   | .«let» _ ann t u =>
@@ -281,7 +289,9 @@ termination_by structural e
 def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
   match d with
   | .typ A T => (labelTyp? Λ A).isSome && SType.LabelsIn Λ T
-  | .trm a t => (labelTrm? Λ a).isSome && STm.LabelsIn Λ t
+  | .trm a T t =>
+      (labelTrm? Λ a).isSome &&
+        (match T with | none => true | some T => SType.LabelsIn Λ T) && STm.LabelsIn Λ t
   | .and d e => SDefs.LabelsIn Λ d && SDefs.LabelsIn Λ e
   | .cap C c => (labelTyp? Λ C).isSome && SCap.LabelsIn Λ c
 termination_by structural d
@@ -344,9 +354,12 @@ def STm.AnyPlaced (e : STm) : Bool :=
   match e with
   | .var _ => true
   | .lam _ T t =>
-      (match T with | .capt _ C => SCap.NoAny C | _ => true)
-        && SType.AnyPlaced T && STm.AnyPlaced t
-  | .obj _ T d => SType.AnyPlaced T && SDefs.AnyPlaced d
+      (match T with
+       | none => true
+       | some T => (match T with | .capt _ C => SCap.NoAny C | _ => true) && SType.AnyPlaced T)
+        && STm.AnyPlaced t
+  | .obj _ T d =>
+      (match T with | none => true | some T => SType.AnyPlaced T) && SDefs.AnyPlaced d
   | .app t u => STm.AnyPlaced t && STm.AnyPlaced u
   | .proj t _ => STm.AnyPlaced t
   | .«let» _ ann t u =>
@@ -362,7 +375,8 @@ does a capture definition's value. -/
 def SDefs.AnyPlaced (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.NoAny T
-  | .trm _ t => STm.AnyPlaced t
+  | .trm _ T t =>
+      (match T with | none => true | some T => SType.AnyPlaced T) && STm.AnyPlaced t
   | .and d e => SDefs.AnyPlaced d && SDefs.AnyPlaced e
   | .cap _ c => SCap.NoAny c
 termination_by structural d
@@ -404,8 +418,10 @@ mutual
 def STm.CaptPlaced (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ T t => SType.CaptPlaced T && STm.CaptPlaced t
-  | .obj _ T d => SType.CaptPlaced T && SDefs.CaptPlaced d
+  | .lam _ T t =>
+      (match T with | none => true | some T => SType.CaptPlaced T) && STm.CaptPlaced t
+  | .obj _ T d =>
+      (match T with | none => true | some T => SType.CaptPlaced T) && SDefs.CaptPlaced d
   | .app t u => STm.CaptPlaced t && STm.CaptPlaced u
   | .proj t _ => STm.CaptPlaced t
   | .«let» _ ann t u =>
@@ -419,7 +435,8 @@ termination_by structural e
 def SDefs.CaptPlaced (d : SDefs) : Bool :=
   match d with
   | .typ _ T => SType.CaptPlaced T
-  | .trm _ t => STm.CaptPlaced t
+  | .trm _ T t =>
+      (match T with | none => true | some T => SType.CaptPlaced T) && STm.CaptPlaced t
   | .and d e => SDefs.CaptPlaced d && SDefs.CaptPlaced e
   | .cap _ _ => true
 termination_by structural d
@@ -464,10 +481,10 @@ private def Λ0 : LabelTable := [("a", .trm 0), ("C", .typ 0)]
 
 /-- The sample program. -/
 private def sampleProgram : STm :=
-  .lam "f" .top
+  .lam "f" (some .top)
     (.obj "s"
-      (.and (.fld "a" .top) (.cap "C" [] [SCapAtom.name "f"]))
-      (.and (.trm "a" (.var "f")) (.cap "C" [SCapAtom.name "f"])))
+      (some (.and (.fld "a" .top) (.cap "C" [] [SCapAtom.name "f"])))
+      (.and (.trm "a" none (.var "f")) (.cap "C" [SCapAtom.name "f"])))
 
 example : STm.Scoped [] [] sampleProgram = true := by decide
 example : STm.LabelsIn Λ0 sampleProgram = true := by decide
@@ -477,7 +494,7 @@ example : STm.AnyPlaced sampleProgram = true := by decide
 example : STm.Scoped [] [] (.var "x") = false := by decide
 
 /-- The self binder of `ν` scopes over its own annotation. -/
-example : STm.Scoped [] [] (.obj "s" (.sel "s" "A") (.typ "B" .top)) = true := by decide
+example : STm.Scoped [] [] (.obj "s" (some (.sel "s" "A")) (.typ "B" .top)) = true := by decide
 
 /-- The binder of a `let` does not scope over the `let`'s annotation. -/
 example :
@@ -568,7 +585,7 @@ example :
   decide
 
 /-- `any` at the outer set of a lambda's domain is rejected. -/
-example : STm.AnyPlaced (.lam "x" (.capt .top [.any]) (.var "x")) = false := by decide
+example : STm.AnyPlaced (.lam "x" (some (.capt .top [.any])) (.var "x")) = false := by decide
 
 /-- `any` at the outer set of a `capt` node elsewhere is admitted. -/
 example : SType.AnyPlaced (.capt .top [.any]) = true := by decide
@@ -593,9 +610,11 @@ example : SType.Scoped ["k1"] [] (.capt .top [SCapAtom.name "k1"]) = true := by 
 example : SType.Scoped ["k1"] [] (.capt .top [SCapAtom.sel "k1" "C"]) = false := by decide
 
 /-- The set written on a self annotation is read outside the self binder. -/
-example : STm.Scoped [] [] (.obj "s" (.capt (.fld "a" .top) [SCapAtom.name "s"]) (.trm "a" (.var "s")))
+example : STm.Scoped [] [] (.obj "s" (some (.capt (.fld "a" .top) [SCapAtom.name "s"]))
+    (.trm "a" none (.var "s")))
     = false := by decide
-example : STm.Scoped [] [] (.obj "s" (.capt (.fld "a" (.sel "s" "A")) []) (.trm "a" (.var "s")))
+example : STm.Scoped [] [] (.obj "s" (some (.capt (.fld "a" (.sel "s" "A")) []))
+    (.trm "a" none (.var "s")))
     = true := by decide
 
 /-- `S ^ C` at a bound is boxed, so it is placed. -/
@@ -610,7 +629,28 @@ example : SType.CaptPlaced (.capt (.capt .top [.name "f"]) []) = false := by dec
 
 /-- A self annotation `S ^ U` and a type definition at a capturing type are
 placed. -/
-example : STm.CaptPlaced (.obj "s" (.capt (.fld "a" .top) [.name "f"])
+example : STm.CaptPlaced (.obj "s" (some (.capt (.fld "a" .top) [.name "f"]))
     (.typ "A" (.capt .top [.name "f"]))) = true := by decide
+
+/-- An empty domain and an empty self shape are in scope, and the body is
+scoped under the binder. -/
+example : STm.Scoped [] [] (.lam "x" none (.var "x")) = true := by decide
+example : STm.Scoped [] [] (.obj "s" none (.trm "a" (some (.sel "s" "A")) (.var "s"))) = true := by
+  decide
+
+/-- A written field type is scoped under the self binder. -/
+example : STm.Scoped [] [] (.obj "s" none (.trm "a" (some (.sel "t" "A")) (.var "s"))) = false := by
+  decide
+
+/-- A written field type is labelled. -/
+example : SDefs.LabelsIn Λ0 (.trm "a" (some (.fld "b" .top)) (.var "s")) = false := by decide
+example : SDefs.LabelsIn Λ0 (.trm "a" (some (.fld "a" .top)) (.var "s")) = true := by decide
+
+/-- `any` in the outer set of a written field type is placed.  The resolver
+reads it as the object's own set with the self. -/
+example : SDefs.AnyPlaced (.trm "a" (some (.capt .top [.any])) (.var "s")) = true := by decide
+
+/-- A written field type may be a capturing type. -/
+example : SDefs.CaptPlaced (.trm "a" (some (.capt .top [.name "f"])) (.var "s")) = true := by decide
 
 end CapturesFrontend

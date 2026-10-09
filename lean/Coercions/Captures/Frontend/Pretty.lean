@@ -360,9 +360,11 @@ position. -/
 def ppSTmAt (p : Nat) (e : STm) : String :=
   match e with
   | .var x => x
-  | .lam x T t =>
+  | .lam x (some T) t =>
       parenIf (p > 1) ("λ(" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). " ++ ppSTmAt 0 t)
-  | .obj x T d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .lam x none t => parenIf (p > 1) ("λ" ++ x ++ ". " ++ ppSTmAt 0 t)
+  | .obj x (some T) d => "ν(" ++ x ++ " : " ++ ppSTyAt 0 T ++ ". " ++ ppSDefsAt d ++ ")"
+  | .obj x none d => "ν(" ++ x ++ ". " ++ ppSDefsAt d ++ ")"
   | .app t u => parenIf (p > 70) (ppSTmAt 70 t ++ " " ++ ppSTmAt 71 u)
   | .proj t a => ppSTmAt 80 t ++ "." ++ a
   | .«let» x ann t u =>
@@ -380,7 +382,8 @@ termination_by structural e
 def ppSDefsAt (d : SDefs) : String :=
   match d with
   | .typ A T => "{type " ++ A ++ " = " ++ ppSTyAt 0 T ++ "}"
-  | .trm a t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a none t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a (some T) t => "{" ++ a ++ " : " ++ ppSTyAt 0 T ++ " = " ++ ppSTmAt 0 t ++ "}"
   | .and d' e => ppSDefsAt d' ++ " ∧ " ++ ppSDefsAt e
   | .cap C c => "{" ++ C ++ "^ = " ++ ppSCap c ++ "}"
 termination_by structural d
@@ -518,6 +521,15 @@ example :
       = "λ(f : (∀(u : ⊤) ⊤) ^ {k1}). "
         ++ "let o = ν(z : {A : (∀(u : ⊤) ⊤) ^ {f} .. (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem : z.A}. "
         ++ "{type A = (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem = □ f}) in let e = o.elem in {f} ⊸ e" := rfl
+
+/-- A lambda with an empty domain. -/
+example : ppSTm (cap% λx. x) = "λx. x" := rfl
+
+/-- A literal without a self shape, with a written field type. -/
+example : ppSTm (cap% ν(x. {a : ⊤ ^ {any} = x})) = "ν(x. {a : ⊤ ^ {any} = x})" := rfl
+
+/-- An ascription over a lambda with an empty domain. -/
+example : ppSTm (cap% (λx. x : ⊤)) = "(λx. x : ⊤)" := rfl
 
 /-- An object literal with a written self capture set, resolved through the
 platform `πc`.  The self shape and its set both print, and `k1` prints under
