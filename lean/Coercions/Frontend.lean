@@ -33,9 +33,11 @@ and the frozen trees it builds on are unchanged.
   makes `type` a keyword.
 * `Ann` is `ATm` and `ADefs`, DOT-MNF terms with the self type of an object
   literal and the optional result type of a `let`.  Erasure to `DotMNF.Tm`
-  drops exactly those two.
-* `Resolve` is the resolvers from surface syntax to `ATm`, total on scoped,
-  well labelled programs.  Let insertion has no semantic statement.
+  drops exactly those two.  It also holds `PTm` and `PDefs`, the partial terms
+  whose lambda domains, self types and field types may be empty.
+* `Resolve` is the resolvers from surface syntax to partial terms and to `ATm`,
+  total on scoped, well labelled programs.  Let insertion has no semantic
+  statement.
 * `Decide` is the side conditions the typer computes: distinct labels of a
   definition block, and strengthening, the inverse of `DotMNF.Ty.weaken`.
 * `Fuel` is the tank, the one fuel of a typing.  A goal that finds it short
@@ -91,21 +93,37 @@ and the frozen trees it builds on are unchanged.
 * `StepFC` is the FCdot machine as a function.  It takes the fuel of the frozen
   head form normalizer, and agreement with the relation is soundness at every
   fuel, monotonicity in the fuel, and completeness for some fuel.
-* `Pipeline` is `compile`, which resolves and types a program at the fuel of a
-  `Budget`, and `compileAndRun`, which then runs the machine.  Five theorems
+* `Pipeline` is `compileE`, which resolves a program to a partial term and
+  elaborates it at the fuel of a `Budget`, returning the fill with its
+  derivation or the reason it is rejected, `compile`, the same without the
+  reason, and `compileAndRun`, which then runs the machine.  Five theorems
   say what a compiled program is worth: the target checker accepts the
   translation of the derivation, the translation erases to the source term,
   every reachable state is final or steps, none is stuck, and the driver never
   answers at a stuck state.  `compile_checks_get` restates the first for a
-  program that compiles.
-* `Pretty` is an unparser into the paper's notation for surface, annotated and
-  frozen syntax and for machine states.  The frozen inductives have no `Repr`,
-  so this is how a type, a term or a state is read.  It has no theorem.
+  program that compiles.  A program with every slot written compiles as the
+  typer's synthesis (`compile_full`), the fill agrees with every written slot
+  (`compileE_fills`), a reason that names a slot comes only from a program
+  with an empty slot (`compileE_slot`), and an elaboration that ends unmarked
+  gives the same verdict at more fuel (`elabTop?_mono`, `elabTop?_stable`).
+  At the sites where the elaborator runs the typer's own clause on the filled
+  term, inference loses nothing: a program whose canonical fill the typer
+  accepts elaborates to that fill from some fuel on (`elab_complete_direct`,
+  `compile_complete_direct`).
+* `Pretty` is an unparser into the paper's notation for surface, partial,
+  annotated and frozen syntax and for machine states, and a printer of the
+  reasons of a rejection.  The frozen inductives have no `Repr`, so this is
+  how a type, a term or a state is read.  It has no theorem.
 * `Examples` takes the programs through the front end at `defaultFuel`, each
   verdict a `decide +kernel` theorem.  Accepted programs have `Ek_type` and
   `Ek_checks`.  Rejected programs have `Ek_rejected`, and `Ek_not_alg` where the
   rejection is at one subtyping goal.  Programs at the recursion limit have
-  `Ek_limit`.
+  `Ek_limit`.  Each program is also erased in four ways, its lambda domains,
+  its self types, the domains of its lambda arguments, or the last two, and
+  each erased program has its verdict with the reason or the type and fuel
+  (`Ek_erased`).  Seven erased programs compile to their written forms by
+  `compile_complete_direct` (`Ek_complete`), and two show where completeness
+  fails, at an ascription and at a call argument.
 -/
 
 #assert_no_wf Frontend
