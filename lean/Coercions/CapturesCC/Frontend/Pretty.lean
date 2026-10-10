@@ -455,12 +455,17 @@ def ppSTmAt (p : Nat) (e : STm) : String :=
   match e with
   | .var x => x
   | .lam κ x T t =>
-      let arrow? :=
+      let binder? :=
         match κ with
-        | none => "λ(" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). "
-        | some c => "λ[" ++ c ++ "](" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). "
-      parenIf (p > 1) (arrow? ++ ppSTmAt 0 t)
-  | .obj x S d => "ν(" ++ x ++ " : " ++ ppSShapeAt 0 S ++ ". " ++ ppSDefsAt d ++ ")"
+        | none => "λ"
+        | some c => "λ[" ++ c ++ "]"
+      let param? :=
+        match T with
+        | none => x ++ ". "
+        | some T => "(" ++ x ++ " : " ++ ppSTyAt 0 T ++ "). "
+      parenIf (p > 1) (binder? ++ param? ++ ppSTmAt 0 t)
+  | .obj x (some S) d => "ν(" ++ x ++ " : " ++ ppSShapeAt 0 S ++ ". " ++ ppSDefsAt d ++ ")"
+  | .obj x none d => "ν(" ++ x ++ ". " ++ ppSDefsAt d ++ ")"
   | .app t u => parenIf (p > 70) (ppSTmAt 70 t ++ " " ++ ppSTmAt 71 u)
   | .proj t a => ppSTmAt 80 t ++ "." ++ a
   | .«let» x ann t u =>
@@ -482,7 +487,8 @@ def ppSDefsAt (d : SDefs) : String :=
   match d with
   | .typ A S => "{type " ++ A ++ " = " ++ ppSShapeAt 0 S ++ "}"
   | .cap C c => "{" ++ C ++ "^ = " ++ ppSCap c ++ "}"
-  | .trm a t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a none t => "{" ++ a ++ " = " ++ ppSTmAt 0 t ++ "}"
+  | .trm a (some T) t => "{" ++ a ++ " : " ++ ppSTyAt 0 T ++ " = " ++ ppSTmAt 0 t ++ "}"
   | .and d' e => ppSDefsAt d' ++ " ∧ " ++ ppSDefsAt e
 termination_by structural d
 end
@@ -642,6 +648,18 @@ example :
 
 /-- `deepSrc`, with `any` deeper in a domain than its outer set. -/
 example : ppSTm deepSrc = "λ(x : {read : ⊤ ^ {any}}). x" := rfl
+
+/-- A lambda with an empty domain. -/
+example : ppSTm (cc% λx. x) = "λx. x" := rfl
+
+/-- The same with the arrow's own binder named. -/
+example : ppSTm (cc% λ[c]x. let y : ⊤ ^ {c} = x in y) = "λ[c]x. let y : ⊤ ^ {c} = x in y" := rfl
+
+/-- A literal without a self shape, with a written field type. -/
+example : ppSTm (cc% ν(x. {a : ⊤ ^ {any} = x})) = "ν(x. {a : ⊤ ^ {any} = x})" := rfl
+
+/-- An ascription over a lambda with an empty domain. -/
+example : ppSTm (cc% (λx. x : ⊤)) = "(λx. x : ⊤)" := rfl
 
 /-- A state over a store with both kinds of binder. -/
 example :
