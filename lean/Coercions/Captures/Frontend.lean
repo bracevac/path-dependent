@@ -30,7 +30,9 @@ tank.
 The elaborator (`Elab.lean`) fills the annotations a program leaves out and
 types the result with the typer.  It rejects a program with a `Reason`, the
 type that `Coercions.Frontend.Reason` shares among the front ends, at the
-labels of this version.
+labels of this version.  `formSelfF` forms the self shape of a literal that
+has none from its definitions, in rounds, as the completers of `Namer` type the
+members of a class.  The literal filled at that shape goes to the typer.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
