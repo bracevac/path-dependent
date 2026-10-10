@@ -20,6 +20,12 @@ name the environment does not hold.  A store location has no surface syntax,
 so `defaultLocNames` names the locations of a store `ℓ0`, `ℓ1`, … in
 allocation order.
 
+`ppReasonWith` prints why a program is rejected, in the compiler's words where
+the compiler has them.  `ppVerdict` prints what `compileE` returns: the filled
+term and its type, or the reason.  A literal whose self type the program left
+out prints with no colon after its binder, and the filled one with the self
+type inference wrote.
+
 Everything is structural, so the printer reduces in the kernel and the checks
 at the end are `decide +kernel`.  The printer is not part of the metatheory.
 -/
@@ -289,6 +295,29 @@ def ppRun (Λ : LabelTable) : Option (Next []) → String
   | none => "did not compile"
   | some n => ppState Λ n.G' n.t'
 
+/-! ## Reasons and verdicts -/
+
+/-- Why a program is rejected, in the compiler's words where the compiler has
+them.  A missing parameter type and a cyclic reference name the method's
+label.  `landed` has no case, since the typer gives no reason of its own. -/
+def ppReasonWith (Λ : LabelTable) : EReason → String
+  | .missingParamType none => "Missing parameter type"
+  | .missingParamType (some l) => "Missing parameter type in " ++ ppLabel Λ l
+  | .cyclicRef l => "Recursive value " ++ ppLabel Λ l ++ " needs type"
+  | .needsExplicitType l => "Value " ++ ppLabel Λ l ++ " needs a written type"
+  | .ambiguous l => "The types of " ++ ppLabel Λ l ++ " have no least one"
+  | .landed r => nomatch r
+  | .mismatch => "Type mismatch"
+  | .limit => "Recursion limit exceeded"
+
+/-- A reason, with no label table. -/
+def ppReason (r : EReason) : String := ppReasonWith [] r
+
+/-- The verdict of `compileE`: the filled term and its type, or the reason. -/
+def ppVerdict (Λ : LabelTable) : Except EReason ((a : ATm []) × Compiled a.erase) → String
+  | .ok r => ppATmWith Λ .nil r.1 ++ " : " ++ ppTyWith Λ .nil r.2.ty
+  | .error r => ppReasonWith Λ r
+
 /-! ## Checks -/
 
 section Checks
@@ -382,6 +411,38 @@ example : ppRun ex1Table (compileAndRun {} 1 ex1Table ex1src)
 
 /-- A failed compile prints as such. -/
 example : ppRun [] none = "did not compile" := by decide +kernel
+
+/-! ### Reasons and verdicts -/
+
+/-- Each reason in the compiler's words, with the label's name. -/
+example : ([.missingParamType none, .missingParamType (some 1), .cyclicRef 0,
+      .needsExplicitType 0, .ambiguous 1, .mismatch, .limit] : List EReason).map
+      (ppReasonWith InferChecks.fwdTable)
+    = ["Missing parameter type", "Missing parameter type in g#1", "Recursive value f#0 needs type",
+       "Value f#0 needs a written type", "The types of g#1 have no least one", "Type mismatch",
+       "Recursion limit exceeded"] := by
+  decide +kernel
+
+/-- With no table, a label prints as its position. -/
+example : ppReason (.cyclicRef 2) = "Recursive value #2 needs type" := by decide +kernel
+
+/-- `fwd` compiles: the filled literal carries the self type formed from its
+methods, and the type is that self type under `μ`. -/
+example : ppVerdict InferChecks.fwdTable (compileE {} InferChecks.fwdTable InferChecks.fwdSrc)
+    = "new {x : {def g#1(y : ⊤) : ⊤} ∧ {def f#0(y : ⊤) : ⊤} ∧ ⊤ ⇒ def g#1(y : ⊤) = x.f#0(y)  "
+      ++ "def f#0(y : ⊤) = y} : μ(x. {def g#1(y : ⊤) : ⊤} ∧ {def f#0(y : ⊤) : ⊤} ∧ ⊤)" := by
+  decide +kernel
+
+/-- `recArg` with its self types erased: the receiver's method has no
+parameter type, and a receiver gets no goal. -/
+example : ppVerdict recArgTable (compileE {} recArgTable recArgSrc.eraseSelf)
+    = "Missing parameter type in apply#0" := by
+  decide +kernel
+
+/-- A recursive method without a written result. -/
+example : ppVerdict InferChecks.recTable (compileE {} InferChecks.recTable InferChecks.recUSrc)
+    = "Recursive value f#0 needs type" := by
+  decide +kernel
 
 end Checks
 
