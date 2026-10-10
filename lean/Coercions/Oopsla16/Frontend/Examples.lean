@@ -28,7 +28,9 @@ A program the typer rejects has these.
 
 - `<program>_verdict`: no type, and the tank unmarked.
 - `<program>_rejected`: `compile` returns nothing at every budget, by
-  `synthTop?_stable` above `defaultFuel` and `synthTop?_mono` below it.
+  `synthTop?_stable` above `defaultFuel` and `synthTop?_mono` below it.  The
+  program is one the typer takes as it is, so inference leaves it unchanged
+  (`compile_landed`).
 - `<program>_not_alg`, where a judgment of the subtyping core would type the
   program: `Alg` does not derive it (`var?_reject`).  So no fuel and no other
   order of the alternatives finds it.
@@ -68,6 +70,36 @@ data without decidable equality.  `versionTm`, `versionTy`, `versionLower`,
 - At the recursion limit: LP, a check of `p.A` against `q.B`, where both are
   aliases of a method type whose result is the alias itself.
 - A program whose literals admit no label table is rejected by resolution.
+
+## Annotations erased
+
+The last section erases annotations and runs the elaborator of `Infer.lean`
+on the result.  Each program above is a row of six cells: the written program,
+then the program with every self type erased (`S`), every result type (`R`),
+every parameter type (`P`), the self type of every literal passed as an
+argument (`A`), and the program a Scala programmer writes (`SR`).  The
+programs of `Infer.lean` that need inference stand beside a written form.
+Every cell is a `decide +kernel` fact with its type or its reason and the tank
+left.
+
+- `<program>_erased`: the row, or the written verdict and the erased one.
+- `<program>_<erasure>_checks` and `<program>_erased_checks`: the target
+  checker accepts each erased program that compiles (`compile_checks_get`).
+- `<program>_<erasure>_rejected` and `<program>_rejected`: each rejection
+  with the compiler's reason holds at every budget (`erasedCell_rejected`).
+
+What compiles as in Scala: `recArg` under `A` and `SR`, `curryCall` under
+`SR`, `ex1`, `selfCall`, `selCall`, `twoCand`, `packSel`, `packAnd`, the
+ascribed P1, LP and `paper_lst` under `R`, `paper_lst` under `P`, and the
+literals of `Infer.lean` at an ascription, at a call argument, at an alias, with
+a method that calls a later one or returns the self, and nested twelve and
+seventeen deep.  What is rejected with the compiler's reason: a method with
+neither a parameter type nor a goal, a recursive method without a result
+(P1, P1 in the Scala shape and P3 under `R`), and a literal whose body does
+not meet the results at its goal.  Where the version forces a verdict other
+than Scala's: a chain of calls on a method that returns the self, since the
+self is typed at a snapshot that lacks the method, and a call whose two
+candidate types have no least one.
 -/
 
 namespace Oopsla16Frontend
@@ -138,17 +170,23 @@ def CheckerAccepts (b : Budget) (Λ : LabelTable) (e : STm)
   FCdotR.checkTm Store.nil FCdotR.emptyStoreTy Ctx.nil
     (elaborate ((compile b Λ e).get h).2) ((compile b Λ e).get h).2.ty = true
 
-/-- A rejection that leaves the tank unmarked is a rejection at every budget.
-Above the fuel of the check this is `synthTop?_stable`.  Below it, an answer
-would be kept by `synthTop?_mono` and contradict the check.  A program that
-does not resolve does not compile either. -/
+/-- A rejection by the typer that leaves the tank unmarked is a rejection at
+every budget, for a program the typer takes as it is.  Such a program
+compiles as the typer types it (`compile_landed`).  Above the fuel of the check
+this is `synthTop?_stable`.  Below it, an answer would be kept by
+`synthTop?_mono` and contradict the check.  A program that does not resolve does
+not compile either.  `typeAt` is the typer alone, so a program with a literal
+the typer cannot take gets no type from it, though inference may fill the
+literal and compile the program.  The hypothesis `hl` excludes that case. -/
 theorem typeAt_rejects {Λ : LabelTable} {e : STm} {n k : Nat}
-    (h : typeAt Λ e n = (none, ⟨k, false⟩)) (b : Budget) : compile b Λ e = none := by
+    (h : typeAt Λ e n = (none, ⟨k, false⟩)) (hl : (resolve Λ e).all ATm.landed = true)
+    (b : Budget) : compile b Λ e = none := by
   unfold typeAt at h
   cases hr : resolve Λ e with
-  | none => simp [compile, hr]
+  | none => simp [compile, compileE, hr, Except.toOption]
   | some a =>
-    rw [hr] at h
+    rw [hr] at h hl
+    simp only [Option.all_some] at hl
     simp only [Prod.mk.injEq, Option.map_eq_none_iff] at h
     obtain ⟨h1, h2⟩ := h
     have hs : synthTopF n a = (none, ⟨k, false⟩) := by rw [← h1, ← h2]
@@ -162,7 +200,8 @@ theorem typeAt_rejects {Λ : LabelTable} {e : STm} {n k : Nat}
           have := synthTop?_mono hc hle
           rw [h1] at this
           cases this
-    simp [compile, hr, synthTop?, hnone]
+    rw [compile_landed hr hl]
+    simp [compileL, hr, synthTop?, hnone]
 
 /-! ## The fragment theorems, read off a successful compile
 
@@ -987,7 +1026,7 @@ theorem P2_verdict : typeAt P2Table P2src = (none, ⟨defaultFuel - 26, false⟩
 
 /-- P2 does not compile at any budget. -/
 theorem P2_rejected (b : Budget) : compile b P2Table P2src = none :=
-  typeAt_rejects P2_verdict b
+  typeAt_rejects P2_verdict (by decide +kernel) b
 
 /-- The deeper call is rejected, with the tank unmarked. -/
 theorem P2deep_verdict : typeAt P2deepTable P2deepSrc = (none, ⟨defaultFuel - 26, false⟩) := by
@@ -995,7 +1034,7 @@ theorem P2deep_verdict : typeAt P2deepTable P2deepSrc = (none, ⟨defaultFuel - 
 
 /-- The deeper call does not compile at any budget. -/
 theorem P2deep_rejected (b : Budget) : compile b P2deepTable P2deepSrc = none :=
-  typeAt_rejects P2deep_verdict b
+  typeAt_rejects P2deep_verdict (by decide +kernel) b
 
 /-- The parameter type of `g`. -/
 def P2param {s : Sig} : Ty [] s :=
@@ -1032,7 +1071,7 @@ theorem unionCall_verdict : typeAt unionCallTable unionCallSrc = (none, ⟨defau
 
 /-- The union receiver does not compile at any budget. -/
 theorem unionCall_rejected (b : Budget) : compile b unionCallTable unionCallSrc = none :=
-  typeAt_rejects unionCall_verdict b
+  typeAt_rejects unionCall_verdict (by decide +kernel) b
 
 /-- The receiver at `⊥` is rejected, with the tank unmarked. -/
 theorem botCall_verdict : typeAt unionCallTable botCallSrc = (none, ⟨defaultFuel - 1, false⟩) := by
@@ -1040,7 +1079,7 @@ theorem botCall_verdict : typeAt unionCallTable botCallSrc = (none, ⟨defaultFu
 
 /-- The receiver at `⊥` does not compile at any budget. -/
 theorem botCall_rejected (b : Budget) : compile b unionCallTable botCallSrc = none :=
-  typeAt_rejects botCall_verdict b
+  typeAt_rejects botCall_verdict (by decide +kernel) b
 
 /-! ## LP: the recursion limit
 
@@ -1079,6 +1118,990 @@ example : typeAt [("a", 1), ("b", 0), ("c", 0)] cyclicSrc = (none, ⟨defaultFue
 
 /-- It does not compile at any budget. -/
 theorem cyclic_rejected (b : Budget) : compile b [("a", 1), ("b", 0), ("c", 0)] cyclicSrc = none :=
-  typeAt_rejects (n := defaultFuel) (k := defaultFuel) (by decide +kernel) b
+  typeAt_rejects (n := defaultFuel) (k := defaultFuel) (by decide +kernel) (by decide +kernel) b
+
+/-! ## Annotations erased
+
+Each program below is written with its annotations, then erased in five ways.
+`S` erases every self type, `R` every method result type, `P` every method
+parameter type, and `A` the self type of every literal passed as a call
+argument.  `SR` is the program a Scala programmer writes: no self type, no
+result type, and every parameter type written, taken from the written self
+type where the program left it to the self type.  The erasures act on the
+surface program, so `compile` applies to the result, and each resolves to the
+erasure of the same name on the resolved term (`Erasure.resolve_surface`).
+
+A cell is the elaborator's verdict on an erased program at `defaultFuel`, with
+the tank left.  An erasure that changes nothing is `noSlot`, whose verdict is
+the written one.  A program that compiles does so at the written term (`same`)
+or at another one (`other`), with its type.  A fill writes self types only, so
+under `R`, `P` and `SR` a program that compiles is `other`, its result and
+parameter types left empty.  A rejected program has its reason.  The first cell
+of a row is the written program itself, a check that the elaborator gives each
+program the typer takes as it is the typer's verdict. -/
+
+section Erasures
+
+open InferChecks
+open Frontend.Fuel (Tank)
+
+/-- The five erasures of the tables. -/
+inductive Erasure where
+  /-- Every self type. -/
+  | S
+  /-- Every method result type. -/
+  | R
+  /-- Every method parameter type. -/
+  | P
+  /-- The self type of every literal passed as a call argument. -/
+  | A
+  /-- No self type and no result type, every parameter type written. -/
+  | SR
+deriving DecidableEq
+
+/-- An erasure on the surface program. -/
+def Erasure.surface : Erasure → STm → STm
+  | .S, e => e.eraseSelf
+  | .R, e => e.eraseRes
+  | .P, e => e.eraseParam
+  | .A, e => e.eraseArgSelf
+  | .SR, e => e.scalaForm
+
+/-- The same erasure on the resolved term. -/
+def Erasure.resolved : Erasure → ATm [] → ATm []
+  | .S, a => a.eraseSelf
+  | .R, a => a.eraseRes
+  | .P, a => a.eraseParam
+  | .A, a => a.eraseArgSelf
+  | .SR, a => a.scalaForm
+
+/-- The erased surface program resolves to the resolved program erased. -/
+theorem Erasure.resolve_surface (k : Erasure) {Λ : LabelTable} {e : STm} {a : ATm []}
+    (h : resolve Λ e = some a) : resolve Λ (k.surface e) = some (k.resolved a) := by
+  cases k
+  · exact resolve_eraseSelf h
+  · exact resolve_eraseRes h
+  · exact resolve_eraseParam h
+  · exact resolve_eraseArgSelf h
+  · exact resolve_scalaForm h
+
+/-- Two annotations agree when both are written and equal, or when one of
+them is absent. -/
+def annAgrees {α : Type} [DecidableEq α] : Option α → Option α → Bool
+  | some T, some U => decide (T = U)
+  | _, _ => true
+
+mutual
+/-- `p` and `a` are one program up to its annotations: they differ at most in
+self types, parameter types and result types, and where both write one, they
+write the same.  An erased program agrees with the program it was erased from,
+and so does a Scala form, whose parameter types come from the written self
+type. -/
+def ATm.agrees {s : Sig} (p a : ATm s) : Bool :=
+  match p, a with
+  | .var x, .var y => decide (x = y)
+  | .obj o ds, .obj o' ds' => annAgrees o o' && ds.agrees ds'
+  | .app t l u, .app t' l' u' => t.agrees t' && decide (l = l') && u.agrees u'
+  | .asc t T, .asc t' T' => t.agrees t' && decide (T = T')
+  | _, _ => false
+termination_by structural p
+/-- Two members are one member up to its annotations. -/
+def ADm.agrees {s : Sig} (d e : ADm s) : Bool :=
+  match d, e with
+  | .dfun o1 o2 t, .dfun o1' o2' t' => annAgrees o1 o1' && annAgrees o2 o2' && t.agrees t'
+  | .dty T, .dty T' => decide (T = T')
+  | _, _ => false
+termination_by structural d
+/-- Two member lists agree member by member. -/
+def ADms.agrees {s : Sig} (ds es : ADms s) : Bool :=
+  match ds, es with
+  | .dnil, .dnil => true
+  | .dcons d ds', .dcons e es' => d.agrees e && ds'.agrees es'
+  | _, _ => false
+termination_by structural ds
+end
+
+/-- The verdict on one erased program. -/
+inductive Cell where
+  /-- The erasure changes nothing. -/
+  | noSlot
+  /-- Compiled at the written term, with its type and the tank left. -/
+  | same (T : Ty [] []) (t : Tank)
+  /-- Compiled at another term, with its type and the tank left. -/
+  | other (T : Ty [] []) (t : Tank)
+  /-- Rejected, with the reason and the tank left. -/
+  | no (r : EReason) (t : Tank)
+  /-- The erased program is not the written one up to its annotations. -/
+  | shape
+deriving DecidableEq
+
+/-- The elaborator's verdict on `e`, the written program `w` with some
+annotations erased, at `defaultFuel`.  `ATm.agrees` checks that `e` is `w` up to
+its annotations. -/
+def erasedCell (Λ : LabelTable) (w e : STm) : Cell :=
+  match resolve Λ w, resolve Λ e with
+  | some a, some p =>
+      if p.agrees a then
+        match elabTopF defaultFuel p with
+        | (.ok c, t) => if c.1 = a then .same c.2.ty t else .other c.2.ty t
+        | (.error r, t) => .no r t
+      else .shape
+  | _, _ => .shape
+
+/-- The verdict on the program `w` erased by `k`. -/
+def cell (Λ : LabelTable) (k : Erasure) (w : STm) : Cell :=
+  if k.surface w = w then .noSlot else erasedCell Λ w (k.surface w)
+
+/-- A row of the table: the written program, then its five erasures. -/
+def row (Λ : LabelTable) (w : STm) : List Cell :=
+  [erasedCell Λ w w, cell Λ .S w, cell Λ .R w, cell Λ .P w, cell Λ .A w, cell Λ .SR w]
+
+/-- The written program's verdict, then the erased program's. -/
+def pair (Λ : LabelTable) (w e : STm) : List Cell := [erasedCell Λ w w, erasedCell Λ w e]
+
+/-- The elaborator's verdict on a program with no written form beside it. -/
+def verdict (Λ : LabelTable) (e : STm) : Cell := erasedCell Λ e e
+
+/-- The type the typer gives a written program, `⊤` when it gives none. -/
+def tyOf (Λ : LabelTable) (w : STm) : Ty [] [] := ((typeAt Λ w).1).getD .TTop
+
+/-- A closed surface type, resolved, `⊤` when it does not resolve. -/
+def tyIs (Λ : LabelTable) (T : SType) : Ty [] [] := (resolveTy Λ .nil T).getD .TTop
+
+/-! ### What a cell says about `compile`
+
+A cell is computed from `elabTopF` and `compile` from the same function, so a
+cell fact is a fact about `compile`.  A rejection that ends unmarked is a
+rejection at every budget, by `elabTop?_stable` above `defaultFuel` and
+`elabTop?_mono` below it. -/
+
+/-- A rejected cell comes from a resolved program and an elaboration that
+fails with its reason and its tank. -/
+theorem erasedCell_error {Λ : LabelTable} {w e : STm} {r : EReason} {t : Tank}
+    (h : erasedCell Λ w e = .no r t) :
+    ∃ p, resolve Λ e = some p ∧ elabTopF defaultFuel p = (.error r, t) := by
+  unfold erasedCell at h
+  split at h
+  · rename_i a p _ hp
+    split at h
+    · split at h
+      · split at h <;> cases h
+      · rename_i r' t' het
+        cases h
+        exact ⟨p, hp, het⟩
+    · cases h
+  · cases h
+
+/-- A program rejected by the rules, with the tank unmarked: `compile` returns
+nothing at every budget, and `compileE` reports the reason at every budget from
+`defaultFuel` up. -/
+def RejectedWith (Λ : LabelTable) (e : STm) (r : EReason) : Prop :=
+  (∀ b, compile b Λ e = none) ∧ ∀ b : Budget, defaultFuel ≤ b.fuel → compileE b Λ e = .error r
+
+/-- **A rejected cell with the tank unmarked is a rejection at every
+budget.** -/
+theorem erasedCell_rejected {Λ : LabelTable} {w e : STm} {r : EReason} {n : Nat}
+    (h : erasedCell Λ w e = .no r ⟨n, false⟩) : RejectedWith Λ e r := by
+  obtain ⟨p, hp, het⟩ := erasedCell_error h
+  refine ⟨fun b => compile_rejects hp (n := defaultFuel) (by rw [het]; exact ⟨rfl, rfl⟩) b,
+    fun b hb => ?_⟩
+  have hs := elabTop?_stable het (b.fuel - defaultFuel)
+  rw [Nat.add_sub_cancel' hb] at hs
+  unfold compileE
+  rw [hp]
+  simp only [hs]
+
+/-- **A cell at the written term is `compile` at the written term.**  The
+erased program compiles to the term the written program resolves to, at the
+cell's type. -/
+theorem erasedCell_same {Λ : LabelTable} {w e : STm} {T : Ty [] []} {t : Tank}
+    (h : erasedCell Λ w e = .same T t) :
+    (compile {} Λ e).map (fun r => (r.1, r.2.ty)) = (resolve Λ w).map (fun a => (a, T)) := by
+  unfold erasedCell at h
+  split at h
+  · rename_i a p hw hp
+    split at h
+    · split at h
+      · rename_i c t' het
+        split at h
+        · rename_i hca
+          cases h
+          show ((compileE {} Λ e).toOption).map _ = _
+          unfold compileE
+          rw [hp, hw]
+          have h1 : (elabTopF ({} : Budget).fuel p).1 = .ok c := by
+            show (elabTopF defaultFuel p).1 = .ok c
+            rw [het]
+          simp only [h1, Except.toOption, Option.map, hca]
+        · cases h
+      · cases h
+    · cases h
+  · cases h
+
+/-- A cell at another term is `compile` at the cell's type. -/
+theorem erasedCell_other {Λ : LabelTable} {w e : STm} {T : Ty [] []} {t : Tank}
+    (h : erasedCell Λ w e = .other T t) : (compile {} Λ e).map (fun r => r.2.ty) = some T := by
+  unfold erasedCell at h
+  split at h
+  · rename_i a p _ hp
+    split at h
+    · split at h
+      · rename_i c t' het
+        split at h
+        · cases h
+        · cases h
+          show ((compileE {} Λ e).toOption).map _ = _
+          unfold compileE
+          rw [hp]
+          have h1 : (elabTopF ({} : Budget).fuel p).1 = .ok c := by
+            show (elabTopF defaultFuel p).1 = .ok c
+            rw [het]
+          simp only [h1, Except.toOption, Option.map]
+      · cases h
+    · cases h
+  · cases h
+
+/-- A cell of an erasure that changes the program is the erased program's
+cell. -/
+theorem cell_erased {Λ : LabelTable} {k : Erasure} {w : STm} (h : cell Λ k w ≠ .noSlot) :
+    cell Λ k w = erasedCell Λ w (k.surface w) := by
+  unfold cell at h ⊢
+  split
+  · rename_i he
+    rw [if_pos he] at h
+    exact absurd rfl h
+  · rfl
+
+/-! ### Written forms
+
+Programs of `Infer.lean` that are written there with empty slots get a written
+form here, so that a rejection is a cell of a written program.  The results of
+`packAnd`, `P1asc` and `LP` under `R` are their bodies' types, written out as
+forms of the programs. -/
+
+/-- noParam with its parameter and result written. -/
+def noParamW : STm := o16% new { o ⇒ def f(x : ⊤) : ⊤ = x }
+
+/-- cyc with every result written. -/
+def cycW : STm :=
+  o16% new { o ⇒ def a(x : ⊤) : ⊤ = o.b(x)   def b(x : ⊤) : ⊤ = o.c(x)   def c(x : ⊤) : ⊤ = o.b(x) }
+
+/-- nestRec with every result written. -/
+def nestRecW : STm :=
+  o16% new { o ⇒ def f(x : ⊤) : ⊤ = new { p ⇒ def g(y : ⊤) : ⊤ = o.f(y) } }
+
+/-- The recursion through an ascription of the self, its result written. -/
+def ascRecW : STm := o16% new { o ⇒ def f(x : ⊤) : ⊤ = (o : { def f(y : ⊤) : ⊤ }).f(x) }
+
+/-- The literal at the abstract goal with a lower bound, its parameter and
+result written. -/
+def lowerW : STm :=
+  o16% new { c ⇒ def g(z : { type L : { def f(p : ⊤) : ⊤ } .. ⊤ }) : ⊤
+                   = (new { o ⇒ def f(q : ⊤) : ⊤ = q } : z.L) }
+
+/-- packAnd with its result written as the body's type. -/
+def packAndRW : STm :=
+  o16% new { m ⇒ def g(x : { type A : ⊤ .. ⊤ }) : { type A : ⊤ .. ⊤ } = x }
+
+/-- P1asc with its result written as the body's type. -/
+def P1ascRW : STm :=
+  o16% new { c ⇒ type L = μ(w. { type B : ⊥ .. w.B })
+    def g(p : μ(z. c.L)) : μ(z. c.L) = (p : μ(z. c.L)) }
+
+/-- ascParam with its parameter and result written. -/
+def ascParamW : STm := o16% (new { o ⇒ def f(x : ⊤) : ⊤ = x } : μ(z. { def f(y : ⊤) : ⊤ }))
+
+/-- ascSame with its parameter and result written. -/
+def ascSameW : STm :=
+  o16% (new { o ⇒ def f(x : ⊤) : ⊤ = x } : { def f(y : ⊤) : ⊤ } ∧ { def f(y : ⊤) : ⊤ ∧ ⊤ })
+
+/-- ascTwo with its parameter and result written. -/
+def ascTwoW : STm :=
+  o16% (new { o ⇒ def f(x : ⊤) : ⊤ = x } :
+          { def f(y : ⊤) : ⊤ } ∧ { def f(y : { type A : ⊥ .. ⊤ }) : ⊤ })
+
+/-- twoDom with its parameter written at the union of the two domains. -/
+def twoDomW : STm :=
+  o16% (new { o ⇒ def f(x : { type A : ⊥ .. ⊤ } ∨ { type B : ⊥ .. ⊤ }) : ⊤ = x } :
+          { def f(y : { type A : ⊥ .. ⊤ }) : ⊤ } ∧ { def f(y : { type B : ⊥ .. ⊤ }) : ⊤ })
+
+/-- eqvAsc with its parameter and result written. -/
+def eqvAscW : STm :=
+  o16% (new { o ⇒ def f(x : ⊤) : ⊤ = x } : { def f(y : ⊤) : ⊤ } ∧ { def f(y : ⊤ ∧ ⊤) : ⊤ })
+
+/-- twoFormals with the argument's parameter and result written. -/
+def twoFormalsW : STm :=
+  o16% new { c ⇒ def m(y : { def g(h : { def f(p : ⊤) : ⊤ }) : ⊤ }
+                         ∧ { def g(h : { def f(p : ⊤) : { type A : ⊥ .. ⊤ } }) : ⊤ }) : ⊤
+                   = y.g(new { w ⇒ def f(q : ⊤) : ⊤ = q }) }
+
+/-- twoDomains with the argument's parameter and result written. -/
+def twoDomainsW : STm :=
+  o16% new { c ⇒ def m(y : { def g(h : { def f(p : ⊤) : ⊤ }) : ⊤ }
+                         ∧ { def g(h : { def f(p : { type A : ⊥ .. ⊤ }) : ⊤ }) : ⊤ }) : ⊤
+                   = y.g(new { w ⇒ def f(q : ⊤) : ⊤ = q }) }
+
+/-- eqvArg with the argument's parameter and result written. -/
+def eqvArgW : STm :=
+  o16% new { c ⇒ def m(y : { def g(h : { def f(p : ⊤) : ⊤ }) : ⊤ }
+                         ∧ { def g(h : { def f(p : ⊤ ∧ ⊤) : ⊤ }) : ⊤ }) : ⊤
+                   = y.g(new { w ⇒ def f(q : ⊤) : ⊤ = q }) }
+
+/-- alias2 with the literal's parameter and result written. -/
+def alias2W : STm :=
+  o16% new { y ⇒ type L = y.M
+                  type M = { def f(p : ⊤) : ⊤ }
+                  def g(x : ⊤) : ⊤ = (new { o ⇒ def f(q : ⊤) : ⊤ = q } : y.L) }
+
+/-- bareUse with the results written at the snapshot. -/
+def bareUseW : STm :=
+  o16% (new { o ⇒ def c(x : ⊤) : { def d(y : ⊤) : ⊤ } ∧ ⊤ = o   def d(x : ⊤) : ⊤ = x }).c(
+         new { z ⇒ }).d(new { z ⇒ })
+
+/-- fluentUse with the results written at the snapshots. -/
+def fluentUseW : STm :=
+  o16% (new { o ⇒ def c(x : ⊤) : ⊤ = o   def g(x : ⊤) : ⊤ = o.c(x) }).g(new { z ⇒ })
+
+/-- The self type of the nesting `nestSrc d`. -/
+def nestTy : Nat → SType
+  | 0 => .top
+  | d + 1 => .mu "o" (.and (.fn "f" "x" .top (nestTy d)) .top)
+
+/-- The nesting with every result written. -/
+def nestW : Nat → STm
+  | 0 => .var "x"
+  | d + 1 => .obj "o" none (.cons (.fn "f" "x" (some .top) (some (nestTy d)) (nestW d)) .nil)
+
+/-- Literals without a self type nested `d` deep, each with one method whose
+parameter type is written, the innermost body the parameter. -/
+def nestSrc : Nat → STm
+  | 0 => .var "x"
+  | d + 1 => .obj "o" none (.cons (.fn "f" "x" (some .top) none (nestSrc d)) .nil)
+
+/-- The nesting at depth 12 resolves to the term `nestTop 12` of `Infer.lean`. -/
+example : resolve [("f", 0)] (nestSrc 13) = some (nestTop 12) := by decide
+
+/-! ### The programs of the typer
+
+Every program of `Notation.lean`, `Typer.lean` and the sections above, with
+its written verdict first.  `S` and `A` change only `recArg` and `curryCall`,
+the two programs with written self types.  Under `S` neither receiver gets a
+goal, so its method has no parameter type, as in Scala.  Under `A` the
+argument of `recArg` takes its self type from the domain of `apply`, and the
+argument of `curryCall` gets the domain `⊤`, which declares no method.  Under
+`R` a method's result is its body's type, and under `P` a method without a
+parameter type and without a goal is a missing parameter type, as in Scala.
+A recursive method without a result is a cyclic reference.  No program here
+but `recArg` and `curryCall` has a written self type, so `SR` is `R` for the
+others. -/
+
+/-- The written verdict `c0`, nothing to erase under `S` and `A`, `cR` under
+`R` and `SR`, and `cP` under `P`. -/
+abbrev MethodRow (Λ : LabelTable) (w : STm) (c0 cR cP : Cell) : Prop :=
+  row Λ w = [c0, .noSlot, cR, cP, .noSlot, cR]
+
+/-- `ex0` has no annotation to erase. -/
+theorem ex0_erased : row [] ex0src =
+    [.same (tyOf [] ex0src) ⟨defaultFuel, false⟩, .noSlot, .noSlot, .noSlot, .noSlot, .noSlot] := by
+  decide +kernel
+
+/-- `ex0` ascribed has no annotation to erase. -/
+theorem ex0Asc_erased : row [] ex0AscSrc =
+    [.same (tyOf [] ex0AscSrc) ⟨defaultFuel - 1, false⟩, .noSlot, .noSlot, .noSlot, .noSlot,
+     .noSlot] := by
+  decide +kernel
+
+/-- `recArg` under each erasure.  `A` compiles at the written type, with the
+argument's self type formed from the domain of `apply`.  `SR` compiles at the
+parameter type of `apply`, which the receiver's method returns. -/
+theorem recArg_erased : row recArgTable recArgSrc =
+    [.same (tyOf recArgTable recArgSrc) ⟨defaultFuel - 117, false⟩,
+     .no (.missingParamType (some 0)) ⟨defaultFuel, false⟩, .noSlot, .noSlot,
+     .other (tyOf recArgTable recArgSrc) ⟨defaultFuel - 113, false⟩,
+     .other (tyIs recArgTable (o16Ty% μ(z. { def f(y : ⊤) : z.B })))
+       ⟨defaultFuel - 103, false⟩] := by
+  decide +kernel
+
+/-- `curryCall` under each erasure.  `SR` compiles at the written type. -/
+theorem curryCall_erased : row curryCallTable curryCallSrc =
+    [.same (tyOf curryCallTable curryCallSrc) ⟨defaultFuel - 18, false⟩,
+     .no (.missingParamType (some 0)) ⟨defaultFuel, false⟩, .noSlot, .noSlot,
+     .no (.missingParamType (some 0)) ⟨defaultFuel - 15, false⟩,
+     .other (tyOf curryCallTable curryCallSrc) ⟨defaultFuel - 43, false⟩] := by
+  decide +kernel
+
+/-- `ex1` under each erasure.  `R` compiles at the self type of the inner
+literal as the outer method's result. -/
+theorem ex1_erased : MethodRow ex1Table ex1src
+    (.same (tyOf ex1Table ex1src) ⟨defaultFuel - 7, false⟩)
+    (.other (tyOf ex1Table ex1RW) ⟨defaultFuel - 3, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- The call on a literal whose method type mentions its self. -/
+theorem selfCall_erased : MethodRow selfCallTable selfCallSrc
+    (.same (tyOf selfCallTable selfCallSrc) ⟨defaultFuel - 43, false⟩)
+    (.other (tyOf selfCallTable selfCallSrc) ⟨defaultFuel - 15, false⟩)
+    (.no (.missingParamType (some 1)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- The call on a variable whose type is a selection. -/
+theorem selCall_erased : MethodRow selCallTable selCallSrc
+    (.same (tyOf selCallTable selCallSrc) ⟨defaultFuel - 32, false⟩)
+    (.other (tyOf selCallTable selCallSrc) ⟨defaultFuel - 51, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- Two candidates: the result is the least one, the written result. -/
+theorem twoCand_erased : MethodRow twoCandTable twoCandSrc
+    (.same (tyOf twoCandTable twoCandSrc) ⟨defaultFuel - 49, false⟩)
+    (.other (tyOf twoCandTable twoCandSrc) ⟨defaultFuel - 98, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- The union receiver stays rejected. -/
+theorem unionCall_erased : MethodRow unionCallTable unionCallSrc
+    (.no .mismatch ⟨defaultFuel - 1, false⟩) (.no .mismatch ⟨defaultFuel - 1, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- The receiver at `⊥` stays rejected. -/
+theorem botCall_erased : MethodRow unionCallTable botCallSrc
+    (.no .mismatch ⟨defaultFuel - 1, false⟩) (.no .mismatch ⟨defaultFuel - 1, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- Packing below a selection.  `R` compiles at the parameter type as the
+result. -/
+theorem packSel_erased : MethodRow packSelTable packSelSrc
+    (.same (tyOf packSelTable packSelSrc) ⟨defaultFuel - 17, false⟩)
+    (.other (tyOf packSelTable packSelRW) ⟨defaultFuel - 1, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- Packing below an intersection.  `R` compiles at the parameter type as the
+result. -/
+theorem packAnd_erased : MethodRow packAndTable packAndSrc
+    (.same (tyOf packAndTable packAndSrc) ⟨defaultFuel - 14, false⟩)
+    (.other (tyOf packAndTable packAndRW) ⟨defaultFuel - 1, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- P1 under each erasure.  `h` calls itself, so `R` is a cyclic reference at
+`h`. -/
+theorem P1_erased : MethodRow P1Table P1src
+    (.same (tyOf P1Table P1src) ⟨defaultFuel - 143, false⟩)
+    (.no (.cyclicRef 1) ⟨defaultFuel, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- P1 in the Scala shape under each erasure: a cyclic reference at `h`. -/
+theorem P1T_erased : MethodRow P1TTable P1Tsrc
+    (.same (tyOf P1TTable P1Tsrc) ⟨defaultFuel - 255, false⟩)
+    (.no (.cyclicRef 1) ⟨defaultFuel, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- The ascribed P1 under each erasure.  `R` compiles at the body's type
+`μ(z. c.L)` as the result. -/
+theorem P1asc_erased : MethodRow P1ascTable P1ascSrc
+    (.same (tyOf P1ascTable P1ascSrc) ⟨defaultFuel - 77, false⟩)
+    (.other (tyOf P1ascTable P1ascRW) ⟨defaultFuel - 3, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- P3 under each erasure.  `apply` calls itself, so `R` is a cyclic reference
+at `apply`. -/
+theorem P3_erased : MethodRow P3Table P3src
+    (.same (tyOf P3Table P3src) ⟨defaultFuel - 157, false⟩)
+    (.no (.cyclicRef 1) ⟨defaultFuel, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- P2 stays rejected. -/
+theorem P2_erased : MethodRow P2Table P2src
+    (.no .mismatch ⟨defaultFuel - 26, false⟩) (.no .mismatch ⟨defaultFuel - 26, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- P2 one binder deeper stays rejected. -/
+theorem P2deep_erased : MethodRow P2deepTable P2deepSrc
+    (.no .mismatch ⟨defaultFuel - 26, false⟩) (.no .mismatch ⟨defaultFuel - 26, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- LP under each erasure.  `R` compiles: no written result asks the
+comparison of `p.A` with `q.B` that runs to the limit. -/
+theorem LP_erased : MethodRow LPTable LPsrc
+    (.no .limit ⟨defaultFuel - 32603, true⟩)
+    (.other (tyIs LPTable (o16Ty% μ(p. { type A : { def f(y : ⊤) : p.A } .. { def f(y : ⊤) : p.A } }
+        ∧ { def g(z : ⊤) : μ(q. { type B : { def f(y : ⊤) : q.B } .. { def f(y : ⊤) : q.B } }
+                                 ∧ { def h(w : p.A) : p.A } ∧ ⊤) } ∧ ⊤)))
+      ⟨defaultFuel - 3, false⟩)
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- `paper_lst` under each erasure.  The ascription is the module's parent, so
+`R` and `P` compile at the module type.  Under `R` each nested literal
+inherits its results from the declared result of its method, through the
+alias `m.List`, and the recursive `head` and `tail` of `nil`'s list are no
+cycle. -/
+theorem paperLst_erased : MethodRow paperLstTable paperLstSrc
+    (.same (tyOf paperLstTable paperLstSrc) ⟨defaultFuel - 1229, false⟩)
+    (.other (tyOf paperLstTable paperLstSrc) ⟨defaultFuel - 29926, false⟩)
+    (.other (tyOf paperLstTable paperLstSrc) ⟨defaultFuel - 4468, false⟩) := by
+  decide +kernel
+
+/-! ### Literals without a self type
+
+The programs of `Infer.lean`, each beside a written form that states the
+annotations it leaves out.  Each fact gives the written verdict, then the
+erased one.  The written form of a rejected program types, so the rejection
+is the elaborator's, as Scala's.  A program with no written form that types
+has its verdict alone. -/
+
+/-- The verdict on a program with no written form beside it. -/
+abbrev Verdict (Λ : LabelTable) (e : STm) (c : Cell) : Prop := verdict Λ e = c
+
+/-- noParam: a method with neither a parameter type nor a goal. -/
+theorem noParam_erased : pair fTable noParamW noParamSrc =
+    [.same (tyOf fTable noParamW) ⟨defaultFuel - 1, false⟩,
+     .no (.missingParamType (some 0)) ⟨defaultFuel, false⟩] := by
+  decide +kernel
+
+/-- ascParam: the ascribed `μ` gives the parameter and the result. -/
+theorem ascParam_erased : pair fTable ascParamW ascParamSrc =
+    [.same (tyOf fTable ascParamW) ⟨defaultFuel - 7, false⟩,
+     .other (tyOf fTable ascParamW) ⟨defaultFuel - 14, false⟩] := by
+  decide +kernel
+
+/-- ascSame: two declarations at one domain, whose results meet. -/
+theorem ascSame_erased : pair fTable ascSameW ascSameSrc =
+    [.same (tyOf fTable ascSameW) ⟨defaultFuel - 42, false⟩,
+     .other (tyOf fTable ascSameW) ⟨defaultFuel - 140, false⟩] := by
+  decide +kernel
+
+/-- ascW: the goal gives back the written self type, so the fill is the
+written program. -/
+theorem ascW_erased : pair fTable ascWSrc ascWSrcS =
+    [.same (tyOf fTable ascWSrc) ⟨defaultFuel - 7, false⟩,
+     .same (tyOf fTable ascWSrc) ⟨defaultFuel - 14, false⟩] := by
+  decide +kernel
+
+/-- ascTwo: two declarations at comparable domains, the larger domain. -/
+theorem ascTwo_erased : pair fTable ascTwoW ascTwoSrc =
+    [.same (tyOf fTable ascTwoW) ⟨defaultFuel - 30, false⟩,
+     .other (tyOf fTable ascTwoW) ⟨defaultFuel - 61, false⟩] := by
+  decide +kernel
+
+/-- twoDom: two declarations at domains that are not ordered, their union. -/
+theorem twoDom_erased : pair fTable twoDomW twoDomSrc =
+    [.same (tyOf fTable twoDomW) ⟨defaultFuel - 60, false⟩,
+     .other (tyOf fTable twoDomW) ⟨defaultFuel - 122, false⟩] := by
+  decide +kernel
+
+/-- eqvAsc: two declarations at domains equal up to subtyping. -/
+theorem eqvAsc_erased : pair fTable eqvAscW eqvAscSrc =
+    [.same (tyOf fTable eqvAscW) ⟨defaultFuel - 30, false⟩,
+     .other (tyOf fTable eqvAscW) ⟨defaultFuel - 61, false⟩] := by
+  decide +kernel
+
+/-- ascInc: the parameter at the union of the two domains is below neither
+result. -/
+theorem ascInc_erased : Verdict fTable ascIncSrc (.no .mismatch ⟨defaultFuel - 74, false⟩) := by
+  decide +kernel
+
+/-- twoFormals: two formals at the callee's label, one domain for `f`. -/
+theorem twoFormals_erased : pair formalsTable twoFormalsW twoFormalsSrc =
+    [.same (tyOf formalsTable twoFormalsW) ⟨defaultFuel - 13, false⟩,
+     .other (tyOf formalsTable twoFormalsW) ⟨defaultFuel - 43, false⟩] := by
+  decide +kernel
+
+/-- twoDomains: two formals whose domains for `f` are ordered, the dominant
+formal. -/
+theorem twoDomains_erased : pair formalsTable twoDomainsW twoDomainsSrc =
+    [.same (tyOf formalsTable twoDomainsW) ⟨defaultFuel - 13, false⟩,
+     .other (tyOf formalsTable twoDomainsW) ⟨defaultFuel - 78, false⟩] := by
+  decide +kernel
+
+/-- Two formals whose domains for `f` are not ordered: no dominant formal. -/
+theorem twoDomainsInc_erased : Verdict formalsTable twoDomainsIncSrc
+    (.no (.missingParamType (some 0)) ⟨defaultFuel - 22, false⟩) := by
+  decide +kernel
+
+/-- eqvArg: two formals whose domains for `f` are equal up to subtyping. -/
+theorem eqvArg_erased : pair formalsTable eqvArgW eqvArgSrc =
+    [.same (tyOf formalsTable eqvArgW) ⟨defaultFuel - 13, false⟩,
+     .other (tyOf formalsTable eqvArgW) ⟨defaultFuel - 49, false⟩] := by
+  decide +kernel
+
+/-- alias2: an alias of an alias of a method type, followed. -/
+theorem alias2_erased : pair alias2Table alias2W alias2Src =
+    [.same (tyOf alias2Table alias2W) ⟨defaultFuel - 55, false⟩,
+     .other (tyOf alias2Table alias2W) ⟨defaultFuel - 202, false⟩] := by
+  decide +kernel
+
+/-- An abstract goal whose upper bound declares the method. -/
+theorem upper_erased : Verdict boundTable upperSrc (.no .mismatch ⟨defaultFuel - 4, false⟩) := by
+  decide +kernel
+
+/-- An abstract goal whose lower bound declares the method gives no parameter
+type, though the written form types. -/
+theorem lower_erased : pair boundTable lowerW lowerSrc =
+    [.same (tyOf boundTable lowerW) ⟨defaultFuel - 13, false⟩,
+     .no (.missingParamType (some 0)) ⟨defaultFuel - 4, false⟩] := by
+  decide +kernel
+
+/-- fwd: a method that calls a later one waits a round. -/
+theorem fwd_erased : pair fwdTable fwdSrcW fwdSrc =
+    [.same (tyOf fwdTable fwdSrcW) ⟨defaultFuel - 14, false⟩,
+     .other (tyOf fwdTable fwdSrcW) ⟨defaultFuel - 20, false⟩] := by
+  decide +kernel
+
+/-- recW: a recursive method with its result written, a program the typer
+takes as it is. -/
+theorem recW_erased : Verdict recTable recWSrc
+    (.same (tyOf recTable recWSrc) ⟨defaultFuel - 7, false⟩) := by
+  decide +kernel
+
+/-- recU: a recursive method without a result. -/
+theorem recU_erased : pair recTable recWSrc recUSrc =
+    [.same (tyOf recTable recWSrc) ⟨defaultFuel - 7, false⟩,
+     .no (.cyclicRef 0) ⟨defaultFuel, false⟩] := by
+  decide +kernel
+
+/-- A recursion through an ascription of the self. -/
+theorem ascRec_erased : pair recTable ascRecW ascRecSrc =
+    [.same (tyOf recTable ascRecW) ⟨defaultFuel - 6, false⟩,
+     .no (.cyclicRef 0) ⟨defaultFuel, false⟩] := by
+  decide +kernel
+
+/-- cyc: the cycle between `b` and `c` is named at `b`, the method the walk
+from `a` reaches again. -/
+theorem cyc_erased : pair cycTable cycW cycSrc =
+    [.same (tyOf cycTable cycW) ⟨defaultFuel - 63, false⟩,
+     .no (.cyclicRef 1) ⟨defaultFuel, false⟩] := by
+  decide +kernel
+
+/-- nestRec: a recursive call from a nested literal. -/
+theorem nestRec_erased : pair nestTable nestRecW nestRecSrc =
+    [.same (tyOf nestTable nestRecW) ⟨defaultFuel - 8, false⟩,
+     .no (.cyclicRef 0) ⟨defaultFuel, false⟩] := by
+  decide +kernel
+
+/-- A nested literal whose method has neither a parameter type nor a goal. -/
+theorem nestNoParam_erased : Verdict nestTable nestNoParamSrc
+    (.no (.missingParamType (some 0)) ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-- bare: a method that returns the self is typed at the snapshot of the ready
+methods. -/
+theorem bare_erased : pair bareTable bareSrcW bareSrc =
+    [.same (tyOf bareTable bareSrcW) ⟨defaultFuel - 26, false⟩,
+     .other (tyOf bareTable bareSrcW) ⟨defaultFuel - 26, false⟩] := by
+  decide +kernel
+
+/-- bare, used: the call of `d` on the result of `c` types. -/
+theorem bareUse_erased : pair bareTable bareUseW bareUseSrc =
+    [.same .TTop ⟨defaultFuel - 47, false⟩, .other .TTop ⟨defaultFuel - 47, false⟩] := by
+  decide +kernel
+
+/-- fluent: a method that calls one that returns the self waits for it. -/
+theorem fluent_erased : pair fluentTable fluentSrcW fluentSrc =
+    [.same (tyOf fluentTable fluentSrcW) ⟨defaultFuel - 19, false⟩,
+     .other (tyOf fluentTable fluentSrcW) ⟨defaultFuel - 25, false⟩] := by
+  decide +kernel
+
+/-- fluent, used. -/
+theorem fluentUse_erased : pair fluentTable fluentUseW fluentUseSrc =
+    [.same .TTop ⟨defaultFuel - 33, false⟩, .other .TTop ⟨defaultFuel - 39, false⟩] := by
+  decide +kernel
+
+/-- bareLate: a method that calls a later one that returns the self. -/
+theorem bareLate_erased : pair bareLateTable bareLateSrcW bareLateSrc =
+    [.same (tyOf bareLateTable bareLateSrcW) ⟨defaultFuel - 19, false⟩,
+     .other (tyOf bareLateTable bareLateSrcW) ⟨defaultFuel - 25, false⟩] := by
+  decide +kernel
+
+/-- chain: the snapshot a method that returns the self is typed at lacks that
+method. -/
+theorem chain_erased : pair chainTable chainSrcW chainSrc =
+    [.same (tyOf chainTable chainSrcW) ⟨defaultFuel - 6, false⟩,
+     .other (tyOf chainTable chainSrcW) ⟨defaultFuel - 6, false⟩] := by
+  decide +kernel
+
+/-- chain, used twice: the second call finds no method.  The compiler gives
+`c` the class type and accepts the chain.  No type of the version names the
+whole self type here. -/
+theorem chainUse_erased : Verdict chainTable chainUseSrc
+    (.no .mismatch ⟨defaultFuel - 15, false⟩) := by
+  decide +kernel
+
+/-- Two candidates whose types are not ordered have no least one.  The
+compiler meets them, which the version cannot derive for a call. -/
+theorem amb_erased : Verdict ambTable ambSrc (.no (.ambiguous 0) ⟨defaultFuel - 19, false⟩) := by
+  decide +kernel
+
+/-- `twoCand` with the two method types in the other order: the least
+candidate is the same. -/
+theorem twoCandSwap_erased : pair twoCandTable twoCandSwapSrc twoCandSwapSrc.eraseRes =
+    [.same (tyOf twoCandTable twoCandSwapSrc) ⟨defaultFuel - 12, false⟩,
+     .other (tyOf twoCandTable twoCandSwapSrc) ⟨defaultFuel - 60, false⟩] := by
+  decide +kernel
+
+/-- Twelve nested literals without a self type.  Each body is typed once in a
+round and once more by the typer on the filled literal, so the fuel grows with
+the square of the depth. -/
+theorem nest12_erased : pair [("f", 0)] (nestW 13) (nestSrc 13) =
+    [.same (tyIs [("f", 0)] (nestTy 13)) ⟨defaultFuel - 13, false⟩,
+     .other (tyIs [("f", 0)] (nestTy 13)) ⟨defaultFuel - 91, false⟩] := by
+  decide +kernel
+
+/-- Seventeen nested literals without a self type. -/
+theorem nest17_erased : pair [("f", 0)] (nestW 18) (nestSrc 18) =
+    [.same (tyIs [("f", 0)] (nestTy 18)) ⟨defaultFuel - 18, false⟩,
+     .other (tyIs [("f", 0)] (nestTy 18)) ⟨defaultFuel - 171, false⟩] := by
+  decide +kernel
+
+/-! ### The target checker accepts each erased program that compiles
+
+`compile_checks_get` at each erased program whose cell compiles.  `SR` is `R`
+for every program without a written self type, so its program is listed
+once. -/
+
+/-- `SR` and `R` are one program for each program without a written self
+type. -/
+example : [ex1src, selfCallSrc, selCallSrc, twoCandSrc, packSelSrc, packAndSrc, P1ascSrc, LPsrc,
+      paperLstSrc].all (fun w => decide (Erasure.SR.surface w = Erasure.R.surface w)) = true := by
+  decide
+
+/-- The target checker accepts the translation of `recArg` under `A`. -/
+theorem recArg_A_checks :
+    CheckerAccepts {} recArgTable (Erasure.A.surface recArgSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `recArg` under `SR`. -/
+theorem recArg_SR_checks :
+    CheckerAccepts {} recArgTable (Erasure.SR.surface recArgSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `curryCall` under `SR`. -/
+theorem curryCall_SR_checks :
+    CheckerAccepts {} curryCallTable (Erasure.SR.surface curryCallSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `ex1` under `R`. -/
+theorem ex1_R_checks : CheckerAccepts {} ex1Table (Erasure.R.surface ex1src) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `selfCall` under `R`. -/
+theorem selfCall_R_checks :
+    CheckerAccepts {} selfCallTable (Erasure.R.surface selfCallSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `selCall` under `R`. -/
+theorem selCall_R_checks :
+    CheckerAccepts {} selCallTable (Erasure.R.surface selCallSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `twoCand` under `R`. -/
+theorem twoCand_R_checks :
+    CheckerAccepts {} twoCandTable (Erasure.R.surface twoCandSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `packSel` under `R`. -/
+theorem packSel_R_checks :
+    CheckerAccepts {} packSelTable (Erasure.R.surface packSelSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `packAnd` under `R`. -/
+theorem packAnd_R_checks :
+    CheckerAccepts {} packAndTable (Erasure.R.surface packAndSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of the ascribed P1 under `R`. -/
+theorem P1asc_R_checks :
+    CheckerAccepts {} P1ascTable (Erasure.R.surface P1ascSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of LP under `R`. -/
+theorem LP_R_checks : CheckerAccepts {} LPTable (Erasure.R.surface LPsrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `paper_lst` under `R`. -/
+theorem paperLst_R_checks :
+    CheckerAccepts {} paperLstTable (Erasure.R.surface paperLstSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `paper_lst` under `P`. -/
+theorem paperLst_P_checks :
+    CheckerAccepts {} paperLstTable (Erasure.P.surface paperLstSrc) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of ascParam. -/
+theorem ascParam_erased_checks : CheckerAccepts {} fTable ascParamSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of ascSame. -/
+theorem ascSame_erased_checks : CheckerAccepts {} fTable ascSameSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of ascW erased. -/
+theorem ascW_erased_checks : CheckerAccepts {} fTable ascWSrcS (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of ascTwo. -/
+theorem ascTwo_erased_checks : CheckerAccepts {} fTable ascTwoSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of twoDom. -/
+theorem twoDom_erased_checks : CheckerAccepts {} fTable twoDomSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of eqvAsc. -/
+theorem eqvAsc_erased_checks : CheckerAccepts {} fTable eqvAscSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of twoFormals. -/
+theorem twoFormals_erased_checks :
+    CheckerAccepts {} formalsTable twoFormalsSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of twoDomains. -/
+theorem twoDomains_erased_checks :
+    CheckerAccepts {} formalsTable twoDomainsSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of eqvArg. -/
+theorem eqvArg_erased_checks : CheckerAccepts {} formalsTable eqvArgSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of alias2. -/
+theorem alias2_erased_checks : CheckerAccepts {} alias2Table alias2Src (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of fwd. -/
+theorem fwd_erased_checks : CheckerAccepts {} fwdTable fwdSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of recW. -/
+theorem recW_erased_checks : CheckerAccepts {} recTable recWSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of bare. -/
+theorem bare_erased_checks : CheckerAccepts {} bareTable bareSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of bare, used. -/
+theorem bareUse_erased_checks : CheckerAccepts {} bareTable bareUseSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of fluent. -/
+theorem fluent_erased_checks : CheckerAccepts {} fluentTable fluentSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of fluent, used. -/
+theorem fluentUse_erased_checks :
+    CheckerAccepts {} fluentTable fluentUseSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of bareLate. -/
+theorem bareLate_erased_checks :
+    CheckerAccepts {} bareLateTable bareLateSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of chain. -/
+theorem chain_erased_checks : CheckerAccepts {} chainTable chainSrc (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of `twoCand` swapped, under
+`R`. -/
+theorem twoCandSwap_erased_checks :
+    CheckerAccepts {} twoCandTable twoCandSwapSrc.eraseRes (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of the twelve nested literals. -/
+theorem nest12_erased_checks : CheckerAccepts {} [("f", 0)] (nestSrc 13) (by decide +kernel) :=
+  compile_checks_get _
+/-- The target checker accepts the translation of the seventeen nested
+literals. -/
+theorem nest17_erased_checks : CheckerAccepts {} [("f", 0)] (nestSrc 18) (by decide +kernel) :=
+  compile_checks_get _
+
+/-! ### Rejections with the compiler's reason
+
+Each rejection below ends with the tank unmarked, so it holds at every budget
+(`erasedCell_rejected`).  Scala rejects each of them too, with the same
+message for a missing parameter type and for a cyclic reference, except
+chainUse and amb.  The compiler types the self of chain at its class and amb's
+call at the meet of its two candidates.  No type of the version names the
+whole self type of a literal without a type member, and no rule derives the
+meet for a call. -/
+
+/-- `recArg` under `S`: the receiver's method has no parameter type and no
+goal. -/
+theorem recArg_S_rejected :
+    RejectedWith recArgTable (Erasure.S.surface recArgSrc) (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := recArgSrc) (n := defaultFuel) (by decide +kernel)
+
+/-- `curryCall` under `S`. -/
+theorem curryCall_S_rejected :
+    RejectedWith curryCallTable (Erasure.S.surface curryCallSrc) (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := curryCallSrc) (n := defaultFuel) (by decide +kernel)
+
+/-- `curryCall` under `A`: the argument's goal `⊤` declares no method. -/
+theorem curryCall_A_rejected :
+    RejectedWith curryCallTable (Erasure.A.surface curryCallSrc) (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := curryCallSrc) (n := defaultFuel - 15) (by decide +kernel)
+
+/-- P1 under `R`: a cyclic reference at `h`. -/
+theorem P1_R_rejected : RejectedWith P1Table (Erasure.R.surface P1src) (.cyclicRef 1) :=
+  erasedCell_rejected (w := P1src) (n := defaultFuel) (by decide +kernel)
+
+/-- P1 in the Scala shape under `R`: a cyclic reference at `h`. -/
+theorem P1T_R_rejected : RejectedWith P1TTable (Erasure.R.surface P1Tsrc) (.cyclicRef 1) :=
+  erasedCell_rejected (w := P1Tsrc) (n := defaultFuel) (by decide +kernel)
+
+/-- P3 under `R`: a cyclic reference at `apply`. -/
+theorem P3_R_rejected : RejectedWith P3Table (Erasure.R.surface P3src) (.cyclicRef 1) :=
+  erasedCell_rejected (w := P3src) (n := defaultFuel) (by decide +kernel)
+
+/-- The union receiver under `R`. -/
+theorem unionCall_R_rejected :
+    RejectedWith unionCallTable (Erasure.R.surface unionCallSrc) .mismatch :=
+  erasedCell_rejected (w := unionCallSrc) (n := defaultFuel - 1) (by decide +kernel)
+
+/-- The receiver at `⊥` under `R`. -/
+theorem botCall_R_rejected :
+    RejectedWith unionCallTable (Erasure.R.surface botCallSrc) .mismatch :=
+  erasedCell_rejected (w := botCallSrc) (n := defaultFuel - 1) (by decide +kernel)
+
+/-- P2 under `R`. -/
+theorem P2_R_rejected : RejectedWith P2Table (Erasure.R.surface P2src) .mismatch :=
+  erasedCell_rejected (w := P2src) (n := defaultFuel - 26) (by decide +kernel)
+
+/-- P2 one binder deeper under `R`. -/
+theorem P2deep_R_rejected : RejectedWith P2deepTable (Erasure.R.surface P2deepSrc) .mismatch :=
+  erasedCell_rejected (w := P2deepSrc) (n := defaultFuel - 26) (by decide +kernel)
+
+/-- noParam: a method with neither a parameter type nor a goal. -/
+theorem noParam_rejected : RejectedWith fTable noParamSrc (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := noParamW) (n := defaultFuel) (by decide +kernel)
+
+/-- Two formals whose domains are not ordered. -/
+theorem twoDomainsInc_rejected :
+    RejectedWith formalsTable twoDomainsIncSrc (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := twoDomainsIncSrc) (n := defaultFuel - 22) (by decide +kernel)
+
+/-- An abstract goal whose lower bound alone declares the method. -/
+theorem lower_rejected : RejectedWith boundTable lowerSrc (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := lowerW) (n := defaultFuel - 4) (by decide +kernel)
+
+/-- A nested literal whose method has neither a parameter type nor a goal. -/
+theorem nestNoParam_rejected :
+    RejectedWith nestTable nestNoParamSrc (.missingParamType (some 0)) :=
+  erasedCell_rejected (w := nestNoParamSrc) (n := defaultFuel) (by decide +kernel)
+
+/-- recU: a recursive method without a result. -/
+theorem recU_rejected : RejectedWith recTable recUSrc (.cyclicRef 0) :=
+  erasedCell_rejected (w := recWSrc) (n := defaultFuel) (by decide +kernel)
+
+/-- A recursion through an ascription of the self. -/
+theorem ascRec_rejected : RejectedWith recTable ascRecSrc (.cyclicRef 0) :=
+  erasedCell_rejected (w := ascRecW) (n := defaultFuel) (by decide +kernel)
+
+/-- cyc: the cycle named at `b`. -/
+theorem cyc_rejected : RejectedWith cycTable cycSrc (.cyclicRef 1) :=
+  erasedCell_rejected (w := cycW) (n := defaultFuel) (by decide +kernel)
+
+/-- nestRec: a recursive call from a nested literal. -/
+theorem nestRec_rejected : RejectedWith nestTable nestRecSrc (.cyclicRef 0) :=
+  erasedCell_rejected (w := nestRecW) (n := defaultFuel) (by decide +kernel)
+
+/-- ascInc: the body does not meet the results of two incomparable domains. -/
+theorem ascInc_rejected : RejectedWith fTable ascIncSrc .mismatch :=
+  erasedCell_rejected (w := ascIncSrc) (n := defaultFuel - 74) (by decide +kernel)
+
+/-- An abstract goal whose upper bound declares the method. -/
+theorem upper_rejected : RejectedWith boundTable upperSrc .mismatch :=
+  erasedCell_rejected (w := upperSrc) (n := defaultFuel - 4) (by decide +kernel)
+
+/-- chain, used twice. -/
+theorem chainUse_rejected : RejectedWith chainTable chainUseSrc .mismatch :=
+  erasedCell_rejected (w := chainUseSrc) (n := defaultFuel - 15) (by decide +kernel)
+
+/-- amb: candidates with no least type. -/
+theorem amb_rejected : RejectedWith ambTable ambSrc (.ambiguous 0) :=
+  erasedCell_rejected (w := ambSrc) (n := defaultFuel - 19) (by decide +kernel)
+
+end Erasures
 
 end Oopsla16Frontend
