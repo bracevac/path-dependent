@@ -54,6 +54,15 @@ answer positions.  Every other type position is a plain type.
 with a capture binder for the witness and a term binder for the payload, both
 visible only in `u`.
 
+## Slots left to inference
+
+`λx. t` leaves the domain of a lambda empty, and `λ[c]x. t` does so with the
+arrow's own capture binder named, in scope in the body.  `ν(x. d)` leaves the
+self shape of a literal empty.  A domain is one slot, its shape and set
+together, so `λ(x : S). t` keeps meaning the pure `S ^ {}`.  `{a : T = t}`
+writes the type of a term member.  The body of `λx.` extends as far right as it
+can.  It needs a space after the dot, since `λx.x` lexes `x.x` as one name.
+
 ## Precedence
 
 `^` is looser than the arrow and the box.  `∀(x : ⊤) ⊤ ^ {c}` is an arrow whose
@@ -193,6 +202,12 @@ syntax:max "λ" "[" ident "]" "(" ident " : " clsTy ")" "." clsTm:60 : clsTm
 /-- `ν(x : S. d)`, an object literal: the self shape and its
 definitions, no capture set of its own. -/
 syntax:max "ν" "(" ident " : " clsShape "." clsDefs ")" : clsTm
+/-- `λx. t`, a lambda whose domain is left to inference. -/
+syntax:max "λ" ident "." clsTm:60 : clsTm
+/-- `λ[c]x. t`, the same with the arrow's own capture binder named. -/
+syntax:max "λ" "[" ident "]" ident "." clsTm:60 : clsTm
+/-- `ν(x. d)`, an object literal whose self shape is left to inference. -/
+syntax:max "ν" "(" ident "." clsDefs ")" : clsTm
 /-- `t.a` on a receiver that is not an identifier. -/
 syntax:80 clsTm:80 "." ident : clsTm
 /-- `t u`, application, left leaning. -/
@@ -217,6 +232,8 @@ syntax:max "{" "type" ident " = " clsShape "}" : clsDefs
 syntax:max "{" ident "^" " = " clsSet "}" : clsDefs
 /-- `{a = t}`, a term member definition. -/
 syntax:max "{" ident " = " clsTm "}" : clsDefs
+/-- `{a : T = t}`, a term member definition with a written type. -/
+syntax:max "{" ident " : " clsTy " = " clsTm "}" : clsDefs
 /-- `d ∧ e`, right leaning. -/
 syntax:65 clsDefs:66 " ∧ " clsDefs:65 : clsDefs
 
@@ -387,11 +404,17 @@ macro_rules
 macro_rules
   | `(cls% $x:ident) => surfaceTmOfIdent x
   | `(cls% λ ( $x:ident : $T:clsTy ) . $t:clsTm) =>
-      `(STm.lam none $(str x) (clsTy% $T) (cls% $t))
+      `(STm.lam none $(str x) (some (clsTy% $T)) (cls% $t))
   | `(cls% λ [ $k:ident ] ( $x:ident : $T:clsTy ) . $t:clsTm) =>
-      `(STm.lam (some $(str k)) $(str x) (clsTy% $T) (cls% $t))
+      `(STm.lam (some $(str k)) $(str x) (some (clsTy% $T)) (cls% $t))
   | `(cls% ν ( $x:ident : $S:clsShape . $d:clsDefs )) =>
-      `(STm.obj $(str x) (clsShape% $S) (clsDefs% $d))
+      `(STm.obj $(str x) (some (clsShape% $S)) (clsDefs% $d))
+  | `(cls% λ $x:ident . $t:clsTm) =>
+      `(STm.lam none $(str x) (none : SDom) (cls% $t))
+  | `(cls% λ [ $k:ident ] $x:ident . $t:clsTm) =>
+      `(STm.lam (some $(str k)) $(str x) (none : SDom) (cls% $t))
+  | `(cls% ν ( $x:ident . $d:clsDefs )) =>
+      `(STm.obj $(str x) (none : Option SShape) (clsDefs% $d))
   | `(cls% $t:clsTm . $a:ident) => `(STm.proj (cls% $t) $(str a))
   | `(cls% $t:clsTm $u:clsTm) => `(STm.app (cls% $t) (cls% $u))
   | `(cls% let $x:ident = $t:clsTm in $u:clsTm) =>
@@ -411,7 +434,9 @@ macro_rules
   | `(clsDefs% { $C:ident ^ = $c:clsSet }) =>
       `(SDefs.cap $(str C) (clsSet% $c))
   | `(clsDefs% { $a:ident = $t:clsTm }) =>
-      `(SDefs.trm $(str a) (cls% $t))
+      `(SDefs.trm $(str a) (none : Option SType) (cls% $t))
+  | `(clsDefs% { $a:ident : $T:clsTy = $t:clsTm }) =>
+      `(SDefs.trm $(str a) (some (clsTy% $T)) (cls% $t))
   | `(clsDefs% $d:clsDefs ∧ $e:clsDefs) => `(SDefs.and (clsDefs% $d) (clsDefs% $e))
 
 macro_rules
@@ -499,7 +524,7 @@ example : (cls% {k1} ⊸ e) = STm.unbox [SAtom.name "k1"] (STm.var "e") := by de
 /-- `λ[c](x : T). t`, a lambda with its arrow binder named. -/
 example :
     (cls% λ[c](x : ⊤ ^ {c}). x) =
-      STm.lam (some "c") "x" (SType.capt SShape.top [SAtom.name "c"]) (STm.var "x") := by
+      STm.lam (some "c") "x" (some (SType.capt SShape.top [SAtom.name "c"])) (STm.var "x") := by
   decide
 
 /-- `let ⟨c, x⟩ = t in u`, an explicit unpacking. -/
@@ -516,7 +541,7 @@ declared use set or kind. -/
 example :
     (clsProg% platform [k1, fs] λ(x : ⊤). x) =
       SProg.mk [] [("k1", none), ("fs", none)] none none
-        (STm.lam none "x" (SType.capt SShape.top []) (STm.var "x")) := by
+        (STm.lam none "x" (some (SType.capt SShape.top [])) (STm.var "x")) := by
   decide
 
 /-- `classifiers K extends L`, a classifier declared as a child of
@@ -567,7 +592,7 @@ example :
         [("ctl", some "Control"), ("io", some "IO")]
         (some [SAtom.proj (.name "ctl") (.only ["Control"]), SAtom.proj (.name "io") (.only ["Control"])])
         (some (.only ["Control"]))
-        (STm.lam none "u" (SType.capt SShape.top []) (STm.var "u")) := by
+        (STm.lam none "u" (some (SType.capt SShape.top [])) (STm.var "u")) := by
   decide
 
 /-- `only` and `except` are keywords only inside `clsKind`, `clsAtom` and
@@ -629,6 +654,74 @@ example : nameParts `x [] = ["x"] := by decide
 example : nameParts `x.a [] = ["x", "a"] := by decide
 
 example : nameParts `x.a.b [] = ["x", "a", "b"] := by decide
+
+/-! ### Slots left to inference -/
+
+example : (cls% λx. x) = STm.lam none "x" none (.var "x") := by decide
+
+/-- The body of `λx.` extends as far right as it can, a projection included. -/
+example : (cls% λx. x.a) = STm.lam none "x" none (.proj (.var "x") "a") := by decide
+
+example : (cls% λx. λy. f x y) =
+    STm.lam none "x" none (.lam none "y" none (.app (.app (.var "f") (.var "x")) (.var "y"))) := by
+  decide
+
+/-- `λ[c]x. t`, the arrow's binder named and the domain empty. -/
+example : (cls% λ[c]x. let y : ⊤ ^ {c} = x in y) =
+    STm.lam (some "c") "x" none
+      (.«let» "y" (some (.ty (.capt .top [.name "c"]))) (.var "x") (.var "y")) := by decide
+
+/-- A written domain is `some`. -/
+example : (cls% λ(x : ⊤). x) = STm.lam none "x" (some (.capt .top [])) (.var "x") := by decide
+
+example : (cls% ν(x. {a = x})) = STm.obj "x" none (.trm "a" none (.var "x")) := by decide
+
+example : (cls% ν(x. {type A = ⊤})) = STm.obj "x" none (.typ "A" .top) := by decide
+
+example : (cls% ν(x. {a : ⊤ = x.b})) =
+    STm.obj "x" none (.trm "a" (some (.capt .top [])) (.proj (.var "x") "b")) := by decide
+
+/-- A written self shape is `some`. -/
+example : (cls% ν(x : {a : ⊤}. {a = x})) =
+    STm.obj "x" (some (.fld "a" (.capt .top []))) (.trm "a" none (.var "x")) := by decide
+
+example : (clsDefs% {a : ⊤ ^ {k1} = f}) =
+    SDefs.trm "a" (some (.capt .top [.name "k1"])) (.var "f") := by decide
+
+example : (clsDefs% {a : ⊤ ^ {any} = x}) = SDefs.trm "a" (some (.capt .top [.any])) (.var "x") := by
+  decide
+
+/-- A written field type may project its set to a kind. -/
+example : (clsDefs% {a : ⊤ ^ {k1, k2}.only[Control] = x}) =
+    SDefs.trm "a"
+      (some (.capt .top
+        [.proj (.name "k1") (.only ["Control"]), .proj (.name "k2") (.only ["Control"])]))
+      (.var "x") := by decide
+
+example : (cls% f (λx. x)) = STm.app (.var "f") (.lam none "x" none (.var "x")) := by decide
+
+example : (cls% (λx. x : ∀(y : ⊤) ⊤)) =
+    STm.asc (.lam none "x" none (.var "x"))
+      (.capt (.all none "y" (.capt .top []) (.ty (.capt .top []))) []) := by decide
+
+/-- A field written with its type beside a field left without one. -/
+example : (cls% ν(z. {a : (∀(u : ⊤) ⊤) ^ {f} = f} ∧ {b = λu. z.a u})) =
+    STm.obj "z" none (.and
+      (.trm "a" (some (.capt (.all none "u" (.capt .top []) (.ty (.capt .top []))) [.name "f"]))
+        (.var "f"))
+      (.trm "b" none (.lam none "u" none (.app (.proj (.var "z") "a") (.var "u"))))) := by
+  decide
+
+/-- A literal with a type member, a capture member, a field with a written
+type and a field without one. -/
+example : (cls% ν(s. {type A = ⊤} ∧ {C^ = {k1}} ∧ {a : ⊤ ^ {} = λx. x} ∧ {b = s.a})) =
+    STm.obj "s" none (.and (.typ "A" .top) (.and (.cap "C" [.name "k1"])
+      (.and (.trm "a" (some (.capt .top [])) (.lam none "x" none (.var "x")))
+        (.trm "b" none (.proj (.var "s") "a"))))) := by decide
+
+/-- A program header around a body with an empty domain. -/
+example : (clsProg% platform [k1] λx. x) =
+    SProg.mk [] [("k1", none)] none none (STm.lam none "x" none (STm.var "x")) := by decide
 
 /-! ## The version's programs
 
