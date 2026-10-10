@@ -99,7 +99,29 @@ its set the least one the typer finds.  A literal without a self shape at a
 goal that dealiases to a `μ` takes the body of that `μ` as its self shape
 (`selfGoalF`).  Scala makes a class `pt` the parent of `new { … }`
 (`Typer.typedNew`), and every type of the version is structural, so a `μ` goal
-plays the class.  Any other literal without a self shape is a mismatch here.
+plays the class.  When that gives nothing on an unmarked tank, and for any
+other literal without a self shape, the self shape is formed from the
+definitions, as the next section says.  The literal is then filled at the
+formed shape (`fillDefsF`) and goes to `inferF` with the goal, which
+synthesizes it and moves it to the goal.  A field without a written type holds
+the term the rounds elaborated for it, so no field is elaborated twice, and
+nested literals cost fuel quadratic in their depth.
+
+## Self shapes formed from definitions
+
+`formSelfF` forms the self shape of a literal from its definitions, as the
+completers of `Namer` type the members of a class.  Type members, capture
+members and fields with a written type are known at once.  Every other field
+is a job (`jobsF`), typed in rounds (`roundsF`).  A round takes a snapshot of
+the self shape known so far and types every ready job once, with no goal, in
+the probe context: the self at `μ` of the snapshot, at the written set or at
+every atom of the context.  A job is ready when none of the fields it projects
+off the self is pending (`PTm.deps`).  A job that uses the self any other way
+is typed in the first round in which no ready job lacks such a use.  A
+field's type is its least candidate (`leastCandF`), capture sets included, and
+candidates with no least one are ambiguous.  A round that types nothing stops
+with the cyclic reference `cycleAt` names.  The self shape is the definition
+list read in lockstep (`PDefs.fullSelf`).
 
 ## Reasons
 
@@ -134,6 +156,21 @@ and the same tank.  At a function type and at an ascription to one this holds
 from every tank.  Through an intersection, an alias or a box it holds from
 the tank the function part leaves.  `letAnn_direct_full` says the same of a
 lambda that is the body of a `let` with a written function type.
+
+`fullSelf_lockstep` says that the formed self shape is the definition list
+read in lockstep, and `jobsF_written` that a literal with a written type on
+every field has no job.  `leastCand_least` says that the least candidate is a
+candidate whose type is below every candidate's, and `cycleAt_onCycle` that the
+cyclic reference names a pending field whose walk comes back to it.
+`roundsF_framed` says that the rounds are framed when every job is, and
+`jobsF_framed` that every job is.  `formSelfF_noAny` says that the formed self
+shape and the typed fields hold no `any` when the context, the definitions and
+every job hold none, and `jobsF_noAny` that every job holds none.
+`obj_none_landed` says that a candidate of a literal without a self shape is
+a candidate the typer gives the literal with its self shape and its
+definitions filled, at the same set and goal, so its derivation is the
+typer's.  `obj_none_formed` adds that with no goal the self shape is the one
+the rounds form.
 
 `elab_noAny` says that no candidate holds `any` in an annotation, a set or a
 type definition when the partial term, the goal and the types of the context
@@ -602,6 +639,312 @@ def objSelfF {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (U0 : Option (CaptureSet s
     | some d' => fullInfer Γ (.obj S U0 d') G
     | none => Fu.ret ([], r.2)
 
+/-! ## Self shapes formed from definitions
+
+A literal without a self shape has it formed from its definitions, as the
+completers of `Namer` type the members of a class.  A type member is known at
+once at its right-hand side on both bounds, and a capture member at its set on
+both bounds (`Namer.TypeDefCompleter.typeSig`).  A field with a written type is
+known at once at it (`Namer.valOrDefDefSig`).  Every other field is typed on
+demand (`Namer.inferredResultType`), in rounds.  `known` lists the fields typed
+so far, by label. -/
+
+/-- The first entry at a label. -/
+def lookupL {β : Type} : List (Label × β) → Label → Option β
+  | [], _ => none
+  | (b, v) :: l, a => if a = b then some v else lookupL l a
+
+/-- The self shape the definitions have so far.  A field not yet typed is
+left out, and `none` means that nothing is known. -/
+def PDefs.partialSelf {s : Sig} : PDefs s → List (Label × Ty s) → Option (Shape s)
+  | .typ A S, _ => some (.typ A S S)
+  | .cap C c, _ => some (.cap C c c)
+  | .trm a (some T) _, _ => some (.fld a T)
+  | .trm a none _, known => (lookupL known a).map (.fld a)
+  | .and d e, known =>
+      match d.partialSelf known, e.partialSelf known with
+      | some S1, some S2 => some (.and S1 S2)
+      | some S1, none => some S1
+      | none, o => o
+
+/-- The snapshot a round types its jobs against: the self shape known so
+far, or `⊤` when nothing is. -/
+def PDefs.probeSelf {s : Sig} (d : PDefs s) (known : List (Label × Ty s)) : Shape s :=
+  (d.partialSelf known).getD .top
+
+/-- The self shape in lockstep with the definitions, once every field is
+typed: the shape `DefsTy` concludes and `checkDefsF` reads. -/
+def PDefs.fullSelf {s : Sig} : PDefs s → List (Label × Ty s) → Option (Shape s)
+  | .typ A S, _ => some (.typ A S S)
+  | .cap C c, _ => some (.cap C c c)
+  | .trm a (some T) _, _ => some (.fld a T)
+  | .trm a none _, known => (lookupL known a).map (.fld a)
+  | .and d e, known =>
+      match d.fullSelf known, e.fullSelf known with
+      | some S1, some S2 => some (.and S1 S2)
+      | _, _ => none
+
+/-- `S` is the self shape of `d` in lockstep.  A type member gives its
+right-hand side on both bounds, a capture member its set on both bounds, a
+field with a written type that type, any other field the first type `known`
+gives its label, and an intersection of definitions the intersection of their
+self shapes. -/
+inductive Lockstep {s : Sig} (known : List (Label × Ty s)) : PDefs s → Shape s → Prop where
+  /-- `{type A = S}` at `{A : S .. S}`. -/
+  | typ (A : Label) (S : Shape s) : Lockstep known (.typ A S) (.typ A S S)
+  /-- `{C^ = c}` at `{C^ : c .. c}`. -/
+  | cap (C : Label) (c : CaptureSet s) : Lockstep known (.cap C c) (.cap C c c)
+  /-- `{a : T = t}` at `{a : T}`. -/
+  | written (a : Label) (T : Ty s) (t : PTm s) : Lockstep known (.trm a (some T) t) (.fld a T)
+  /-- `{a = t}` at `{a : T}`, with `T` the type known at `a`. -/
+  | inferred (a : Label) (T : Ty s) (t : PTm s) (h : lookupL known a = some T) :
+      Lockstep known (.trm a none t) (.fld a T)
+  /-- `d1 ∧ d2` at `S1 ∧ S2`. -/
+  | and {d1 d2 : PDefs s} {S1 S2 : Shape s} :
+      Lockstep known d1 S1 → Lockstep known d2 S2 → Lockstep known (.and d1 d2) (.and S1 S2)
+
+/-- Every field of the definitions has a written type. -/
+def PDefs.AllFieldsWritten {s : Sig} : PDefs s → Prop
+  | .typ _ _ => True
+  | .cap _ _ => True
+  | .trm _ o _ => o.isSome = true
+  | .and d e => d.AllFieldsWritten ∧ e.AllFieldsWritten
+
+/-! ## Jobs
+
+A job is a field without a written type.  It carries its elaboration as a
+function of the context, so that a round can run it with the self bound at the
+snapshot.  `jobsF` makes the jobs of a definition list inside the elaborator's
+mutual block, where the elaboration of a field is a call on a subterm. -/
+
+/-- A field without a written type: its label, its right-hand side, and its
+elaboration with no goal in a context. -/
+structure Job (s : Sig) where
+  /-- The field's label. -/
+  lbl : Label
+  /-- The right-hand side. -/
+  tm : PTm s
+  /-- The elaboration of the right-hand side with no goal. -/
+  run : (Γ : Ctx s) → Fu (Out Γ)
+
+/-- The dependencies of a job on the self, the innermost variable. -/
+def Job.deps {s : Sig} (j : Job (s,x)) : List Label × Bool := j.tm.deps [.here]
+
+/-- A typed job: its label and right-hand side, the term elaborated from it,
+and the type the rounds chose. -/
+structure Done (s : Sig) where
+  /-- The field's label. -/
+  lbl : Label
+  /-- The right-hand side. -/
+  tm : PTm s
+  /-- The elaborated right-hand side. -/
+  a : ATm s
+  /-- Its type, the least candidate's. -/
+  ty : Ty s
+
+/-- The fields typed so far, by label. -/
+def Done.known {s : Sig} (ds : List (Done s)) : List (Label × Ty s) :=
+  ds.map fun e => (e.lbl, e.ty)
+
+/-! ## The least candidate
+
+A field's type is the least type of its candidates: the type of the first
+candidate that is below every other one by the subtyping goal, capture sets
+included.  Every candidate is a type of the right-hand side, so a use that
+needs another one reaches it by subsumption.  The choice does not depend on
+the order of an intersection.  The compiler meets the candidates with
+`Denotation.meet`, which the version cannot derive for a term that is not a
+variable, so candidates with no least one are rejected as ambiguous. -/
+
+/-- `T` is below every type of the list, or equal to it. -/
+def belowAllF {s : Sig} (Γ : Ctx s) (T : Ty s) : List (Ty s) → Fu Bool
+  | [] => Fu.ret true
+  | U :: Us =>
+      if T = U then belowAllF Γ T Us
+      else
+        Fu.bind (subF Γ T U) fun o =>
+          match o with
+          | some _ => belowAllF Γ T Us
+          | none => Fu.ret false
+
+/-- The first candidate of the list whose type is below every type of
+`Ts`. -/
+def leastFromF {s : Sig} (Γ : Ctx s) (Ts : List (Ty s)) : List (Elab Γ) → Fu (Option (Elab Γ))
+  | [] => Fu.ret none
+  | c :: rest =>
+      Fu.bind (belowAllF Γ c.ty Ts) fun b => if b then Fu.ret (some c) else leastFromF Γ Ts rest
+
+/-- The least candidate: the first one whose type is below the type of every
+candidate. -/
+def leastCandF {s : Sig} (Γ : Ctx s) (cs : List (Elab Γ)) : Fu (Option (Elab Γ)) :=
+  leastFromF Γ (cs.map (·.ty)) cs
+
+/-! ## Rounds
+
+A round takes a snapshot of the self shape known so far and types every ready
+job once, with no goal, in the probe context: the self at `μ` of the
+snapshot, at the written set or at every atom of the context (`probeCtx`).  A
+job is ready when none of the labels it projects off the self is pending.  A
+job that uses the self any other way waits for the first round in which no
+ready job lacks such a use.  So two such jobs do not see each other, and a job
+that projects the field of one sees it.  The number of rounds is an index, so
+the rounds are structural. -/
+
+/-- A job is ready when none of the labels it projects off the self is
+pending. -/
+def readyIn {s : Sig} (pend : List Label) (j : Job (s,x)) : Bool :=
+  j.deps.1.all fun a => !pend.contains a
+
+/-- Whether a round types the jobs that use the self bare: when no ready job
+lacks such a use. -/
+def bareRound {s : Sig} (js : List (Job (s,x))) : Bool :=
+  !(js.any fun j => readyIn (js.map (·.lbl)) j && !j.deps.2)
+
+/-- Whether a round over the pending jobs `js` types `j`: it is ready, and it
+uses the self bare exactly when the round types such jobs. -/
+def picks {s : Sig} (js : List (Job (s,x))) (j : Job (s,x)) : Bool :=
+  readyIn (js.map (·.lbl)) j && decide (j.deps.2 = bareRound js)
+
+/-- A job typed against the snapshot `P`: its elaboration in the probe
+context, and its type the least candidate.  No candidate gives the reasons of
+the elaboration, and candidates with no least one give `ambiguous`. -/
+def runJobF {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (P : Shape (s,x))
+    (j : Job (s,x)) : Fu (Except (List EReason) (Done (s,x))) :=
+  Fu.bind (j.run (probeCtx Γ P U0)) fun r =>
+    match r.1 with
+    | [] => Fu.ret (.error r.2)
+    | c :: cs =>
+        Fu.bind (leastCandF (probeCtx Γ P U0) (c :: cs)) fun o =>
+          match o with
+          | some e => Fu.ret (.ok ⟨j.lbl, j.tm, e.tm, e.ty⟩)
+          | none => Fu.ret (.error [.ambiguous j.lbl])
+
+/-- One round: the jobs typed against the snapshot `P`, in source order.  The
+first failure stops it. -/
+def roundF {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (P : Shape (s,x)) :
+    List (Job (s,x)) → Fu (Except (List EReason) (List (Done (s,x))))
+  | [] => Fu.ret (.ok [])
+  | j :: js =>
+      Fu.bind (runJobF Γ U0 P j) fun r =>
+        match r with
+        | .ok e =>
+            Fu.bind (roundF Γ U0 P js) fun r' =>
+              match r' with
+              | .ok es => Fu.ret (.ok (e :: es))
+              | .error rs => Fu.ret (.error rs)
+        | .error rs => Fu.ret (.error rs)
+
+/-! ## The cyclic reference
+
+A round that types nothing has every pending job waiting for a pending label.
+The walk starts at the first pending job in source order and follows the
+first pending label it waits for, until a label repeats.  That label is the
+cyclic reference, the member `SymDenotation.completeFrom` reaches again while
+its completion is under way. -/
+
+/-- The pending labels a job projects off the self, in term order. -/
+def waitsFor {s : Sig} (js : List (Job (s,x))) (j : Job (s,x)) : List Label :=
+  j.deps.1.filter fun a => (js.map (·.lbl)).contains a
+
+/-- The label the walk visits after `l`: the first pending label that the
+first job at `l` waits for. -/
+def nextL {s : Sig} (js : List (Job (s,x))) (l : Label) : Option Label :=
+  match js.find? (fun j => decide (j.lbl = l)) with
+  | some j => (waitsFor js j).head?
+  | none => none
+
+/-- The walk from `l`, with the labels `seen` before it, for at most `n`
+steps: the first label it visits twice. -/
+def cycleFrom {s : Sig} (js : List (Job (s,x))) : Nat → List Label → Label → Option Label
+  | 0, _, _ => none
+  | n + 1, seen, l =>
+      if seen.contains l then some l
+      else
+        match nextL js l with
+        | some l' => cycleFrom js n (l :: seen) l'
+        | none => none
+
+/-- The cyclic reference among the pending jobs: the first label the walk
+from the first job visits twice, within `n` steps. -/
+def cycleAt {s : Sig} (js : List (Job (s,x))) (n : Nat) : Option Label :=
+  match js with
+  | [] => none
+  | j :: _ => cycleFrom js n [] j.lbl
+
+/-- The label the walk reaches from `l` in `k` steps. -/
+def walkL {s : Sig} (js : List (Job (s,x))) : Nat → Label → Option Label
+  | 0, l => some l
+  | k + 1, l => (nextL js l).bind (walkL js k)
+
+/-- The walk from a job comes back to its label. -/
+def OnCycle {s : Sig} (js : List (Job (s,x))) (j : Job (s,x)) : Prop :=
+  ∃ k, walkL js (k + 1) j.lbl = some j.lbl
+
+/-- The reason of a round that types nothing.  The walk visits at most one
+label per job before one repeats. -/
+def stallReason {s : Sig} (js : List (Job (s,x))) : EReason :=
+  match cycleAt js (js.length + 1) with
+  | some l => .cyclicRef l
+  | none => .mismatch
+
+/-- Rounds until every job is typed, at most `n` of them.  `probe` gives the
+snapshot from the fields typed so far, and `done` lists them.  A round that
+types nothing stops with the cyclic reference. -/
+def roundsF {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s))
+    (probe : List (Label × Ty (s,x)) → Shape (s,x)) :
+    Nat → List (Job (s,x)) → List (Done (s,x)) → Fu (Except (List EReason) (List (Done (s,x))))
+  | _, [], done => Fu.ret (.ok done)
+  | 0, j :: js, _ => Fu.ret (.error [stallReason (j :: js)])
+  | n + 1, j :: js, done =>
+      if ((j :: js).filter (picks (j :: js))).isEmpty then Fu.ret (.error [stallReason (j :: js)])
+      else
+        Fu.bind (roundF Γ U0 (probe (Done.known done)) ((j :: js).filter (picks (j :: js))))
+          fun r =>
+            match r with
+            | .ok new =>
+                roundsF Γ U0 probe n ((j :: js).filter fun k => !picks (j :: js) k) (done ++ new)
+            | .error rs => Fu.ret (.error rs)
+
+/-- The self shape of a literal with set `U0` formed from its definitions `d`
+in `Γ`, with their jobs `js`: the rounds, then the self shape in lockstep,
+with the typed jobs.  One round per job suffices, and one more stops. -/
+def formSelfF {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (d : PDefs (s,x))
+    (js : List (Job (s,x))) : Fu (Except (List EReason) (Shape (s,x) × List (Done (s,x)))) :=
+  Fu.bind (roundsF Γ U0 d.probeSelf (js.length + 1) js []) fun r =>
+    match r with
+    | .ok done =>
+        Fu.ret (match d.fullSelf (Done.known done) with
+          | some S => .ok (S, done)
+          | none => .error [.mismatch])
+    | .error rs => Fu.ret (.error rs)
+
+/-! ## The filled literal
+
+Once the self shape is formed, the literal is filled and handed to `inferF`
+in the real context, with the goal.  A field without a written type holds the
+term the rounds elaborated for it, so no field is elaborated twice.  A field
+with a written type and an empty slot is elaborated against that type, with
+the self at the formed shape (`probeCtx`).  The typer then checks every field
+once more, finds the least set and moves the literal to the goal. -/
+
+/-- The first typed job at a label. -/
+def lookupDone {s : Sig} : List (Done s) → Label → Option (Done s)
+  | [], _ => none
+  | e :: es, a => if e.lbl = a then some e else lookupDone es a
+
+/-- A literal without a self shape, with set `U0`, at the goal `G`: the self
+shape formed by `form`, the definitions filled at it by `fill`, then the
+filled literal typed by `inferF` with the goal (`objSelfF`).  The reasons of
+the rounds or of the filling reject it. -/
+def objNoneF {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (G : Option (Ty s))
+    (form : Fu (Except (List EReason) (Shape (s,x) × List (Done (s,x)))))
+    (fill : Shape (s,x) → List (Done (s,x)) → Fu (Option (ADefs (s,x)) × List EReason)) :
+    Fu (Out Γ) :=
+  Fu.bind form fun r =>
+    match r with
+    | .ok (S, done) => objSelfF Γ S U0 G (fill S done)
+    | .error rs => Fu.ret ([], rs)
+
 /-! ## The elaborator -/
 
 mutual
@@ -621,9 +964,17 @@ def elabF {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Option (Ty s)) : Fu (Out Γ) :
           | some T =>
               Fu.bind (selfGoalF Γ T) fun oS =>
                 match oS with
-                | some S => objSelfF Γ S U0 G (elabDefsF (probeCtx Γ S U0) d S)
-                | none => Fu.ret ([], [.mismatch])
-          | none => Fu.ret ([], [.mismatch])
+                | some S =>
+                    orElseW (fun cs => !cs.isEmpty)
+                      (objSelfF Γ S U0 G (elabDefsF (probeCtx Γ S U0) d S))
+                      (fun _ => objNoneF Γ U0 G (formSelfF Γ U0 d (jobsF d))
+                        fun S' done => fillDefsF (probeCtx Γ S' U0) done d S')
+                | none =>
+                    objNoneF Γ U0 G (formSelfF Γ U0 d (jobsF d))
+                      fun S' done => fillDefsF (probeCtx Γ S' U0) done d S'
+          | none =>
+              objNoneF Γ U0 none (formSelfF Γ U0 d (jobsF d))
+                fun S done => fillDefsF (probeCtx Γ S U0) done d S
       | .let tag ann t u =>
           letF Γ tag ann u G (fun F => elabF Γ t (some F))
             (fun _ => letO Γ ann G (elabF Γ t none) (fun r1 o => elabF (Γ.cons r1.ty) u o))
@@ -657,6 +1008,48 @@ def elabDefsF {s : Sig} (Γ : Ctx s) (d : PDefs s) (S : Shape s) :
         match r1.1 with
         | some e1 =>
             Fu.bind (elabDefsF Γ d2 S2) fun r2 =>
+              Fu.ret (r2.1.map (ADefs.and e1), r2.2)
+        | none => Fu.ret (none, r1.2)
+  | _, _ => Fu.ret (none, [.mismatch])
+termination_by structural d
+
+/-- The jobs of a definition list: every field without a written type, in
+source order, with its elaboration by `elabF` with no goal. -/
+def jobsF {s : Sig} : PDefs s → List (Job s)
+  | .typ _ _ => []
+  | .cap _ _ => []
+  | .trm _ (some _) _ => []
+  | .trm a none t => [⟨a, t, fun Γ => elabF Γ t none⟩]
+  | .and d1 d2 => jobsF d1 ++ jobsF d2
+termination_by structural d => d
+
+/-- The definitions of a literal filled at its formed self shape, in
+lockstep.  A type or capture member stays.  A field without a written type
+holds the first typed job at its label.  A field with a written type holds its
+right-hand side when that has no empty slot, and else the first candidate of
+its elaboration against the type.  No derivation is kept: the typer checks the
+filled literal. -/
+def fillDefsF {s : Sig} (Γ : Ctx s) (done : List (Done s)) (d : PDefs s) (S : Shape s) :
+    Fu (Option (ADefs s) × List EReason) :=
+  match d, S with
+  | .typ A S0, _ => Fu.ret (some (.typ A S0), [])
+  | .cap C c, _ => Fu.ret (some (.cap C c), [])
+  | .trm a none _, _ =>
+      match lookupDone done a with
+      | some e => Fu.ret (some (.trm a e.a), [])
+      | none => Fu.ret (none, [.mismatch])
+  | .trm a (some T) t, .fld _ W =>
+      if T = W then
+        match t.full? with
+        | some b => Fu.ret (some (.trm a b), [])
+        | none => Fu.bind (elabF Γ t (some W)) fun r =>
+            Fu.ret (r.1.head?.map fun c => ADefs.trm a c.tm, r.2)
+      else Fu.ret (none, [.mismatch])
+  | .and d1 d2, .and S1 S2 =>
+      Fu.bind (fillDefsF Γ done d1 S1) fun r1 =>
+        match r1.1 with
+        | some e1 =>
+            Fu.bind (fillDefsF Γ done d2 S2) fun r2 =>
               Fu.ret (r2.1.map (ADefs.and e1), r2.2)
         | none => Fu.ret (none, r1.2)
   | _, _ => Fu.ret (none, [.mismatch])
@@ -1187,6 +1580,101 @@ theorem objSelfF_framed {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (U0 : Option (C
   · exact fullInfer_framed _ _ _
   · exact ret_framed _
 
+/-! ## The frame lemmas of the rounds
+
+The rounds keep a marked tank, never add fuel, and do the same with more fuel,
+when every job's elaboration does. -/
+
+theorem belowAllF_framed {s : Sig} (Γ : Ctx s) (T : Ty s) : ∀ Us, Framed (belowAllF Γ T Us)
+  | [] => ret_framed _
+  | U :: Us => by
+    unfold belowAllF
+    split
+    · exact belowAllF_framed Γ T Us
+    · refine bind_framed (subF_framed _ _ _) fun o => ?_
+      cases o with
+      | some _ => exact belowAllF_framed Γ T Us
+      | none => exact ret_framed _
+
+theorem leastFromF_framed {s : Sig} (Γ : Ctx s) (Ts : List (Ty s)) :
+    ∀ cs : List (Elab Γ), Framed (leastFromF Γ Ts cs)
+  | [] => ret_framed _
+  | c :: rest => by
+    refine bind_framed (belowAllF_framed Γ c.ty Ts) fun b => ?_
+    cases b with
+    | true => exact ret_framed _
+    | false => exact leastFromF_framed Γ Ts rest
+
+theorem leastCandF_framed {s : Sig} (Γ : Ctx s) (cs : List (Elab Γ)) :
+    Framed (leastCandF Γ cs) :=
+  leastFromF_framed Γ _ cs
+
+theorem runJobF_framed {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (P : Shape (s,x))
+    {j : Job (s,x)} (hj : ∀ Γ', Framed (j.run Γ')) : Framed (runJobF Γ U0 P j) := by
+  refine bind_framed (hj _) fun r => ?_
+  split
+  · exact ret_framed _
+  · refine bind_framed (leastCandF_framed _ _) fun o => ?_
+    cases o with
+    | some _ => exact ret_framed _
+    | none => exact ret_framed _
+
+theorem roundF_framed {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (P : Shape (s,x)) :
+    ∀ (js : List (Job (s,x))), (∀ j ∈ js, ∀ Γ', Framed (j.run Γ')) → Framed (roundF Γ U0 P js)
+  | [], _ => ret_framed _
+  | j :: js, hj => by
+    refine bind_framed (runJobF_framed Γ U0 P (hj j (List.mem_cons_self ..))) fun r => ?_
+    cases r with
+    | ok e =>
+      refine bind_framed (roundF_framed Γ U0 P js fun j' h' => hj j' (List.mem_cons_of_mem _ h'))
+        fun r' => ?_
+      cases r' with
+      | ok _ => exact ret_framed _
+      | error _ => exact ret_framed _
+    | error _ => exact ret_framed _
+
+/-- The rounds are framed when every job's elaboration is. -/
+theorem roundsF_framed {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s))
+    (probe : List (Label × Ty (s,x)) → Shape (s,x)) :
+    ∀ (n : Nat) (js : List (Job (s,x))) (known : List (Done (s,x))),
+      (∀ j ∈ js, ∀ Γ', Framed (j.run Γ')) → Framed (roundsF Γ U0 probe n js known)
+  | _, [], _, _ => by
+    unfold roundsF
+    exact ret_framed _
+  | 0, j :: js, _, _ => by
+    unfold roundsF
+    exact ret_framed _
+  | n + 1, j :: js, known, hj => by
+    unfold roundsF
+    split
+    · exact ret_framed _
+    · refine bind_framed (roundF_framed Γ U0 _ _ fun j' h' => hj j' (List.mem_filter.mp h').1)
+        fun r => ?_
+      cases r with
+      | ok new =>
+        exact roundsF_framed Γ U0 probe n _ _ fun j' h' => hj j' (List.mem_filter.mp h').1
+      | error _ => exact ret_framed _
+
+theorem formSelfF_framed {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (d : PDefs (s,x))
+    {js : List (Job (s,x))} (hj : ∀ j ∈ js, ∀ Γ', Framed (j.run Γ')) :
+    Framed (formSelfF Γ U0 d js) := by
+  refine bind_framed (roundsF_framed Γ U0 _ _ js [] hj) fun r => ?_
+  cases r with
+  | ok _ => exact ret_framed _
+  | error _ => exact ret_framed _
+
+theorem objNoneF_framed {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (G : Option (Ty s))
+    {form : Fu (Except (List EReason) (Shape (s,x) × List (Done (s,x))))}
+    {fill : Shape (s,x) → List (Done (s,x)) → Fu (Option (ADefs (s,x)) × List EReason)}
+    (hf : Framed form) (hl : ∀ S done, Framed (fill S done)) :
+    Framed (objNoneF Γ U0 G form fill) := by
+  refine bind_framed hf fun r => ?_
+  cases r with
+  | ok p =>
+    obtain ⟨S, done⟩ := p
+    exact objSelfF_framed _ _ _ _ (hl S done)
+  | error _ => exact ret_framed _
+
 /-! ## The frame lemmas of the elaborator -/
 
 mutual
@@ -1238,13 +1726,17 @@ theorem elabF_framed {s : Sig} (Γ : Ctx s) : (p : PTm s) → (G : Option (Ty s)
     split
     · exact fullInfer_framed _ _ _
     · dsimp only
+      have hn : ∀ G', Framed (objNoneF Γ U0 G' (formSelfF Γ U0 d (jobsF d))
+          fun S' done => fillDefsF (probeCtx Γ S' U0) done d S') := fun G' =>
+        objNoneF_framed _ _ _ (formSelfF_framed _ _ d (jobsF_framed d))
+          fun S' done => fillDefsF_framed _ done d S'
       cases G with
-      | none => exact ret_framed _
+      | none => exact hn none
       | some T =>
         refine bind_framed (selfGoalF_framed _ _) fun oS => ?_
         cases oS with
-        | some S => exact objSelfF_framed _ _ _ _ (elabDefsF_framed _ d S)
-        | none => exact ret_framed _
+        | some S => exact orElseW_framed (objSelfF_framed _ _ _ _ (elabDefsF_framed _ d S)) (hn _)
+        | none => exact hn _
   | .let tag ann t u, G => by
     rw [elabF]
     split
@@ -1283,6 +1775,61 @@ theorem elabDefsF_framed {s : Sig} (Γ : Ctx s) : (d : PDefs s) → (S : Shape s
       · exact bind_framed (elabDefsF_framed _ d2 S2) fun _ => ret_framed _
       · exact ret_framed _
     | _ => simp only [elabDefsF]; exact ret_framed _
+
+/-- The jobs of a definition list run framed elaborations. -/
+theorem jobsF_framed {s : Sig} : (d : PDefs s) → ∀ j ∈ jobsF d, ∀ Γ, Framed (j.run Γ)
+  | .typ _ _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .cap _ _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .trm _ (some _) _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .trm a none t => by
+    intro j hj Γ
+    simp only [jobsF, List.mem_singleton] at hj
+    subst hj
+    exact elabF_framed Γ t none
+  | .and d1 d2 => by
+    intro j hj Γ
+    simp only [jobsF, List.mem_append] at hj
+    rcases hj with h | h
+    · exact jobsF_framed d1 j h Γ
+    · exact jobsF_framed d2 j h Γ
+
+theorem fillDefsF_framed {s : Sig} (Γ : Ctx s) (done : List (Done s)) :
+    (d : PDefs s) → (S : Shape s) → Framed (fillDefsF Γ done d S)
+  | .typ A S0, S => by
+    rw [fillDefsF]
+    exact ret_framed _
+  | .cap C c, S => by
+    rw [fillDefsF]
+    exact ret_framed _
+  | .trm a none t, S => by
+    rw [fillDefsF]
+    split
+    · exact ret_framed _
+    · exact ret_framed _
+  | .trm a (some T) t, S => by
+    cases S with
+    | fld c W =>
+      rw [fillDefsF]
+      refine ite_framed ?_ (ret_framed _)
+      split
+      · exact ret_framed _
+      · exact bind_framed (elabF_framed _ t _) fun _ => ret_framed _
+    | _ => simp only [fillDefsF]; exact ret_framed _
+  | .and d1 d2, S => by
+    cases S with
+    | and S1 S2 =>
+      rw [fillDefsF]
+      refine bind_framed (fillDefsF_framed Γ done d1 S1) fun r1 => ?_
+      split
+      · exact bind_framed (fillDefsF_framed Γ done d2 S2) fun _ => ret_framed _
+      · exact ret_framed _
+    | _ => simp only [fillDefsF]; exact ret_framed _
 
 end
 
@@ -1488,6 +2035,216 @@ theorem letAnn_direct_full {s : Sig} (Γ : Ctx s) (tag : LetTag) (t : ATm s) (a 
     generalize thenL (letCheckO Γ (some ((Shape.all T1 T2) ^ C)) ((Shape.all T1 T2) ^ C)
       (r :: r1s') fun r1 o => elabF (Γ.cons r1.ty) (.lam none a.toI) o) (finishF Γ G) t1 = q at hc
     simpa only [Fu.bind] using hc
+
+/-! ## Self shapes formed from definitions -/
+
+/-- The self shape formed from the definitions is in lockstep with them. -/
+theorem fullSelf_lockstep {s : Sig} {known : List (Label × Ty s)} :
+    ∀ {d : PDefs s} {S : Shape s}, d.fullSelf known = some S → Lockstep known d S
+  | .typ A S, _, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    exact .typ A S
+  | .cap C c, _, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    exact .cap C c
+  | .trm a (some T) t, _, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    exact .written a T t
+  | .trm a none t, _, h => by
+    simp only [PDefs.fullSelf, Option.map_eq_some_iff] at h
+    obtain ⟨T, hT, rfl⟩ := h
+    exact .inferred a T t hT
+  | .and d e, _, h => by
+    simp only [PDefs.fullSelf] at h
+    cases h1 : d.fullSelf known with
+    | none => simp only [h1, reduceCtorEq] at h
+    | some S1 =>
+      cases h2 : e.fullSelf known with
+      | none => simp only [h1, h2, reduceCtorEq] at h
+      | some S2 =>
+        simp only [h1, h2, Option.some.injEq] at h
+        subst h
+        exact .and (fullSelf_lockstep h1) (fullSelf_lockstep h2)
+
+/-- A definition list whose fields all have a written type has no job, so a
+literal with a written type on every field needs no round. -/
+theorem jobsF_written {s : Sig} : ∀ {d : PDefs s}, d.AllFieldsWritten → jobsF d = []
+  | .typ _ _, _ => by simp only [jobsF]
+  | .cap _ _, _ => by simp only [jobsF]
+  | .trm _ (some _) _, _ => by simp only [jobsF]
+  | .trm _ none _, hw => by simp [PDefs.AllFieldsWritten] at hw
+  | .and d e, hw => by
+    simp only [PDefs.AllFieldsWritten] at hw
+    simp only [jobsF, jobsF_written hw.1, jobsF_written hw.2, List.append_nil]
+
+/-! ## The least candidate is least -/
+
+theorem belowAllF_sub {s : Sig} {Γ : Ctx s} {T : Ty s} :
+    ∀ {Us : List (Ty s)} {t t' : Tank}, belowAllF Γ T Us t = (true, t') →
+      ∀ U ∈ Us, Nonempty (Sub Γ T U)
+  | [], _, _, _, U, hU => absurd hU List.not_mem_nil
+  | U' :: Us, t, t', h, U, hU => by
+    unfold belowAllF at h
+    split at h
+    · rename_i heq
+      rcases List.mem_cons.mp hU with rfl | hm
+      · exact ⟨heq ▸ Sub.refl _⟩
+      · exact belowAllF_sub h U hm
+    · cases hs : subF Γ T U' t with
+      | mk o t1 =>
+        simp only [Fu.bind, hs] at h
+        cases o with
+        | some e =>
+          rcases List.mem_cons.mp hU with rfl | hm
+          · exact ⟨e⟩
+          · exact belowAllF_sub h U hm
+        | none => simp [Fu.ret] at h
+
+theorem leastFromF_sub {s : Sig} {Γ : Ctx s} {Ts : List (Ty s)} :
+    ∀ {cs : List (Elab Γ)} {t : Tank} {c : Elab Γ} {t' : Tank},
+      leastFromF Γ Ts cs t = (some c, t') → c ∈ cs ∧ ∀ T ∈ Ts, Nonempty (Sub Γ c.ty T)
+  | [], _, _, _, h => by simp [leastFromF, Fu.ret] at h
+  | c0 :: rest, t, c, t', h => by
+    unfold leastFromF at h
+    cases hb : belowAllF Γ c0.ty Ts t with
+    | mk b t1 =>
+      simp only [Fu.bind, hb] at h
+      cases b with
+      | true =>
+        simp only [if_true, Fu.ret, Prod.mk.injEq, Option.some.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact ⟨List.mem_cons_self .., belowAllF_sub hb⟩
+      | false =>
+        simp only [Bool.false_eq_true, if_false] at h
+        obtain ⟨hm, hs⟩ := leastFromF_sub h
+        exact ⟨List.mem_cons_of_mem _ hm, hs⟩
+
+/-- The least candidate is a candidate, and its type is below the type of
+every candidate. -/
+theorem leastCand_least {s : Sig} {Γ : Ctx s} {cs : List (Elab Γ)} {tk : Tank}
+    {c : Elab Γ} {tk' : Tank} (h : leastCandF Γ cs tk = (some c, tk')) :
+    c ∈ cs ∧ ∀ c' ∈ cs, Nonempty (Sub Γ c.ty c'.ty) := by
+  obtain ⟨hm, hs⟩ := leastFromF_sub h
+  exact ⟨hm, fun c' hc' => hs c'.ty (List.mem_map_of_mem hc')⟩
+
+theorem belowAllF_sub? {s : Sig} {Γ : Ctx s} {T : Ty s} :
+    ∀ {Us : List (Ty s)} {t t' : Tank}, belowAllF Γ T Us t = (true, t') → t'.out = false →
+      ∀ U ∈ Us, U = T ∨ ∃ n, (sub? Γ T U n).1.isSome = true
+  | [], _, _, _, _, U, hU => absurd hU List.not_mem_nil
+  | U' :: Us, t, t', h, ho, U, hU => by
+    unfold belowAllF at h
+    split at h
+    · rename_i heq
+      rcases List.mem_cons.mp hU with rfl | hm
+      · exact .inl heq.symm
+      · exact belowAllF_sub? h ho U hm
+    · cases hs : subF Γ T U' t with
+      | mk o t1 =>
+        simp only [Fu.bind, hs] at h
+        cases o with
+        | some e =>
+          rcases List.mem_cons.mp hU with rfl | hm
+          · have h1 : t1.out = false := (belowAllF_framed Γ T Us).start h ho
+            have h0 : t.out = false := (subF_framed Γ T U).start hs h1
+            refine .inr ⟨t.left, ?_⟩
+            have ht : t = ⟨t.left, false⟩ := by
+              cases t
+              simp_all
+            show (subF Γ T U ⟨t.left, false⟩).1.isSome = true
+            rw [← ht, hs]
+            rfl
+          · exact belowAllF_sub? h ho U hm
+        | none => simp [Fu.ret] at h
+
+theorem leastFromF_sub? {s : Sig} {Γ : Ctx s} {Ts : List (Ty s)} :
+    ∀ {cs : List (Elab Γ)} {t : Tank} {c : Elab Γ} {t' : Tank},
+      leastFromF Γ Ts cs t = (some c, t') → t'.out = false →
+        ∀ T ∈ Ts, T = c.ty ∨ ∃ n, (sub? Γ c.ty T n).1.isSome = true
+  | [], _, _, _, h, _ => by simp [leastFromF, Fu.ret] at h
+  | c0 :: rest, t, c, t', h, ho => by
+    unfold leastFromF at h
+    cases hb : belowAllF Γ c0.ty Ts t with
+    | mk b t1 =>
+      simp only [Fu.bind, hb] at h
+      cases b with
+      | true =>
+        simp only [if_true, Fu.ret, Prod.mk.injEq, Option.some.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact belowAllF_sub? hb ho
+      | false =>
+        simp only [Bool.false_eq_true, if_false] at h
+        exact leastFromF_sub? h ho
+
+/-- The same with the typer's subtyping from a full tank: on a tank that ends
+unmarked, the type of the least candidate is the type of every other candidate
+or below it at some fuel. -/
+theorem leastCand_sub? {s : Sig} {Γ : Ctx s} {cs : List (Elab Γ)} {tk : Tank}
+    {c : Elab Γ} {tk' : Tank} (h : leastCandF Γ cs tk = (some c, tk')) (ho : tk'.out = false) :
+    ∀ c' ∈ cs, c'.ty = c.ty ∨ ∃ n, (sub? Γ c.ty c'.ty n).1.isSome = true :=
+  fun c' hc' => leastFromF_sub? h ho c'.ty (List.mem_map_of_mem hc')
+
+/-! ## The cyclic reference is on a cycle -/
+
+theorem walkL_snoc {s : Sig} {js : List (Job (s,x))} {l l' : Label} (hn : nextL js l = some l') :
+    ∀ {k : Nat} {m : Label}, walkL js k m = some l → walkL js (k + 1) m = some l'
+  | 0, m, h => by
+    simp only [walkL, Option.some.injEq] at h
+    subst h
+    simp only [walkL, hn, Option.bind_some]
+  | k + 1, m, h => by
+    simp only [walkL] at h ⊢
+    cases hm : nextL js m with
+    | none => simp [hm] at h
+    | some m1 =>
+      simp only [hm, Option.bind_some] at h ⊢
+      exact walkL_snoc hn h
+
+theorem nextL_mem {s : Sig} {js : List (Job (s,x))} {l l' : Label} (h : nextL js l = some l') :
+    l' ∈ js.map (·.lbl) := by
+  unfold nextL at h
+  split at h
+  · rename_i j _
+    have hm : l' ∈ waitsFor js j := List.mem_of_mem_head? h
+    simp only [waitsFor, List.mem_filter] at hm
+    exact List.contains_iff_mem.mp hm.2
+  · cases h
+
+theorem cycleFrom_onCycle {s : Sig} {js : List (Job (s,x))} :
+    ∀ {n : Nat} {seen : List Label} {l r : Label},
+      (∀ m ∈ seen, ∃ k, walkL js (k + 1) m = some l) → l ∈ js.map (·.lbl) →
+      cycleFrom js n seen l = some r → ∃ j ∈ js, j.lbl = r ∧ OnCycle js j
+  | 0, _, _, _, _, _, h => by simp [cycleFrom] at h
+  | n + 1, seen, l, r, hs, hl, h => by
+    unfold cycleFrom at h
+    split at h
+    · rename_i hc
+      simp only [Option.some.injEq] at h
+      subst h
+      obtain ⟨k, hk⟩ := hs l (List.contains_iff_mem.mp hc)
+      obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hl
+      exact ⟨j, hj, rfl, k, hk⟩
+    · cases hn : nextL js l with
+      | none => simp [hn] at h
+      | some l' =>
+        simp only [hn] at h
+        refine cycleFrom_onCycle (fun m hm => ?_) (nextL_mem hn) h
+        rcases List.mem_cons.mp hm with rfl | hm
+        · exact ⟨0, by simp only [walkL, hn, Option.bind_some]⟩
+        · obtain ⟨k, hk⟩ := hs m hm
+          exact ⟨k + 1, walkL_snoc hn hk⟩
+
+/-- The label `cycleAt` reports is the label of a pending job whose walk comes
+back to it. -/
+theorem cycleAt_onCycle {s : Sig} {js : List (Job (s,x))} {n : Nat} {l : Label}
+    (h : cycleAt js n = some l) : ∃ j ∈ js, j.lbl = l ∧ OnCycle js j := by
+  unfold cycleAt at h
+  split at h
+  · cases h
+  · rename_i j js'
+    exact cycleFrom_onCycle (by simp) (List.mem_map_of_mem (List.mem_cons_self ..)) h
 
 /-! ## No `any` in an elaborated term
 
@@ -3303,6 +4060,267 @@ theorem objSelfF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {S : Shape (s,
     | some C => simp only [ATm.NoAnyAnn, hS, hU0 C rfl, hd', Bool.and_self]
   · exact always_ret (allL_nil _)
 
+/-- A job's elaboration writes no `any` in a context that holds none. -/
+def Job.NoAny {s : Sig} (j : Job s) : Prop := ∀ Δ, CtxNoAny Δ → Always OutNoAny (j.run Δ)
+
+/-- A typed job holds no `any` in its elaborated term or its type. -/
+def Done.NoAny {s : Sig} (e : Done s) : Prop := e.a.NoAnyAnn = true ∧ e.ty.noAny = true
+
+/-- Every type a list gives a label holds no `any`. -/
+def KnownNoAny {s : Sig} (known : List (Label × Ty s)) : Prop := ∀ p ∈ known, p.2.noAny = true
+
+theorem lookupL_noAny {s : Sig} :
+    ∀ {known : List (Label × Ty s)}, KnownNoAny known → ∀ {a : Label} {T : Ty s},
+      lookupL known a = some T → T.noAny = true
+  | [], _, _, _, h => by simp [lookupL] at h
+  | (b, U) :: l, hk, a, T, h => by
+    unfold lookupL at h
+    split at h
+    · simp only [Option.some.injEq] at h
+      subst h
+      exact hk _ (List.mem_cons_self ..)
+    · exact lookupL_noAny (fun p hp => hk p (List.mem_cons_of_mem _ hp)) h
+
+theorem known_noAny {s : Sig} {ds : List (Done s)} (h : AllL Done.NoAny ds) :
+    KnownNoAny (Done.known ds) := by
+  intro p hp
+  obtain ⟨e, he, rfl⟩ := List.mem_map.mp hp
+  exact (h e he).2
+
+theorem partialSelf_noAny {s : Sig} {known : List (Label × Ty s)} (hk : KnownNoAny known) :
+    ∀ {d : PDefs s}, d.NoAnyAnn = true → ∀ {S : Shape s}, d.partialSelf known = some S →
+      S.noAny = true
+  | .typ A S0, hd, S, h => by
+    simp only [PDefs.partialSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn] at hd
+    simp only [Shape.noAny, hd, Bool.and_self]
+  | .cap C c, hd, S, h => by
+    simp only [PDefs.partialSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn] at hd
+    simp only [Shape.noAny, hd, Bool.and_self]
+  | .trm a (some T) t, hd, S, h => by
+    simp only [PDefs.partialSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    simpa only [Shape.noAny] using hd.1
+  | .trm a none t, _, S, h => by
+    simp only [PDefs.partialSelf, Option.map_eq_some_iff] at h
+    obtain ⟨T, hT, rfl⟩ := h
+    simpa only [Shape.noAny] using lookupL_noAny hk hT
+  | .and d e, hd, S, h => by
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    simp only [PDefs.partialSelf] at h
+    cases h1 : d.partialSelf known with
+    | none =>
+      simp only [h1] at h
+      exact partialSelf_noAny hk hd.2 h
+    | some S1 =>
+      cases h2 : e.partialSelf known with
+      | none =>
+        simp only [h1, h2, Option.some.injEq] at h
+        subst h
+        exact partialSelf_noAny hk hd.1 h1
+      | some S2 =>
+        simp only [h1, h2, Option.some.injEq] at h
+        subst h
+        simp only [Shape.noAny, partialSelf_noAny hk hd.1 h1, partialSelf_noAny hk hd.2 h2,
+          Bool.and_self]
+
+/-- The snapshot holds no `any` when the definitions and the known field types
+hold none. -/
+theorem probeSelf_noAny {s : Sig} {d : PDefs s} (hd : d.NoAnyAnn = true)
+    {known : List (Label × Ty s)} (hk : KnownNoAny known) : (d.probeSelf known).noAny = true := by
+  unfold PDefs.probeSelf
+  cases h : d.partialSelf known with
+  | none => rfl
+  | some S => exact partialSelf_noAny hk hd h
+
+/-- The formed self shape holds no `any` when the definitions and the known
+field types hold none. -/
+theorem fullSelf_noAny {s : Sig} {known : List (Label × Ty s)} (hk : KnownNoAny known) :
+    ∀ {d : PDefs s}, d.NoAnyAnn = true → ∀ {S : Shape s}, d.fullSelf known = some S →
+      S.noAny = true
+  | .typ A S0, hd, S, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn] at hd
+    simp only [Shape.noAny, hd, Bool.and_self]
+  | .cap C c, hd, S, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn] at hd
+    simp only [Shape.noAny, hd, Bool.and_self]
+  | .trm a (some T) t, hd, S, h => by
+    simp only [PDefs.fullSelf, Option.some.injEq] at h
+    subst h
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    simpa only [Shape.noAny] using hd.1
+  | .trm a none t, _, S, h => by
+    simp only [PDefs.fullSelf, Option.map_eq_some_iff] at h
+    obtain ⟨T, hT, rfl⟩ := h
+    simpa only [Shape.noAny] using lookupL_noAny hk hT
+  | .and d e, hd, S, h => by
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    simp only [PDefs.fullSelf] at h
+    cases h1 : d.fullSelf known with
+    | none => simp only [h1, reduceCtorEq] at h
+    | some S1 =>
+      cases h2 : e.fullSelf known with
+      | none => simp only [h1, h2, reduceCtorEq] at h
+      | some S2 =>
+        simp only [h1, h2, Option.some.injEq] at h
+        subst h
+        simp only [Shape.noAny, fullSelf_noAny hk hd.1 h1, fullSelf_noAny hk hd.2 h2,
+          Bool.and_self]
+
+/-- The least candidate is one of the candidates. -/
+theorem leastCandF_mem {s : Sig} {Γ : Ctx s} (cs : List (Elab Γ)) :
+    Always (OptP fun c => c ∈ cs) (leastCandF Γ cs) := by
+  intro t
+  cases h : leastCandF Γ cs t with
+  | mk o t' =>
+    cases o with
+    | none => exact optP_none _
+    | some c => exact optP_some (leastCand_least h).1
+
+theorem runJobF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {U0 : Option (CaptureSet s)}
+    (hU0 : ∀ C, U0 = some C → CaptureSet.noAny C = true) {P : Shape (s,x)}
+    (hP : P.noAny = true) {j : Job (s,x)} (hj : j.NoAny) :
+    Always (fun r : Except (List EReason) (Done (s,x)) => ∀ e, r = .ok e → e.NoAny)
+      (runJobF Γ U0 P j) := by
+  refine always_bind (hj _ (probeCtx_noAny hΓ hP hU0)) fun r hr => ?_
+  dsimp only
+  split
+  · exact always_ret fun e h => nomatch h
+  · rename_i c cs hcs
+    refine always_bind (leastCandF_mem _) fun o ho => ?_
+    cases o with
+    | some e =>
+      have he : e ∈ r.1 := by
+        rw [hcs]
+        exact ho e rfl
+      have hne := hr e he
+      refine always_ret fun e' h => ?_
+      simp only [Except.ok.injEq] at h
+      subst h
+      exact ⟨hne.1, hne.2.2⟩
+    | none => exact always_ret fun e h => nomatch h
+
+theorem roundF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {U0 : Option (CaptureSet s)}
+    (hU0 : ∀ C, U0 = some C → CaptureSet.noAny C = true) {P : Shape (s,x)}
+    (hP : P.noAny = true) :
+    ∀ (js : List (Job (s,x))), (∀ j ∈ js, j.NoAny) →
+      Always (fun r : Except (List EReason) (List (Done (s,x))) =>
+        ∀ es, r = .ok es → AllL Done.NoAny es) (roundF Γ U0 P js)
+  | [], _ => by
+    unfold roundF
+    exact always_ret fun es h => by
+      simp only [Except.ok.injEq] at h
+      subst h
+      exact allL_nil _
+  | j :: js, hj => by
+    unfold roundF
+    refine always_bind (runJobF_noAny hΓ hU0 hP (hj j (List.mem_cons_self ..))) fun r hr => ?_
+    cases r with
+    | ok e =>
+      refine always_bind (roundF_noAny hΓ hU0 hP js fun j' h' => hj j' (List.mem_cons_of_mem _ h'))
+        fun r' hr' => ?_
+      cases r' with
+      | ok es =>
+        refine always_ret fun es' h => ?_
+        simp only [Except.ok.injEq] at h
+        subst h
+        intro a ha
+        rcases List.mem_cons.mp ha with rfl | ha
+        · exact hr a rfl
+        · exact hr' es rfl a ha
+      | error _ => exact always_ret fun es h => nomatch h
+    | error _ => exact always_ret fun es h => nomatch h
+
+/-- The rounds write no `any` when the context, the set, the snapshots and
+every job's elaboration hold none. -/
+theorem roundsF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {U0 : Option (CaptureSet s)}
+    (hU0 : ∀ C, U0 = some C → CaptureSet.noAny C = true)
+    {probe : List (Label × Ty (s,x)) → Shape (s,x)}
+    (hp : ∀ known, KnownNoAny known → (probe known).noAny = true) :
+    ∀ (n : Nat) (js : List (Job (s,x))) (done : List (Done (s,x))), (∀ j ∈ js, j.NoAny) →
+      AllL Done.NoAny done →
+      Always (fun r : Except (List EReason) (List (Done (s,x))) =>
+        ∀ es, r = .ok es → AllL Done.NoAny es) (roundsF Γ U0 probe n js done)
+  | _, [], done, _, hd => by
+    unfold roundsF
+    exact always_ret fun es h => by
+      simp only [Except.ok.injEq] at h
+      subst h
+      exact hd
+  | 0, j :: js, _, _, _ => by
+    unfold roundsF
+    exact always_ret fun es h => nomatch h
+  | n + 1, j :: js, done, hj, hd => by
+    unfold roundsF
+    split
+    · exact always_ret fun es h => nomatch h
+    · refine always_bind (roundF_noAny hΓ hU0 (hp _ (known_noAny hd)) _
+        fun j' h' => hj j' (List.mem_filter.mp h').1) fun r hr => ?_
+      cases r with
+      | ok new =>
+        exact roundsF_noAny hΓ hU0 hp n _ _ (fun j' h' => hj j' (List.mem_filter.mp h').1)
+          (allL_append hd (hr new rfl))
+      | error _ => exact always_ret fun es h => nomatch h
+
+/-- The formed self shape and the typed jobs hold no `any` when the context,
+the set, the definitions and every job's elaboration hold none. -/
+theorem formSelfF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {U0 : Option (CaptureSet s)}
+    (hU0 : ∀ C, U0 = some C → CaptureSet.noAny C = true) {d : PDefs (s,x)}
+    (hd : d.NoAnyAnn = true) {js : List (Job (s,x))} (hj : ∀ j ∈ js, j.NoAny) :
+    Always (fun r : Except (List EReason) (Shape (s,x) × List (Done (s,x))) =>
+      ∀ S done, r = .ok (S, done) → S.noAny = true ∧ AllL Done.NoAny done)
+      (formSelfF Γ U0 d js) := by
+  refine always_bind (roundsF_noAny hΓ hU0 (fun known hk => probeSelf_noAny hd hk) _ js [] hj
+    (allL_nil _)) fun r hr => ?_
+  cases r with
+  | ok done =>
+    have hdn := hr done rfl
+    refine always_ret ?_
+    intro S done' h
+    cases hf : d.fullSelf (Done.known done) with
+    | none => simp only [hf, reduceCtorEq] at h
+    | some S' =>
+      simp only [hf, Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨fullSelf_noAny (known_noAny hdn) hd hf, hdn⟩
+  | error _ => exact always_ret fun _ _ h => nomatch h
+
+theorem lookupDone_mem {s : Sig} {a : Label} :
+    ∀ {done : List (Done s)} {e : Done s}, lookupDone done a = some e → e ∈ done
+  | [], _, h => nomatch h
+  | e' :: es, e, h => by
+    unfold lookupDone at h
+    split at h
+    · cases h
+      exact List.mem_cons_self ..
+    · exact List.mem_cons_of_mem _ (lookupDone_mem h)
+
+theorem objNoneF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) {U0 : Option (CaptureSet s)}
+    (hU0 : ∀ C, U0 = some C → CaptureSet.noAny C = true) {G : Option (Ty s)} (hG : GoalNoAny G)
+    {form : Fu (Except (List EReason) (Shape (s,x) × List (Done (s,x))))}
+    {fill : Shape (s,x) → List (Done (s,x)) → Fu (Option (ADefs (s,x)) × List EReason)}
+    (hf : Always (fun r : Except (List EReason) (Shape (s,x) × List (Done (s,x))) =>
+      ∀ S done, r = .ok (S, done) → S.noAny = true ∧ AllL Done.NoAny done) form)
+    (hl : ∀ S done, S.noAny = true → AllL Done.NoAny done →
+      Always (fun r : Option (ADefs (s,x)) × List EReason =>
+        OptP (fun e : ADefs (s,x) => e.NoAnyAnn = true) r.1) (fill S done)) :
+    Always OutNoAny (objNoneF Γ U0 G form fill) := by
+  refine always_bind hf fun r hr => ?_
+  cases r with
+  | ok p =>
+    obtain ⟨S, done⟩ := p
+    have h := hr S done rfl
+    exact objSelfF_noAny hΓ h.1 hU0 hG (hl S done h.1 h.2)
+  | error _ => exact always_ret (allL_nil _)
+
 mutual
 
 /-- The elaborator writes no `any`, from a context, a partial term and a goal
@@ -3383,16 +4401,22 @@ theorem elabF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) :
     · rename_i a ha
       exact fullInfer_noAny hΓ (PTm.NoAnyAnn_of_full? ha hp) hG
     · dsimp only
+      have hn : ∀ G', GoalNoAny G' →
+          Always OutNoAny (objNoneF Γ U0 G' (formSelfF Γ U0 d (jobsF d))
+            fun S' done => fillDefsF (probeCtx Γ S' U0) done d S') := fun G' hG' =>
+        objNoneF_noAny hΓ hU0' hG' (formSelfF_noAny hΓ hU0' hd (jobsF_noAny d hd))
+          fun S' done hS' hdone =>
+            fillDefsF_noAny (probeCtx_noAny hΓ hS' hU0') done hdone d hd S' hS'
       cases G with
-      | none => exact always_ret (allL_nil _)
+      | none => exact hn none hG
       | some T =>
         refine always_bind (selfGoalF_noAny hΓ (hG T rfl)) fun oS hoS => ?_
         cases oS with
         | some S =>
           have hS := hoS S rfl
-          exact objSelfF_noAny hΓ hS hU0' hG
-            (elabDefsF_noAny (probeCtx_noAny hΓ hS hU0') d hd S hS)
-        | none => exact always_ret (allL_nil _)
+          exact orElseW_always (objSelfF_noAny hΓ hS hU0' hG
+            (elabDefsF_noAny (probeCtx_noAny hΓ hS hU0') d hd S hS)) (hn _ hG)
+        | none => exact hn _ hG
   | .let tag ann t u, hp, G, hG => by
     have hp' := hp
     simp only [PTm.NoAnyAnn, Bool.and_eq_true] at hp'
@@ -3466,6 +4490,87 @@ theorem elabDefsF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) :
       · exact always_ret (optP_none _)
     | _ => simp only [elabDefsF]; exact always_ret (optP_none _)
 
+/-- The jobs of a definition list that holds no `any` write none. -/
+theorem jobsF_noAny {s : Sig} : (d : PDefs s) → d.NoAnyAnn = true → ∀ j ∈ jobsF d, j.NoAny
+  | .typ _ _, _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .cap _ _, _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .trm _ (some _) _, _ => by
+    intro j hj
+    simp only [jobsF, List.not_mem_nil] at hj
+  | .trm a none t, hd => by
+    intro j hj Δ hΔ
+    simp only [jobsF, List.mem_singleton] at hj
+    subst hj
+    have ht : t.NoAnyAnn = true := by simpa only [PDefs.NoAnyAnn, Bool.true_and] using hd
+    exact elabF_noAny hΔ t ht none goalNoAny_none
+  | .and d1 d2, hd => by
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    intro j hj
+    simp only [jobsF, List.mem_append] at hj
+    rcases hj with h | h
+    · exact jobsF_noAny d1 hd.1 j h
+    · exact jobsF_noAny d2 hd.2 j h
+
+/-- The definitions filled at a formed self shape that holds no `any`, from
+typed jobs that hold none, hold none. -/
+theorem fillDefsF_noAny {s : Sig} {Γ : Ctx s} (hΓ : CtxNoAny Γ) (done : List (Done s))
+    (hdone : AllL Done.NoAny done) :
+    (d : PDefs s) → d.NoAnyAnn = true → (S : Shape s) → S.noAny = true →
+      Always (fun r : Option (ADefs s) × List EReason =>
+        OptP (fun e : ADefs s => e.NoAnyAnn = true) r.1) (fillDefsF Γ done d S)
+  | .typ A S0, hd, S, _ => by
+    rw [fillDefsF]
+    exact always_ret (optP_some hd)
+  | .cap C c, hd, S, _ => by
+    rw [fillDefsF]
+    exact always_ret (optP_some hd)
+  | .trm a none t, _, S, _ => by
+    rw [fillDefsF]
+    split
+    · rename_i e he
+      exact always_ret (optP_some (hdone e (lookupDone_mem he)).1)
+    · exact always_ret (optP_none _)
+  | .trm a (some T) t, hd, S, hS => by
+    have ht : t.NoAnyAnn = true := by
+      simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+      exact hd.2
+    cases S with
+    | fld c W =>
+      have hW : W.noAny = true := by simpa only [Shape.noAny] using hS
+      rw [fillDefsF]
+      refine always_ite ?_ (always_ret (optP_none _))
+      split
+      · rename_i b hb
+        exact always_ret (optP_some (PTm.NoAnyAnn_of_full? hb ht))
+      · refine always_bind (elabF_noAny hΓ t ht _ (goalNoAny_some hW)) fun r hr => ?_
+        refine always_ret (optP_map (Q := Elab.NoAny) ?_ fun c hc => hc.1)
+        intro c hc
+        cases hl : r.1 with
+        | nil => rw [hl] at hc; cases hc
+        | cons c' _ =>
+          rw [hl] at hc
+          cases hc
+          exact hr _ (by rw [hl]; exact List.mem_cons_self ..)
+    | _ => simp only [fillDefsF]; exact always_ret (optP_none _)
+  | .and d1 d2, hd, S, hS => by
+    simp only [PDefs.NoAnyAnn, Bool.and_eq_true] at hd
+    cases S with
+    | and S1 S2 =>
+      simp only [Shape.noAny, Bool.and_eq_true] at hS
+      rw [fillDefsF]
+      refine always_bind (fillDefsF_noAny hΓ done hdone d1 hd.1 S1 hS.1) fun r1 h1 => ?_
+      split
+      · rename_i e1 he1
+        refine always_bind (fillDefsF_noAny hΓ done hdone d2 hd.2 S2 hS.2) fun r2 h2 => ?_
+        refine always_ret (optP_map h2 fun e2 he2 => ?_)
+        simp only [ADefs.NoAnyAnn, h1 e1 he1, he2, Bool.and_self]
+      · exact always_ret (optP_none _)
+    | _ => simp only [fillDefsF]; exact always_ret (optP_none _)
+
 end
 
 /-- No candidate of the elaborator holds `any` in an annotation, a set or a
@@ -3497,6 +4602,112 @@ theorem elabTop_noAny {n : Nat} {π : PlatformNames} {p : PTm π.sig}
         exact (hall c (List.mem_cons_self ..)).1
 
 end ElabNoAny
+
+/-! ## A literal without a self shape is the typer's literal
+
+Every candidate of a literal without a self shape is a candidate the typer
+gives a literal with every slot filled, with the same set and goal.  So its
+derivation is the one the typer's object clause gives, which ends in
+`HasTy.obj` before the subtyping goal moves it to the goal. -/
+
+/-- Every candidate of a list is a candidate `inferF` gives a literal with set
+`U0` at the goal `G`, its self shape and definitions filled, from some
+tank. -/
+def InferObj {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (G : Option (Ty s))
+    (cs : List (Elab Γ)) : Prop :=
+  ∀ c ∈ cs, ∃ S d' tk', c ∈ (inferF Γ (.obj S U0 d') G tk').1
+
+theorem objSelfF_inferF {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (U0 : Option (CaptureSet s))
+    (G : Option (Ty s)) (defs : Fu (Option (ADefs (s,x)) × List EReason)) :
+    Always (fun r : Out Γ => ∀ c ∈ r.1, ∃ d' tk', c ∈ (inferF Γ (.obj S U0 d') G tk').1)
+      (objSelfF Γ S U0 G defs) := by
+  refine always_bind (always_true defs) fun r _ => ?_
+  dsimp only
+  split
+  · rename_i d' _
+    intro t c hc
+    simp only [fullInfer, withR, Fu.bind, Fu.ret] at hc
+    exact ⟨d', t, hc⟩
+  · exact always_ret fun c hc => nomatch hc
+
+theorem objSelfF_inferObj {s : Sig} (Γ : Ctx s) (S : Shape (s,x)) (U0 : Option (CaptureSet s))
+    (G : Option (Ty s)) (defs : Fu (Option (ADefs (s,x)) × List EReason)) :
+    Always (fun r : Out Γ => InferObj Γ U0 G r.1) (objSelfF Γ S U0 G defs) := fun t c hc =>
+  let ⟨d', tk', h⟩ := objSelfF_inferF Γ S U0 G defs t c hc
+  ⟨S, d', tk', h⟩
+
+theorem objNoneF_inferObj {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (G : Option (Ty s))
+    (form : Fu (Except (List EReason) (Shape (s,x) × List (Done (s,x)))))
+    (fill : Shape (s,x) → List (Done (s,x)) → Fu (Option (ADefs (s,x)) × List EReason)) :
+    Always (fun r : Out Γ => InferObj Γ U0 G r.1) (objNoneF Γ U0 G form fill) := by
+  refine always_bind (always_true form) fun r _ => ?_
+  cases r with
+  | ok p => exact objSelfF_inferObj _ _ _ _ _
+  | error _ => exact always_ret fun c hc => nomatch hc
+
+/-- The elaboration of a literal without a self shape, unfolded. -/
+theorem elabF_obj_none {s : Sig} (Γ : Ctx s) (U0 : Option (CaptureSet s)) (d : PDefs (s,x))
+    (G : Option (Ty s)) :
+    elabF Γ (.obj none U0 d) G =
+      match G with
+      | some T =>
+          Fu.bind (selfGoalF Γ T) fun oS =>
+            match oS with
+            | some S =>
+                orElseW (fun cs => !cs.isEmpty)
+                  (objSelfF Γ S U0 G (elabDefsF (probeCtx Γ S U0) d S))
+                  (fun _ => objNoneF Γ U0 G (formSelfF Γ U0 d (jobsF d))
+                    fun S' done => fillDefsF (probeCtx Γ S' U0) done d S')
+            | none =>
+                objNoneF Γ U0 G (formSelfF Γ U0 d (jobsF d))
+                  fun S' done => fillDefsF (probeCtx Γ S' U0) done d S'
+      | none =>
+          objNoneF Γ U0 none (formSelfF Γ U0 d (jobsF d))
+            fun S done => fillDefsF (probeCtx Γ S U0) done d S := by
+  rw [elabF.eq_def]
+  rfl
+
+/-- A candidate of a literal without a self shape is a candidate of the typer
+on a literal with every slot filled, with the same set and the same goal:
+the literal at the self shape its `μ` goal gives, or at the one the rounds
+form. -/
+theorem obj_none_landed {s : Sig} {Γ : Ctx s} {U0 : Option (CaptureSet s)} {d : PDefs (s,x)}
+    {G : Option (Ty s)} {tk : Tank} {c : Elab Γ} {cs : List (Elab Γ)}
+    (h : (elabF Γ (.obj none U0 d) G tk).1.1 = c :: cs) :
+    ∃ S d' tk', c ∈ (inferF Γ (.obj S U0 d') G tk').1 := by
+  have hall : Always (fun r : Out Γ => InferObj Γ U0 G r.1) (elabF Γ (.obj none U0 d) G) := by
+    rw [elabF_obj_none]
+    cases G with
+    | none => exact objNoneF_inferObj _ _ _ _ _
+    | some T =>
+      refine always_bind (always_true _) fun oS _ => ?_
+      cases oS with
+      | some S =>
+        exact orElseW_always (objSelfF_inferObj _ _ _ _ _) (objNoneF_inferObj _ _ _ _ _)
+      | none => exact objNoneF_inferObj _ _ _ _ _
+  exact hall tk c (by rw [h]; exact List.mem_cons_self ..)
+
+/-- With no goal, the self shape is the one the rounds form from the tank the
+elaboration starts with, and a candidate is a candidate of the typer on the
+literal at that shape, its definitions filled. -/
+theorem obj_none_formed {s : Sig} {Γ : Ctx s} {U0 : Option (CaptureSet s)} {d : PDefs (s,x)}
+    {tk : Tank} {c : Elab Γ} {cs : List (Elab Γ)}
+    (h : (elabF Γ (.obj none U0 d) none tk).1.1 = c :: cs) :
+    ∃ S done d' tk', (formSelfF Γ U0 d (jobsF d) tk).1 = .ok (S, done) ∧
+      c ∈ (inferF Γ (.obj S U0 d') none tk').1 := by
+  rw [elabF_obj_none] at h
+  dsimp only [objNoneF, Fu.bind] at h
+  cases hf : formSelfF Γ U0 d (jobsF d) tk with
+  | mk r tk1 =>
+    rw [hf] at h
+    cases r with
+    | error rs => simp [Fu.ret] at h
+    | ok p =>
+      obtain ⟨S, done⟩ := p
+      obtain ⟨d', tk', hc⟩ :=
+        objSelfF_inferF Γ S U0 none (fillDefsF (probeCtx Γ S U0) done d S) tk1 c
+          (by dsimp only at h; rw [h]; exact List.mem_cons_self ..)
+      exact ⟨S, done, d', tk', rfl, hc⟩
 
 /-! ## Checks
 
@@ -3850,7 +5061,7 @@ example : elabOut .empty LoopSrcD = (.no (.missingParamType none), ⟨defaultFue
 -- Mismatch: incomparable domains, one function side the lambda does not meet,
 -- a result the lambda does not meet, an abstract type with a function upper
 -- bound, a closure too large for its goal, a written field type other than
--- the self shape's, a literal with no self shape and no goal.
+-- the self shape's.
 example : elabOut .empty AndIncSrcD = (.no .mismatch, ⟨defaultFuel - 4, false⟩) := by
   decide +kernel
 example : elabOut .empty AndOneSrcD = (.no .mismatch, ⟨defaultFuel - 7, false⟩) := by
@@ -3864,8 +5075,6 @@ example : elabOut πc CapPureSrcD = (.no .mismatch, ⟨defaultFuel - 13, false�
     writtenOut πc CapPureSrc = (.no .mismatch, ⟨defaultFuel - 13, false⟩) := by
   decide +kernel
 example : elabOut .empty FldTyBadSrc = (.no .mismatch, ⟨defaultFuel, false⟩) := by
-  decide +kernel
-example : elabOut .empty NoShapeSrcS = (.no .mismatch, ⟨defaultFuel, false⟩) := by
   decide +kernel
 
 /-! ### Call arguments and callee bodies -/
@@ -4160,6 +5369,607 @@ example : elabOut πc TooBigSrcA = (.no .mismatch, ⟨defaultFuel - 30, false⟩
   decide +kernel
 example : elabOut .empty UpperArgSrcA = (.no .mismatch, ⟨defaultFuel - 2, false⟩) := by
   decide +kernel
+
+/-! ### Self shapes formed from definitions
+
+The rounds alone, on a literal without a self shape, then the self shape in
+lockstep.  Each check compares the self shape `formSelfF` forms with the self
+shape the written form of the program states, or gives the reason the rounds
+stop. -/
+
+/-- What `formSelfF` gives the first literal without a self shape of a
+program. -/
+inductive Formed where
+  /-- A self shape formed, and whether it is the one the written form
+  states. -/
+  | self (written : Bool)
+  /-- The reason the rounds stop. -/
+  | no (r : EReason)
+  /-- No such literal, or the written form is not the same program there. -/
+  | shape
+deriving DecidableEq
+
+/-- The type the typer gives a bound term with no empty slot, on a tank of its
+own: the type at which a `let` binds its variable. -/
+def boundTy? {s : Sig} (Γ : Ctx s) (t : PTm s) : Option (Ty s) :=
+  match t.full? with
+  | some a => (inferF Γ a none ⟨defaultFuel, false⟩).1.head?.map (·.ty)
+  | none => none
+
+/-- `formSelfF` on the first literal without a self shape, found under written
+lambdas, under ascriptions, and in `let`s, against the same place of the
+written form.  A `let` whose bound term holds no such literal binds its
+variable at the type the typer gives the written bound term. -/
+def formGo {s : Sig} (Γ : Ctx s) (n : Nat) : PTm s → PTm s → Formed × Tank
+  | .lam (some T) t, .lam (some T') t' =>
+      if T = T' then formGo (Γ.cons T) n t t' else (.shape, ⟨n, true⟩)
+  | .asc t _, .asc t' _ => formGo Γ n t t'
+  | .let _ _ t u, .let _ _ t' u' =>
+      match formGo Γ n t t' with
+      | (.shape, _) =>
+          match boundTy? Γ t' with
+          | some T => formGo (Γ.cons T) n u u'
+          | none => (.shape, ⟨n, true⟩)
+      | r => r
+  | .obj none U0 d, .obj o _ _ =>
+      match formSelfF Γ U0 d (jobsF d) ⟨n, false⟩ with
+      | (.ok (S, _), tk) => (.self (decide (o = some S)), tk)
+      | (.error rs, tk) => (.no (Reason.top tk.out rs), tk)
+  | _, _ => (.shape, ⟨n, true⟩)
+
+/-- `formSelfF` on a surface program over a platform, against a written form,
+with the tank left. -/
+def formAt (π : PlatformNames) (e w : STm) (n : Nat := defaultFuel) : Formed × Tank :=
+  match resolvePTop Λc π e, resolvePTop Λc π w with
+  | some p, some q => formGo (platformCtx π.plat) n p q
+  | _, _ => (.shape, ⟨n, true⟩)
+
+/-- `formSelfF` on a written program `e` with every self shape erased, against
+a written form `w`. -/
+def formSAt (π : PlatformNames) (e w : STm) (n : Nat := defaultFuel) : Formed × Tank :=
+  match resolvePTop Λc π e, resolvePTop Λc π w with
+  | some p, some q => formGo (platformCtx π.plat) n p.eraseSelf q
+  | _, _ => (.shape, ⟨n, true⟩)
+
+/-- `formSelfF` on a written program with every self shape erased, against
+the program itself. -/
+def formS (π : PlatformNames) (w : STm) (n : Nat := defaultFuel) : Formed × Tank :=
+  formSAt π w w n
+
+/-- The jobs of a program that is a literal, or a literal under written
+lambdas, with its self shape erased. -/
+def jobsAt (π : PlatformNames) (e : STm) : List (Label × (List Label × Bool)) :=
+  let rec go {s : Sig} : PTm s → List (Label × (List Label × Bool))
+    | .lam _ t => go t
+    | .obj none _ d => (jobsF d).map fun j => (j.lbl, j.deps)
+    | _ => []
+  match resolvePTop Λc π e with
+  | some p => go p.eraseSelf
+  | none => []
+
+/-- A literal that holds `f` in a field that reads a later one. -/
+def FwdSrc : STm :=
+  cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        ν(z : {a : (∀(u : ⊤) ⊤) ^ {f}} ∧ {b : (∀(u : ⊤) ⊤) ^ {f}}. {a = z.b} ∧ {b = f})
+
+/-- A field closure that projects another field off the self. -/
+def SelfProjSrc : STm :=
+  cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        ν(z : {b : (∀(u : ⊤) ⊤) ^ {f}} ∧ {a : (∀(u : ⊤) ⊤) ^ {z, f}}.
+           {b = f} ∧ {a = λ(u : ⊤). let w = z.b in w u})
+
+/-- E2's object alone. -/
+def E2oSrc : STm :=
+  cap% ν(s : {A : ∀(y : s.A) s.A .. ∀(y : s.A) s.A} ∧ {a : ∀(y : s.A) s.A}.
+          {type A = ∀(y : s.A) s.A} ∧ {a = λ(y : s.A). y})
+
+/-- A recursive field with its type written. -/
+def RecSrc : STm := cap% ν(z : {a : ∀(y : ⊤) ⊤}. {a = λ(y : ⊤). let w = z.a in w y})
+
+/-- The same without a self shape and with the field type written. -/
+def RecWSrcS : STm := cap% ν(z. {a : ∀(y : ⊤) ⊤ = λy. let w = z.a in w y})
+
+/-- E5 with the self shape written at the type of the field's right-hand
+side. -/
+def E5srcW : STm :=
+  cap% λ(w : {A : ⊤..⊤}). let f = λ(v : {A : ⊤..⊤}). ν(z : {a : {A : ⊤..⊤}}. {a = v}) in
+         let o = f w in o.a
+
+/-- E6 with the self shape written at the type of the field's right-hand
+side. -/
+def E6srcW : STm :=
+  cap% λ(n : {a : ⊤}). ν(x : {T : {a : ⊤} .. {a : ⊤}} ∧ {v : {a : ⊤}}. {type T = {a : ⊤}} ∧ {v = n})
+
+/-- Two fields that read each other. -/
+def CycSrcS : STm := cap% ν(z. {a = z.b} ∧ {b = z.a})
+
+/-- A recursive field without a written type. -/
+def RecUSrcS : STm := cap% ν(z. {a = λ(y : ⊤). let w = z.a in w y})
+
+/-- A field that reads a cycle between two later fields. -/
+def Cyc3SrcS : STm := cap% ν(z. {a = z.b} ∧ {b = z.v} ∧ {v = z.b})
+
+/-- A recursive field that reads itself through an alias of the self. -/
+def AliasRecSrcS : STm := cap% ν(z. {a = λ(y : ⊤). let w = z in let u = w.a in u y})
+
+/-- A field that is the self. -/
+def SelfSrcS : STm := cap% ν(z. {a = z})
+
+/-- The same with the self shape written at the snapshot the field is typed
+at. -/
+def SelfSrc : STm := cap% ν(z : {a : μ(y. ⊤)}. {a = z})
+
+/-- A field that reads a later field that is the self. -/
+def FwdSelfSrcS : STm := cap% ν(z. {a = z.b} ∧ {b = z})
+
+/-- The same with the self shape written. -/
+def FwdSelfSrc : STm := cap% ν(z : {a : μ(y. ⊤)} ∧ {b : μ(y. ⊤)}. {a = z.b} ∧ {b = z})
+
+/-- A field that is the self, and a later one that reads it. -/
+def BareProjSrcS : STm := cap% ν(z. {a = z} ∧ {b = z.a})
+
+/-- The same with the self shape written. -/
+def BareProjSrc : STm := cap% ν(z : {a : μ(y. ⊤)} ∧ {b : μ(y. ⊤)}. {a = z} ∧ {b = z.a})
+
+/-- A field whose right-hand side has two incomparable types. -/
+def AmbSrcS : STm := cap% λ(y : {a : {b : ⊤}} ∧ {a : {v : ⊤}}). ν(s. {a = y.a})
+
+/-- A field whose right-hand side has two types, one below the other, and a
+use of the field that needs the smaller one. -/
+def AmbUseSrcS : STm :=
+  cap% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). let o = ν(s. {v = y.a}) in let w = o.v in w.b
+
+/-- The same with the self shape written. -/
+def AmbUseSrc : STm :=
+  cap% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}).
+        let o = ν(s : {v : {b : ⊤}}. {v = y.a}) in let w = o.v in w.b
+
+/-- The same two types in the other order. -/
+def AmbUse2SrcS : STm :=
+  cap% λ(y : {a : {b : ⊤}} ∧ {a : ⊤}). let o = ν(s. {v = y.a}) in let w = o.v in w.b
+
+/-- The same with the self shape written. -/
+def AmbUse2Src : STm :=
+  cap% λ(y : {a : {b : ⊤}} ∧ {a : ⊤}).
+        let o = ν(s : {v : {b : ⊤}}. {v = y.a}) in let w = o.v in w.b
+
+/-- A field that is a lambda without a domain and without a goal. -/
+def NoDomSrcS : STm := cap% ν(z. {a = λy. y})
+
+
+/-- impureIns with its self shape written at the types of the right-hand
+sides: both fields hold `f` unboxed. -/
+def impureInsSrcW : STm :=
+  cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        ν(z : {a : (∀(u : ⊤) ⊤) ^ {f}} ∧ {b : (∀(u : ⊤) ⊤) ^ {f}}. {a = f} ∧ {b = f})
+
+/-- C7 with its self shape written at the types of the right-hand sides: each
+box at the set of its capability. -/
+def C7srcW : STm :=
+  cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
+        let o = ν(z : {e1 : □((∀(u : ⊤) ⊤) ^ {f1})} ∧ {e2 : □((∀(u : ⊤) ⊤) ^ {f2})}.
+                   {e1 = □ f1} ∧ {e2 = □ f2})
+        in let e = o.e1 in {k1} ⊸ e
+
+/-- C7nb with its self shape written at the types of the right-hand sides:
+the capabilities unboxed. -/
+def C7nbSrcW : STm :=
+  cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}).
+        let o = ν(z : {e1 : (∀(u : ⊤) ⊤) ^ {f1}} ∧ {e2 : (∀(u : ⊤) ⊤) ^ {f2}}.
+                   {e1 = f1} ∧ {e2 = f2})
+        in let e = o.e1 in (e : (∀(u : ⊤) ⊤) ^ {k1})
+
+/-- C7scala with its self shape written at the types of the right-hand
+sides: the capabilities unboxed. -/
+def C7scalaSrcW : STm :=
+  cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}). λ(f2 : (∀(u : ⊤) ⊤) ^ {k2}). λ(u : ⊤).
+        let o = ν(z : {e1 : (∀(u : ⊤) ⊤) ^ {f1}} ∧ {e2 : (∀(u : ⊤) ⊤) ^ {f2}}.
+                   {e1 = f1} ∧ {e2 = f2})
+        in let e = o.e1 in e u
+
+/-- argUnbox with its self shape written at the type of the right-hand
+side. -/
+def argUnboxSrcW : STm :=
+  cap% λ(f1 : (∀(u : ⊤) ⊤) ^ {k1}).
+        let o = ν(z : {e1 : (∀(u : ⊤) ⊤) ^ {f1}}. {e1 = f1}) in
+        let e = o.e1 in
+        let h = λ(k : (∀(u : ⊤) ⊤) ^ {k1}). k in h e
+
+/-- recv with its self shape written at the type of the right-hand side. -/
+def recvSrcW : STm :=
+  cap% λ(p : {a : ⊤} ^ {k1}).
+        let o = ν(z : {e1 : {a : ⊤} ^ {p}}. {e1 = p}) in
+        let e = o.e1 in e.a
+
+/-- S3nb with its self shape written at the types of the right-hand sides:
+the field at the capability's type, where the written shape names the
+member. -/
+def S3nbSrcW : STm :=
+  cap% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        let o = ν(z : {A : (∀(u : ⊤) ⊤) ^ {f} .. (∀(u : ⊤) ⊤) ^ {f}} ∧
+                      {elem : (∀(u : ⊤) ⊤) ^ {f}}.
+                   {type A = (∀(u : ⊤) ⊤) ^ {f}} ∧ {elem = f})
+        in let e = o.elem in (e : (∀(u : ⊤) ⊤) ^ {f})
+
+/-- C2 with the self shape of its first literal written at the types of the
+right-hand sides: the closure is pure, where the written shape gives it the
+member's set. -/
+def C2srcW : STm :=
+  cap% let c = λ(x : (μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}})) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : ∀(u : ⊤) ⊤}.
+                 {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in gb
+
+-- The jobs of a field list: the fields without a written type, in source
+-- order, with their dependencies.  A field with a written type is no job.  A
+-- projection through an alias of the self depends on its label.  A bare use
+-- sets the flag.
+example : jobsAt πc FwdSrc = [(.trm 0, ([.trm 1], false)), (.trm 1, ([], false))] := by
+  decide +kernel
+example : jobsAt .empty RecWSrcS = [] := by decide +kernel
+example : jobsAt .empty AliasRecSrcS = [(.trm 0, ([.trm 0], false))] := by decide +kernel
+example : jobsAt .empty FwdSelfSrcS = [(.trm 0, ([.trm 1], false)), (.trm 1, ([], true))] := by
+  decide +kernel
+
+-- The written self shapes, formed: impure, accounted, a field that reads a
+-- later one, E2 and its object, E7 with no job, S1 with and without its
+-- ascription, a closure that projects another field off the self, and a
+-- recursive field with its type written.
+example : formS πc impureSrc = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formS πc accountedSrc = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formS πc FwdSrc = (.self true, ⟨defaultFuel - 3, false⟩) := by decide +kernel
+example : formS .empty E2src = (.self true, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS .empty E2oSrc = (.self true, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS .empty E7src = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formS πc S1bareSrc = (.self true, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS πc S1src = (.self true, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS πc SelfProjSrc = (.self true, ⟨defaultFuel - 9, false⟩) := by decide +kernel
+example : formAt .empty RecWSrcS RecSrc = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+
+-- The types of the right-hand sides, with their capture sets: E5 and E6, a
+-- capability in a field unboxed where the written shape asks for a box, a box
+-- at the capability's own set, a field where the written shape names a member
+-- or its set.
+example : formAt .empty E5srcS E5srcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formAt .empty E6srcS E6srcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formSAt πc impureInsSrc impureInsSrcW = (.self true, ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formSAt πc C7src C7srcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formSAt πc C7nbSrc C7nbSrcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formSAt πc C7scalaSrc C7scalaSrcW = (.self true, ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formSAt πc argUnboxSrc argUnboxSrcW = (.self true, ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formSAt πc recvSrc recvSrcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formSAt πc S3nbSrc S3nbSrcW = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formSAt πc C2src C2srcW = (.self true, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS πc S3src = (.self false, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formS πc C2ascSrc = (.self false, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+example : formS πc S2src = (.self false, ⟨defaultFuel - 1, false⟩) := by decide +kernel
+
+-- Cyclic references: two fields that read each other, a recursive field, a
+-- cycle that a field before it reads, a recursion through an alias.
+example : formAt .empty CycSrcS CycSrcS = (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formAt .empty RecUSrcS RecUSrcS =
+    (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formAt .empty Cyc3SrcS Cyc3SrcS =
+    (.no (.cyclicRef (.trm 1)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : formAt .empty AliasRecSrcS AliasRecSrcS =
+    (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+-- Bare uses of the self, typed at the snapshot.
+example : formAt .empty SelfSrcS SelfSrc = (.self true, ⟨defaultFuel, false⟩) := by decide +kernel
+example : formAt .empty FwdSelfSrcS FwdSelfSrc = (.self true, ⟨defaultFuel - 3, false⟩) := by
+  decide +kernel
+example : formAt .empty BareProjSrcS BareProjSrc = (.self true, ⟨defaultFuel - 3, false⟩) := by
+  decide +kernel
+
+-- The least candidate, in both orders of the intersection, and candidates
+-- with no least one.
+example : formAt .empty AmbUseSrcS AmbUseSrc = (.self true, ⟨defaultFuel - 9, false⟩) := by
+  decide +kernel
+example : formAt .empty AmbUse2SrcS AmbUse2Src = (.self true, ⟨defaultFuel - 7, false⟩) := by
+  decide +kernel
+example : formAt .empty AmbSrcS AmbSrcS =
+    (.no (.ambiguous (.trm 0)), ⟨defaultFuel - 9, false⟩) := by
+  decide +kernel
+
+-- A job whose lambda has no domain and no goal.
+example : formAt .empty NoDomSrcS NoDomSrcS =
+    (.no (.missingParamType none), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+/-! ### Literals without a self shape
+
+Each program is a written program with every self shape erased, elaborated
+whole.  A program that compiles is compared with a written form: the program
+itself when the formed self shape is the written one, and else the program
+with its self shape written at the types of the right-hand sides. -/
+
+/-- The outcome of a written program with every self shape erased, with the
+tank left. -/
+def elabSOut (π : PlatformNames) (w : STm) (n : Nat := defaultFuel) : Outcome π.sig × Tank :=
+  match resolvePTop Λc π w with
+  | some p =>
+      match elabTopF n π p.eraseSelf with
+      | (.ok c, t) => (.ok c.tm c.uses c.ty, t)
+      | (.error r, t) => (.no r, t)
+  | none => (.no .mismatch, ⟨n, true⟩)
+
+/-- The type of an outcome, if it has one. -/
+def Outcome.ty? {s : Sig} : Outcome s → Option (Ty s)
+  | .ok _ _ T => some T
+  | .no _ => none
+
+/-- The head rule of a derivation is the object rule. -/
+def derivIsObj {s : Sig} {U : CaptureSet s} {Γ : Ctx s} {t : Tm s} {T : Ty s} :
+    HasTy U Γ t T → Bool
+  | .obj _ _ => true
+  | _ => false
+
+/-- The first candidate of the literal a program is, under its written
+lambdas, elaborated with no goal on a tank of its own: whether its derivation
+ends in the object rule, on an unmarked tank. -/
+def objUnder {s : Sig} (Γ : Ctx s) : PTm s → Bool
+  | .lam (some T) t => objUnder (Γ.cons T) t
+  | .obj o U d =>
+      match elabF Γ (.obj o U d) none ⟨defaultFuel, false⟩ with
+      | ((c :: _, _), t) => !t.out && derivIsObj c.deriv
+      | _ => false
+  | _ => false
+
+/-- `objUnder` on a written program with every self shape erased. -/
+def objS (π : PlatformNames) (w : STm) : Bool :=
+  match resolvePTop Λc π w with
+  | some p => objUnder (platformCtx π.plat) p.eraseSelf
+  | none => false
+
+/-- A field whose right-hand side has two types, one below the other, and a
+written self shape that gives the field the larger one. -/
+def AmbSubSrc : STm := cap% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). ν(s : {v : ⊤}. {v = y.a})
+
+/-- The same with its self shape written at the smaller type. -/
+def AmbSubSrcW : STm :=
+  cap% λ(y : {a : ⊤} ∧ {a : {b : ⊤}}). ν(s : {v : {b : ⊤}}. {v = y.a})
+
+/-- A literal without a self shape at a goal that is no `μ`, its self shape
+erased. -/
+def AscTopSrcS : STm := cap% λ(n : {b : ⊤}). (ν(z. {a = n}) : ⊤)
+
+/-- The same with its self shape written. -/
+def AscTopSrc : STm := cap% λ(n : {b : ⊤}). (ν(z : {a : {b : ⊤}}. {a = n}) : ⊤)
+
+/-- A literal without a self shape and with no goal, its self shape written
+at the type of the right-hand side. -/
+def NoShapeSrc : STm := cap% ν(z : {a : ∀(u : ⊤) ⊤}. {a = λ(u : ⊤). u})
+
+/-- Literals without a self shape nested `k` deep, the innermost field the
+variable `n`. -/
+def nestP : Nat → {s : Sig} → BVar s .var → PTm s
+  | 0, _, n => .path (.var n)
+  | k + 1, _, n => .obj none none (.trm (.trm 0) none (nestP k n.there))
+
+/-- `λ(n : {b : ⊤}). ν(x1. {a = … ν(xk. {a = n}) …})`. -/
+def X6P (k : Nat) : PTm PlatformNames.empty.sig :=
+  .lam (some ((Shape.fld (.trm 1) ((Shape.top) ^ [])) ^ [])) (nestP k .here)
+
+/-- The fuel of the nested literals `k` deep: the elaboration's, and the
+typer's on the elaborated program, when both end on an unmarked tank. -/
+def x6At (k : Nat) : Option (Nat × Nat) :=
+  match elabTopF defaultFuel .empty (X6P k) with
+  | (.ok c, t) =>
+      match synthTopF defaultFuel .empty c.tm with
+      | (some c', t') =>
+          if !t.out && !t'.out && c'.ty = c.ty then
+            some (defaultFuel - t.left, defaultFuel - t'.left)
+          else none
+      | (none, _) => none
+  | (.error _, _) => none
+
+-- The erased programs are the written ones with their self shapes erased.
+example : (resolvePTop Λc .empty RecSrc).map PTm.eraseSelf = resolvePTop Λc .empty RecUSrcS := by
+  decide
+example : (resolvePTop Λc .empty AscTopSrc).map PTm.eraseSelf =
+    resolvePTop Λc .empty AscTopSrcS := by
+  decide
+example : (resolvePTop Λc .empty NoShapeSrc).map PTm.eraseSelf =
+    resolvePTop Λc .empty NoShapeSrcS := by
+  decide
+
+-- The written self shapes, formed: the program elaborates to the written
+-- term, use set and type.  impure, accounted, a field that reads a later one,
+-- E2's object, E2, E7, S1 with and without its ascription, a closure that
+-- projects another field off the self, and a recursive field with its type
+-- written.
+example : elabSOut πc impureSrc = ((writtenOut πc impureSrc).1, ⟨defaultFuel - 12, false⟩) ∧
+    writtenOut πc impureSrc = ((writtenOut πc impureSrc).1, ⟨defaultFuel - 12, false⟩) ∧
+    (writtenOut πc impureSrc).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc accountedSrc =
+      ((writtenOut πc accountedSrc).1, ⟨defaultFuel - 40, false⟩) ∧
+    (writtenOut πc accountedSrc).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc FwdSrc = ((writtenOut πc FwdSrc).1, ⟨defaultFuel - 33, false⟩) ∧
+    writtenOut πc FwdSrc = ((writtenOut πc FwdSrc).1, ⟨defaultFuel - 30, false⟩) ∧
+    (writtenOut πc FwdSrc).1.isOk = true := by
+  decide +kernel
+example : elabSOut .empty E2oSrc = ((writtenOut .empty E2oSrc).1, ⟨defaultFuel - 7, false⟩) ∧
+    writtenOut .empty E2oSrc = ((writtenOut .empty E2oSrc).1, ⟨defaultFuel - 6, false⟩) ∧
+    (writtenOut .empty E2oSrc).1.isOk = true := by
+  decide +kernel
+example : elabSOut .empty E2src = ((writtenOut .empty E2src).1, ⟨defaultFuel - 65, false⟩) ∧
+    (writtenOut .empty E2src).1.isOk = true := by
+  decide +kernel
+example : elabSOut .empty E7src = ((writtenOut .empty E7src).1, ⟨defaultFuel - 1, false⟩) ∧
+    writtenOut .empty E7src = ((writtenOut .empty E7src).1, ⟨defaultFuel - 1, false⟩) ∧
+    (writtenOut .empty E7src).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc S1src = ((writtenOut πc S1src).1, ⟨defaultFuel - 92, false⟩) ∧
+    writtenOut πc S1src = ((writtenOut πc S1src).1, ⟨defaultFuel - 91, false⟩) ∧
+    (writtenOut πc S1src).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc S1bareSrc = ((writtenOut πc S1bareSrc).1, ⟨defaultFuel - 79, false⟩) ∧
+    writtenOut πc S1bareSrc = ((writtenOut πc S1bareSrc).1, ⟨defaultFuel - 78, false⟩) ∧
+    (writtenOut πc S1bareSrc).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc SelfProjSrc =
+      ((writtenOut πc SelfProjSrc).1, ⟨defaultFuel - 53, false⟩) ∧
+    writtenOut πc SelfProjSrc = ((writtenOut πc SelfProjSrc).1, ⟨defaultFuel - 44, false⟩) ∧
+    (writtenOut πc SelfProjSrc).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty RecWSrcS = ((writtenOut .empty RecSrc).1, ⟨defaultFuel - 19, false⟩) ∧
+    writtenOut .empty RecSrc = ((writtenOut .empty RecSrc).1, ⟨defaultFuel - 10, false⟩) ∧
+    (writtenOut .empty RecSrc).1.isOk = true := by
+  decide +kernel
+
+-- The derivation of the filled literal ends in the object rule: impure, a
+-- field that reads a later one, E2's object, a recursive field with its type
+-- written.
+example : objS πc impureSrc = true := by decide +kernel
+example : objS πc FwdSrc = true := by decide +kernel
+example : objS .empty E2oSrc = true := by decide +kernel
+example : objS .empty RecWSrcS = true := by decide +kernel
+
+-- The types of the right-hand sides, with their capture sets: the program
+-- elaborates as the one that writes the self shape at those types.  E5 and
+-- E6, a capability in a field unboxed where the written shape asks for a box,
+-- the capabilities unboxed by box inference, an unboxing at an argument, a
+-- receiver, a field at the capability's type where the written shape names
+-- the member.
+example : elabOut .empty E5srcS = ((writtenOut .empty E5srcW).1, ⟨defaultFuel - 13, false⟩) ∧
+    (writtenOut .empty E5srcW).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty E6srcS = ((writtenOut .empty E6srcW).1, ⟨defaultFuel - 4, false⟩) ∧
+    (writtenOut .empty E6srcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc impureInsSrc =
+      ((writtenOut πc impureInsSrcW).1, ⟨defaultFuel - 16, false⟩) ∧
+    (writtenOut πc impureInsSrcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc C7nbSrc = ((writtenOut πc C7nbSrcW).1, ⟨defaultFuel - 43, false⟩) ∧
+    (writtenOut πc C7nbSrcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc C7scalaSrc =
+      ((writtenOut πc C7scalaSrcW).1, ⟨defaultFuel - 40, false⟩) ∧
+    (writtenOut πc C7scalaSrcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc argUnboxSrc =
+      ((writtenOut πc argUnboxSrcW).1, ⟨defaultFuel - 30, false⟩) ∧
+    (writtenOut πc argUnboxSrcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc recvSrc = ((writtenOut πc recvSrcW).1, ⟨defaultFuel - 20, false⟩) ∧
+    (writtenOut πc recvSrcW).1.isOk = true := by
+  decide +kernel
+example : elabSOut πc S3nbSrc = ((writtenOut πc S3nbSrcW).1, ⟨defaultFuel - 29, false⟩) ∧
+    (writtenOut πc S3nbSrcW).1.isOk = true := by
+  decide +kernel
+
+-- The program's type, where the written self shapes name members or their
+-- sets: S3, S3nb, C2, C2 with the client ascribed, S2.
+example : (elabSOut πc S3src).1.ty? = (writtenOut πc S3src).1.ty? ∧
+    (elabSOut πc S3src).2 = ⟨defaultFuel - 16, false⟩ ∧ (writtenOut πc S3src).1.isOk = true := by
+  decide +kernel
+example : (elabSOut πc S3nbSrc).1.ty? = (writtenOut πc S3nbSrc).1.ty? ∧
+    (writtenOut πc S3nbSrc).1.isOk = true := by
+  decide +kernel
+example : (elabSOut πc C2src).1.ty? = (writtenOut πc C2src).1.ty? ∧
+    (elabSOut πc C2src).2 = ⟨defaultFuel - 217, false⟩ ∧ (writtenOut πc C2src).1.isOk = true := by
+  decide +kernel
+example : (elabSOut πc C2ascSrc).1.ty? = (writtenOut πc C2ascSrc).1.ty? ∧
+    (elabSOut πc C2ascSrc).2 = ⟨defaultFuel - 219, false⟩ ∧
+    (writtenOut πc C2ascSrc).1.isOk = true := by
+  decide +kernel
+example : (elabSOut πc S2src).1.ty? = (writtenOut πc S2src).1.ty? ∧
+    (elabSOut πc S2src).2 = ⟨defaultFuel - 169, false⟩ ∧ (writtenOut πc S2src).1.isOk = true := by
+  decide +kernel
+
+-- C7 boxes each capability at its own set, where the written unboxing names
+-- `{k1}`: a mismatch, as for the program that writes the self shape at those
+-- boxes.
+example : elabSOut πc C7src = (.no .mismatch, ⟨defaultFuel - 15, false⟩) ∧
+    writtenOut πc C7srcW = (.no .mismatch, ⟨defaultFuel - 15, false⟩) := by
+  decide +kernel
+
+-- Cyclic references: a recursive field, two fields that read each other, a
+-- cycle that a field before it reads, a recursion through an alias.
+example : elabSOut .empty RecSrc = (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : elabOut .empty CycSrcS = (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : elabOut .empty Cyc3SrcS = (.no (.cyclicRef (.trm 1)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+example : elabOut .empty AliasRecSrcS = (.no (.cyclicRef (.trm 0)), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+-- Bare uses of the self, typed at the snapshot: the typer accepts the self at
+-- `μ(y. ⊤)` in the real context.
+example : elabOut .empty SelfSrcS = ((writtenOut .empty SelfSrc).1, ⟨defaultFuel - 12, false⟩) ∧
+    (writtenOut .empty SelfSrc).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty FwdSelfSrcS =
+      ((writtenOut .empty FwdSelfSrc).1, ⟨defaultFuel - 29, false⟩) ∧
+    writtenOut .empty FwdSelfSrc = ((writtenOut .empty FwdSelfSrc).1, ⟨defaultFuel - 26, false⟩) ∧
+    (writtenOut .empty FwdSelfSrc).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty BareProjSrcS =
+      ((writtenOut .empty BareProjSrc).1, ⟨defaultFuel - 29, false⟩) ∧
+    writtenOut .empty BareProjSrc =
+      ((writtenOut .empty BareProjSrc).1, ⟨defaultFuel - 26, false⟩) ∧
+    (writtenOut .empty BareProjSrc).1.isOk = true := by
+  decide +kernel
+
+-- The least candidate: a field at the smaller of two types, AmbUse in both
+-- orders of the intersection, and candidates with no least one.
+example : elabSOut .empty AmbSubSrc =
+      ((writtenOut .empty AmbSubSrcW).1, ⟨defaultFuel - 18, false⟩) ∧
+    writtenOut .empty AmbSubSrc = ((writtenOut .empty AmbSubSrc).1, ⟨defaultFuel - 9, false⟩) ∧
+    (writtenOut .empty AmbSubSrc).1.isOk = true ∧
+    (writtenOut .empty AmbSubSrcW).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty AmbUseSrcS =
+      ((writtenOut .empty AmbUseSrc).1, ⟨defaultFuel - 24, false⟩) ∧
+    writtenOut .empty AmbUseSrc = ((writtenOut .empty AmbUseSrc).1, ⟨defaultFuel - 15, false⟩) ∧
+    (writtenOut .empty AmbUseSrc).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty AmbUse2SrcS =
+      ((writtenOut .empty AmbUse2Src).1, ⟨defaultFuel - 22, false⟩) ∧
+    (writtenOut .empty AmbUse2Src).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty AmbSrcS = (.no (.ambiguous (.trm 0)), ⟨defaultFuel - 9, false⟩) := by
+  decide +kernel
+
+-- A field that is a lambda without a domain and without a goal.
+example : elabOut .empty NoDomSrcS = (.no (.missingParamType none), ⟨defaultFuel, false⟩) := by
+  decide +kernel
+
+-- A literal with no goal, and one at a goal that is no `μ`: formed, then moved
+-- to the goal.
+example : elabOut .empty NoShapeSrcS =
+      ((writtenOut .empty NoShapeSrc).1, ⟨defaultFuel - 7, false⟩) ∧
+    writtenOut .empty NoShapeSrc = ((writtenOut .empty NoShapeSrc).1, ⟨defaultFuel - 6, false⟩) ∧
+    (writtenOut .empty NoShapeSrc).1.isOk = true := by
+  decide +kernel
+example : elabOut .empty AscTopSrcS =
+      ((writtenOut .empty AscTopSrc).1, ⟨defaultFuel - 6, false⟩) ∧
+    writtenOut .empty AscTopSrc = ((writtenOut .empty AscTopSrc).1, ⟨defaultFuel - 6, false⟩) ∧
+    (writtenOut .empty AscTopSrc).1.isOk = true := by
+  decide +kernel
+
+-- Nested literals without a self shape: the elaboration's fuel against the
+-- typer's on the elaborated program, quadratic against linear.
+example : x6At 2 = some (8, 5) := by decide +kernel
+example : x6At 4 = some (19, 7) := by decide +kernel
+example : x6At 8 = some (53, 11) := by decide +kernel
+example : x6At 12 = some (103, 15) := by decide +kernel
+example : x6At 16 = some (169, 19) := by decide +kernel
+example : x6At 17 = some (188, 20) := by decide +kernel
 
 end ElabChecks
 
