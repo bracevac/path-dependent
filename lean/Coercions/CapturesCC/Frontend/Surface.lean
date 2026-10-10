@@ -23,6 +23,14 @@ own, since the calculus reads an object's set off its class root.
 capture binder for the witness and a term binder for the payload.  The
 ascription `(t : T)` is a checking point that the calculus has no term for.
 
+Three annotations may be left to inference: a lambda's domain, `λx. t`, a
+literal's self shape, `ν(x. d)`, and the type of a term member, which a program
+may write as `{a : T = t}`.  Each is an `Option`, `none` when not written.  A
+domain is one slot, its shape and its set together, so `λ(x : S). t` keeps
+meaning the pure `S ^ {}`.  The domain's type is `SDom`, which is
+`Option SType`.  `SDom.capt S C` is the written domain `S ^ C`, so a term built
+by constructor writes a domain as `.capt S C`, as it writes any type.
+
 Labels are strings, interned by a `LabelTable` the caller supplies.  A capture
 member sits at a type label, the slot a type-member bound sits at, since
 `CapturesCC` desugars a capture-set parameter to a type parameter.
@@ -104,6 +112,14 @@ instance : Inhabited SShape := ⟨.top⟩
 instance : Inhabited SType := ⟨.capt .top []⟩
 instance : Inhabited SAns := ⟨.ty default⟩
 
+/-- A lambda's domain: a written capturing type, or `none`, left to
+inference. -/
+abbrev SDom := Option SType
+
+/-- The written domain `S ^ C`.  With it a domain built by constructor reads
+`.capt S C`, the way every other written type does. -/
+def SDom.capt (S : SShape) (C : SCap) : SDom := some (.capt S C)
+
 mutual
 /-- Surface terms.  Application and selection take arbitrary terms.  Let
 insertion in `Resolve.lean` puts them into monadic normal form. -/
@@ -111,11 +127,11 @@ inductive STm : Type where
   /-- A variable, by name. -/
   | var (x : String)
   /-- `λ(x : T). t` or `λ[c](x : T). t`, `κ` naming the arrow's own capture
-  binder. -/
-  | lam (κ : Option String) (x : String) (T : SType) (t : STm)
+  binder.  `λx. t` and `λ[c]x. t` leave the domain to inference. -/
+  | lam (κ : Option String) (x : String) (T : SDom) (t : STm)
   /-- `ν(x : S. d)`, an object literal: the self shape and its definitions,
-  no capture set of its own. -/
-  | obj (x : String) (S : SShape) (d : SDefs)
+  no capture set of its own.  `ν(x. d)` leaves the self shape to inference. -/
+  | obj (x : String) (S : Option SShape) (d : SDefs)
   /-- `t u`, direct style. -/
   | app (t u : STm)
   /-- `t.a`, direct style. -/
@@ -137,8 +153,8 @@ inductive SDefs : Type where
   | typ (A : String) (S : SShape)
   /-- `{C^ = c}`, a capture definition. -/
   | cap (C : String) (c : SCap)
-  /-- `{a = t}`. -/
-  | trm (a : String) (t : STm)
+  /-- `{a = t}`, or `{a : T = t}` with a written type. -/
+  | trm (a : String) (T : Option SType) (t : STm)
   /-- `d ∧ e`. -/
   | and (d e : SDefs)
 end
@@ -254,8 +270,12 @@ mutual
 def STm.Scoped (K Γ : List String) (e : STm) : Bool :=
   match e with
   | .var x => Γ.contains x
-  | .lam κ x T t => SType.Scoped (optCons κ K) Γ T && STm.Scoped (optCons κ K) (x :: Γ) t
-  | .obj x S d => SShape.Scoped K (x :: Γ) S && SDefs.Scoped K (x :: Γ) d
+  | .lam κ x T t =>
+      (match T with | none => true | some T => SType.Scoped (optCons κ K) Γ T)
+        && STm.Scoped (optCons κ K) (x :: Γ) t
+  | .obj x S d =>
+      (match S with | none => true | some S => SShape.Scoped K (x :: Γ) S)
+        && SDefs.Scoped K (x :: Γ) d
   | .app t u => STm.Scoped K Γ t && STm.Scoped K Γ u
   | .proj t _ => STm.Scoped K Γ t
   | .«let» x ann t u =>
@@ -271,7 +291,8 @@ def SDefs.Scoped (K Γ : List String) (d : SDefs) : Bool :=
   match d with
   | .typ _ S => SShape.Scoped K Γ S
   | .cap _ c => SCap.Scoped K Γ c
-  | .trm _ t => STm.Scoped K Γ t
+  | .trm _ T t =>
+      (match T with | none => true | some T => SType.Scoped K Γ T) && STm.Scoped K Γ t
   | .and d e => SDefs.Scoped K Γ d && SDefs.Scoped K Γ e
 termination_by structural d
 end
@@ -314,8 +335,10 @@ mutual
 def STm.LabelsIn (Λ : LabelTable) (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ _ T t => SType.LabelsIn Λ T && STm.LabelsIn Λ t
-  | .obj _ S d => SShape.LabelsIn Λ S && SDefs.LabelsIn Λ d
+  | .lam _ _ T t =>
+      (match T with | none => true | some T => SType.LabelsIn Λ T) && STm.LabelsIn Λ t
+  | .obj _ S d =>
+      (match S with | none => true | some S => SShape.LabelsIn Λ S) && SDefs.LabelsIn Λ d
   | .app t u => STm.LabelsIn Λ t && STm.LabelsIn Λ u
   | .proj t a => STm.LabelsIn Λ t && (labelTrm? Λ a).isSome
   | .«let» _ ann t u =>
@@ -331,7 +354,9 @@ def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
   match d with
   | .typ A S => (labelTyp? Λ A).isSome && SShape.LabelsIn Λ S
   | .cap C c => (labelTyp? Λ C).isSome && SCap.LabelsIn Λ c
-  | .trm a t => (labelTrm? Λ a).isSome && STm.LabelsIn Λ t
+  | .trm a T t =>
+      (labelTrm? Λ a).isSome &&
+        (match T with | none => true | some T => SType.LabelsIn Λ T) && STm.LabelsIn Λ t
   | .and d e => SDefs.LabelsIn Λ d && SDefs.LabelsIn Λ e
 termination_by structural d
 end
@@ -380,8 +405,8 @@ private def Λ0 : LabelTable := [("a", .trm 0), ("C", .typ 0)]
 private def sampleProgram : STm :=
   .lam (some "c") "f" (.capt .top [])
     (.obj "s"
-      (.and (.fld "a" (.capt .top [])) (.cap "C" [] [SAtom.name "f"]))
-      (.and (.trm "a" (.var "f")) (.cap "C" [SAtom.name "f"])))
+      (some (.and (.fld "a" (.capt .top [])) (.cap "C" [] [SAtom.name "f"])))
+      (.and (.trm "a" none (.var "f")) (.cap "C" [SAtom.name "f"])))
 
 example : STm.Scoped [] [] sampleProgram = true := by decide
 example : STm.LabelsIn Λ0 sampleProgram = true := by decide
@@ -390,7 +415,7 @@ example : STm.LabelsIn Λ0 sampleProgram = true := by decide
 example : STm.Scoped [] [] (.var "x") = false := by decide
 
 /-- The self binder of `ν` scopes over its own shape. -/
-example : STm.Scoped [] [] (.obj "s" (.sel "s" "A") (.typ "B" .top)) = true := by decide
+example : STm.Scoped [] [] (.obj "s" (some (.sel "s" "A")) (.typ "B" .top)) = true := by decide
 
 /-- The binder of a `let` does not scope over the `let`'s annotation. -/
 example :
@@ -515,6 +540,39 @@ example :
 example : SDefs.LabelsIn Λ0 (.cap "C" [SAtom.sel "s" "C"]) = true := by decide
 
 example : SDefs.LabelsIn [] (.cap "C" []) = false := by decide
+
+/-! ### Slots left to inference -/
+
+/-- A domain built by constructor is the written slot. -/
+example : (SDom.capt .top [] : SDom) = some (.capt .top []) := by decide
+
+/-- An empty domain and an empty self shape are in scope, and the body and the
+definitions are scoped under the binder. -/
+example : STm.Scoped [] [] (.lam none "x" none (.var "x")) = true := by decide
+example : STm.Scoped [] [] (.obj "s" none (.trm "a" none (.var "s"))) = true := by decide
+
+/-- A named arrow binder scopes over the body of a lambda with an empty
+domain. -/
+example :
+    STm.Scoped [] [] (.lam (some "c") "x" none
+      (.«let» "y" (some (.ty (.capt .top [SAtom.name "c"]))) (.var "x") (.var "y"))) = true := by
+  decide
+
+/-- A written field type is scoped under the self binder. -/
+example : STm.Scoped [] [] (.obj "s" none (.trm "a" (some (.capt (.sel "s" "A") [])) (.var "s"))) =
+    true := by decide
+example : STm.Scoped [] [] (.obj "s" none (.trm "a" (some (.capt (.sel "t" "A") [])) (.var "s"))) =
+    false := by decide
+
+/-- A written field type is labelled. -/
+example : SDefs.LabelsIn Λ0 (.trm "a" (some (.capt (.fld "b" (.capt .top [])) [])) (.var "s")) =
+    false := by decide
+example : SDefs.LabelsIn Λ0 (.trm "a" (some (.capt (.fld "a" (.capt .top [])) [])) (.var "s")) =
+    true := by decide
+
+/-- An empty slot needs no label.  A type definition under it still does. -/
+example : STm.LabelsIn [] (.lam none "x" none (.var "x")) = true := by decide
+example : STm.LabelsIn [] (.lam none "x" none (.obj "s" none (.typ "B" .top))) = false := by decide
 
 /-- A capture binder is no term variable: `k1` is in scope in a capture set and
 out of scope in term position. -/

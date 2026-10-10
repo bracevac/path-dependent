@@ -10,6 +10,18 @@ syntax of `Ann.lean`: `resolveShape`, `resolveTy` and `resolveAns` for the
 three sorts of type, `resolveTm` for a term and `resolveDefs` for a definition
 list.  They are the only place where a surface name becomes an index.
 
+## Partial terms
+
+A term resolves to a partial term `PTm`.  A lambda's domain or a literal's
+self shape that the program leaves out resolves to an empty slot, and the type
+written on a term member to a written field type.  `resolvePTop` returns the
+partial term of a closed program.  `resolveTop` and `resolveIn` return the
+`ATm` when no slot is empty, through `PTm.full?` (`resolveTop_eq`), so a
+program with every slot written resolves as the typer expects.  Each `let`
+carries a tag that says where it comes from: `written` for a `let` of the
+source, `arg` for the binding of an operand of an application, and `recv` for
+every other inserted binding.
+
 ## Names of two kinds
 
 A signature has term binders and capture binders.  A name environment records
@@ -26,11 +38,14 @@ The resolver inserts the binders the calculus has and no surface phrase
 writes, so that the name environment stays in step with the signature.
 
 - A lambda: the body root, then the arrow's own capture binder, then the
-  parameter.  The domain is read under the arrow binder alone.
+  parameter.  The domain is read under the arrow binder alone.  A lambda
+  without a domain opens the same binders, so `λ[c]x. t` has `c` in scope in
+  its body.
 - An arrow type: its capture binder, which scopes over the domain, then the
   parameter, which with it scopes over the codomain.
 - An object: the class root, then the self, over the definitions.  The self
-  shape is read under the self alone.
+  shape is read under the self alone.  A type written on a term member is read
+  where the definitions are, under the class root and the self.
 - An existential answer `∃[c ⊑ C] T`: one capture binder over `T`.  The bound
   `C` is read outside it.
 - A written unpacking `let ⟨c, x⟩ = t in u`: the witness binder, then the
@@ -46,7 +61,7 @@ only way to speak of one.  An arrow binder the program names, `∀[c]` or
 The resolver turns `any` and `fresh` into `CapAtom.any` and `CapAtom.fresh`
 and leaves them where the program wrote them.  The typer reads them, with
 `Ty.expand`, `Ty.expandFresh` and `Ctx.reading`.  One placement is refused.  A
-lambda domain holding `fresh` does not resolve, because the version reads a
+written lambda domain holding `fresh` does not resolve, because the version reads a
 domain by `Value.expand`, which reads `any` only, and its `FreshOk` keeps
 `fresh` out of every parameter type.
 
@@ -54,8 +69,9 @@ domain by `Value.expand`, which reads `any` only, and its `FreshOk` keeps
 
 An explicit spine of bindings keeps the resolvers structural on the surface
 phrase.  Application, projection, `□ t` and `C ⊸ t` atomize their operands.
-The inserted binder is named `"%"`.  Every inserted binding is a plain `let`.
-The typer decides whether a `let` unpacks an existential answer.
+The inserted binder is named `"%"`.  Every inserted binding is a plain `let`,
+tagged `arg` at the operand of an application and `recv` elsewhere.  The typer
+decides whether a `let` unpacks an existential answer.
 
 An unboxing written with the empty set, `{} ⊸ t`, leaves its set to the typer.
 A nonempty set is kept as written.
@@ -263,12 +279,16 @@ theorem STm.Scoped_covers : ∀ (e : STm) {K K' Γ Γ' : List String},
   | .var x, _, _, _, _, _, hΓ, hs => hΓ x hs
   | .lam κ x T t, _, _, _, _, hK, hΓ, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
-      exact ⟨SType.Scoped_covers T (hK.underOpt κ) hΓ hs.1,
-        STm.Scoped_covers t (hK.underOpt κ) (hΓ.cons x) hs.2⟩
+      refine ⟨?_, STm.Scoped_covers t (hK.underOpt κ) (hΓ.cons x) hs.2⟩
+      cases T with
+      | none => rfl
+      | some T => exact SType.Scoped_covers T (hK.underOpt κ) hΓ hs.1
   | .obj x S d, _, _, _, _, hK, hΓ, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
-      exact ⟨SShape.Scoped_covers S hK (hΓ.cons x) hs.1,
-        SDefs.Scoped_covers d hK (hΓ.cons x) hs.2⟩
+      refine ⟨?_, SDefs.Scoped_covers d hK (hΓ.cons x) hs.2⟩
+      cases S with
+      | none => rfl
+      | some S => exact SShape.Scoped_covers S hK (hΓ.cons x) hs.1
   | .app t u, _, _, _, _, hK, hΓ, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨STm.Scoped_covers t hK hΓ hs.1, STm.Scoped_covers u hK hΓ hs.2⟩
@@ -294,7 +314,12 @@ theorem SDefs.Scoped_covers : ∀ (d : SDefs) {K K' Γ Γ' : List String},
     Covers K K' → Covers Γ Γ' → SDefs.Scoped K Γ d = true → SDefs.Scoped K' Γ' d = true
   | .typ _ S, _, _, _, _, hK, hΓ, hs => SShape.Scoped_covers S hK hΓ hs
   | .cap _ c, _, _, _, _, hK, hΓ, hs => SCap.Scoped_covers c hK hΓ hs
-  | .trm _ t, _, _, _, _, hK, hΓ, hs => STm.Scoped_covers t hK hΓ hs
+  | .trm _ T t, _, _, _, _, hK, hΓ, hs => by
+      simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
+      refine ⟨?_, STm.Scoped_covers t hK hΓ hs.2⟩
+      cases T with
+      | none => rfl
+      | some T => exact SType.Scoped_covers T hK hΓ hs.1
   | .and d e, _, _, _, _, hK, hΓ, hs => by
       simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨SDefs.Scoped_covers d hK hΓ hs.1, SDefs.Scoped_covers e hK hΓ hs.2⟩
@@ -345,32 +370,33 @@ A `Spine s s'` is a stack of `let` bindings that takes a term of the inner
 signature `s'` back to a term of the outer signature `s`.  `Spine.rename` is
 the weakening that moves a variable of `s` into `s'`. -/
 
-/-- A stack of inserted `let` bindings. -/
+/-- A stack of inserted `let` bindings, each with the tag it is plugged
+with. -/
 inductive Spine : Sig → Sig → Type where
   /-- No binding. -/
   | nil : Spine s s
   /-- One binding, then the rest under it. -/
-  | cons : ATm s → Spine (s,x) s' → Spine s s'
+  | cons : LetTag → PTm s → Spine (s,x) s' → Spine s s'
 
 /-- Wrap a term of the inner signature in the bindings of the spine. -/
-def Spine.plug {s s' : Sig} (sp : Spine s s') (u : ATm s') : ATm s :=
+def Spine.plug {s s' : Sig} (sp : Spine s s') (u : PTm s') : PTm s :=
   match sp with
   | .nil => u
-  | .cons t sp => .let none t (sp.plug u)
+  | .cons g t sp => .let g none t (sp.plug u)
 termination_by structural sp
 
 /-- The weakening a spine induces on its outer signature. -/
 def Spine.rename {s s' : Sig} (sp : Spine s s') : Rename s s' :=
   match sp with
   | .nil => Rename.id
-  | .cons _ sp => Rename.comp Rename.succ sp.rename
+  | .cons _ _ sp => Rename.comp Rename.succ sp.rename
 termination_by structural sp
 
 /-- Stack one spine under another. -/
 def Spine.append {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'') : Spine s s'' :=
   match sp with
   | .nil => sp'
-  | .cons t sp => .cons t (sp.append sp')
+  | .cons g t sp => .cons g t (sp.append sp')
 termination_by structural sp
 
 /-- A resolved term in variable position: the inserted bindings, their
@@ -386,30 +412,31 @@ structure Atomic (s : Sig) where
   var : BVar sig .var
 
 /-- Bring a resolved term into variable position.  A variable needs nothing.
-Anything else is bound by one `let`. -/
-def atomize {s : Sig} (nv : NameEnv s) (t : ATm s) : Atomic s :=
+Anything else is bound by one `let`, with the tag `g` that says where the term
+sits. -/
+def atomize {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) : Atomic s :=
   match t with
   | .path (.var i) => ⟨s, .nil, nv, i⟩
-  | _ => ⟨(s,x), .cons t .nil, nv.cons "%", .here⟩
+  | _ => ⟨(s,x), .cons g t .nil, nv.cons "%", .here⟩
 
 /-- `atomize` extends the term binders by at most one name. -/
-theorem atomize_names_covers {s : Sig} (nv : NameEnv s) (t : ATm s) :
-    Covers nv.names (atomize nv t).names.names := by
+theorem atomize_names_covers {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) :
+    Covers nv.names (atomize g nv t).names.names := by
   cases t with
   | path p => cases p with | var _ => exact Covers.rfl' _
   | lam _ _ => exact Covers.tail _ _
   | obj _ _ => exact Covers.tail _ _
   | app _ _ => exact Covers.tail _ _
   | proj _ _ => exact Covers.tail _ _
-  | «let» _ _ _ => exact Covers.tail _ _
+  | «let» _ _ _ _ => exact Covers.tail _ _
   | letex _ _ => exact Covers.tail _ _
   | box _ => exact Covers.tail _ _
   | unbox _ _ => exact Covers.tail _ _
   | asc _ _ => exact Covers.tail _ _
 
 /-- `atomize` adds no capture binder. -/
-theorem atomize_capNames {s : Sig} (nv : NameEnv s) (t : ATm s) :
-    (atomize nv t).names.capNames = nv.capNames := by
+theorem atomize_capNames {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) :
+    (atomize g nv t).names.capNames = nv.capNames := by
   cases t with
   | path p => cases p with | var _ => rfl
   | _ => rfl
@@ -507,6 +534,33 @@ def resolveAns {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (U : SAns) : Option 
 termination_by structural U
 end
 
+/-! ## Slots
+
+A lambda's domain, a literal's self shape and the type written on a term member
+may be left out.  Each reader below resolves a left out annotation to the empty
+slot `none` and a written one as the surrounding phrase reads it. -/
+
+/-- A lambda's domain, read under the arrow's own capture binder, or the empty
+slot.  A written domain holding `fresh` does not resolve. -/
+def resolveDomOpt {s : Sig} (Λ : LabelTable) (nv : NameEnv s) : SDom → Option (Option (Ty s))
+  | none => some none
+  | some T => do
+      let T' ← resolveTy Λ nv T
+      if T'.noFresh then pure (some T') else none
+
+/-- A literal's self shape, read under the self, or the empty slot. -/
+def resolveSelfOpt {s : Sig} (Λ : LabelTable) (nv : NameEnv s) :
+    Option SShape → Option (Option (Shape s))
+  | none => some none
+  | some S => (resolveShape Λ nv S).map some
+
+/-- The type written on a term member, read where the definitions are, or the
+empty slot.  Its `any` and `fresh` are kept, as in every written type. -/
+def resolveFieldOpt {s : Sig} (Λ : LabelTable) (nv : NameEnv s) :
+    Option SType → Option (Option (Ty s))
+  | none => some none
+  | some T => (resolveTy Λ nv T).map some
+
 /-! ## Terms -/
 
 /-- The set an unboxing keeps: none for the empty set, else the resolved set. -/
@@ -516,30 +570,33 @@ def unboxSet {s : Sig} (C : SCap) (C' : CaptureSet s) : Option (CaptureSet s) :=
   | _ => some C'
 
 mutual
-/-- Resolve a surface term, inserting the binders the program does not write
-and `let` bindings for the four direct style forms. -/
-def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
+/-- Resolve a surface term to a partial term, inserting the binders the program
+does not write and `let` bindings for the four direct style forms.  An inserted
+binding is tagged `recv` at an operator, at the receiver of a projection and at
+the operand of a box or an unboxing, and `arg` at the operand of an
+application.  A `let` of the source is tagged `written`. -/
+def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (PTm s) :=
   match e with
   | .var x => do
       let i ← nv.findVar? x
       pure (.path (.var i))
   | .lam κ x T t => do
-      let T' ← resolveTy Λ (nv.consC (binderName κ)) T
+      let T' ← resolveDomOpt Λ (nv.consC (binderName κ)) T
       let t' ← resolveTm Λ (((nv.consC "%").consC (binderName κ)).cons x) t
-      if T'.noFresh then pure (.lam T' t') else none
+      pure (.lam T' t')
   | .obj x S d => do
-      let S' ← resolveShape Λ (nv.cons x) S
+      let S' ← resolveSelfOpt Λ (nv.cons x) S
       let d' ← resolveDefs Λ ((nv.consC "%").cons x) d
       pure (.obj S' d')
   | .app t u => do
       let t₀ ← resolveTm Λ nv t
-      let a := atomize nv t₀
+      let a := atomize .recv nv t₀
       let u₀ ← resolveTm Λ a.names u
-      let b := atomize a.names u₀
+      let b := atomize .arg a.names u₀
       pure ((a.spine.append b.spine).plug (.app (b.spine.rename.var a.var) b.var))
   | .proj t a => do
       let t₀ ← resolveTm Λ nv t
-      let c := atomize nv t₀
+      let c := atomize .recv nv t₀
       let l ← labelTrm? Λ a
       pure (c.spine.plug (.proj c.var l))
   | .«let» x ann t u => do
@@ -548,18 +605,18 @@ def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (A
         | some U => (resolveAns Λ nv U).map some)
       let t' ← resolveTm Λ nv t
       let u' ← resolveTm Λ (nv.cons x) u
-      pure (.let ann' t' u')
+      pure (.let .written ann' t' u')
   | .letex κ x t u => do
       let t' ← resolveTm Λ nv t
       let u' ← resolveTm Λ ((nv.consC κ).cons x) u
       pure (.letex t' u')
   | .box t => do
       let t₀ ← resolveTm Λ nv t
-      let c := atomize nv t₀
+      let c := atomize .recv nv t₀
       pure (c.spine.plug (.box c.var))
   | .unbox C t => do
       let t₀ ← resolveTm Λ nv t
-      let c := atomize nv t₀
+      let c := atomize .recv nv t₀
       let C' ← resolveCap Λ c.names C
       pure (c.spine.plug (.unbox (unboxSet C C') c.var))
   | .asc t T => do
@@ -568,7 +625,7 @@ def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (A
       pure (.asc t' T')
 termination_by structural e
 /-- Resolve a surface definition list, under the class root and the self. -/
-def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Option (ADefs s) :=
+def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Option (PDefs s) :=
   match d with
   | .typ A S => do
       let l ← labelTyp? Λ A
@@ -578,10 +635,11 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
       let l ← labelTyp? Λ C
       let c' ← resolveCap Λ nv c
       pure (.cap l c')
-  | .trm a t => do
+  | .trm a T t => do
       let l ← labelTrm? Λ a
+      let T' ← resolveFieldOpt Λ nv T
       let t' ← resolveTm Λ nv t
-      pure (.trm l t')
+      pure (.trm l T' t')
   | .and d e => do
       let d' ← resolveDefs Λ nv d
       let e' ← resolveDefs Λ nv e
@@ -589,13 +647,31 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
 termination_by structural d
 end
 
-/-- Resolve a surface term at a given environment. -/
+/-- Resolve a surface term at a given environment, with every slot written.  A
+term with an empty slot resolves to `none` here, and to its partial term by
+`resolveTm`. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
-  resolveTm Λ nv e
+  (resolveTm Λ nv e).bind PTm.full?
 
-/-- Resolve a closed program over a platform. -/
-def resolveTop (Λ : LabelTable) (π : PlatformNames) (e : STm) : Option (ATm π.sig) :=
+/-- Resolve a closed program over a platform to a partial term. -/
+def resolvePTop (Λ : LabelTable) (π : PlatformNames) (e : STm) : Option (PTm π.sig) :=
   resolveTm Λ π.names e
+
+/-- Resolve a closed program over a platform, with every slot written.  A
+program with an empty slot resolves to `none` here, and to its partial term by
+`resolvePTop`. -/
+def resolveTop (Λ : LabelTable) (π : PlatformNames) (e : STm) : Option (ATm π.sig) :=
+  (resolvePTop Λ π e).bind PTm.full?
+
+/-- `resolveTop` is `resolvePTop` followed by `PTm.full?`. -/
+theorem resolveTop_eq (Λ : LabelTable) (π : PlatformNames) (e : STm) :
+    resolveTop Λ π e = (resolvePTop Λ π e).bind PTm.full? :=
+  rfl
+
+/-- `resolveIn` is `resolveTm` followed by `PTm.full?`. -/
+theorem resolveIn_eq {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) :
+    resolveIn Λ nv e = (resolveTm Λ nv e).bind PTm.full? :=
+  rfl
 
 /-- Resolve a whole program, over the platform its header names. -/
 def resolveProg (Λ : LabelTable) (p : SProg) :
@@ -605,8 +681,9 @@ def resolveProg (Λ : LabelTable) (p : SProg) :
 /-! ## Surface side conditions about atoms
 
 `Avoids a` says that the atom `a` occurs in no capture set of the phrase,
-annotations included.  `FreshPlaced` says that no lambda domain of a term holds
-`fresh`. -/
+annotations included, a written field type among them.  `FreshPlaced` says
+that no written lambda domain of a term holds `fresh`.  An empty slot holds no
+atom. -/
 
 /-- The atom occurs in no position of the set. -/
 def SCap.Avoids (a : SAtom) : SCap → Bool
@@ -646,8 +723,10 @@ mutual
 def STm.Avoids (a : SAtom) (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ _ T t => SType.Avoids a T && STm.Avoids a t
-  | .obj _ S d => SShape.Avoids a S && SDefs.Avoids a d
+  | .lam _ _ T t =>
+      (match T with | none => true | some T => SType.Avoids a T) && STm.Avoids a t
+  | .obj _ S d =>
+      (match S with | none => true | some S => SShape.Avoids a S) && SDefs.Avoids a d
   | .app t u => STm.Avoids a t && STm.Avoids a u
   | .proj t _ => STm.Avoids a t
   | .«let» _ ann t u =>
@@ -663,17 +742,19 @@ def SDefs.Avoids (a : SAtom) (d : SDefs) : Bool :=
   match d with
   | .typ _ S => SShape.Avoids a S
   | .cap _ c => SCap.Avoids a c
-  | .trm _ t => STm.Avoids a t
+  | .trm _ T t =>
+      (match T with | none => true | some T => SType.Avoids a T) && STm.Avoids a t
   | .and d e => SDefs.Avoids a d && SDefs.Avoids a e
 termination_by structural d
 end
 
 mutual
-/-- No lambda domain of the term holds `fresh`. -/
+/-- No written lambda domain of the term holds `fresh`. -/
 def STm.FreshPlaced (e : STm) : Bool :=
   match e with
   | .var _ => true
-  | .lam _ _ T t => SType.Avoids .fresh T && STm.FreshPlaced t
+  | .lam _ _ T t =>
+      (match T with | none => true | some T => SType.Avoids .fresh T) && STm.FreshPlaced t
   | .obj _ _ d => SDefs.FreshPlaced d
   | .app t u => STm.FreshPlaced t && STm.FreshPlaced u
   | .proj t _ => STm.FreshPlaced t
@@ -683,12 +764,13 @@ def STm.FreshPlaced (e : STm) : Bool :=
   | .unbox _ t => STm.FreshPlaced t
   | .asc t _ => STm.FreshPlaced t
 termination_by structural e
-/-- No lambda domain of the definitions holds `fresh`. -/
+/-- No written lambda domain of the definitions holds `fresh`.  A written
+field type is no domain. -/
 def SDefs.FreshPlaced (d : SDefs) : Bool :=
   match d with
   | .typ _ _ => true
   | .cap _ _ => true
-  | .trm _ t => STm.FreshPlaced t
+  | .trm _ _ t => STm.FreshPlaced t
   | .and d e => SDefs.FreshPlaced d && SDefs.FreshPlaced e
 termination_by structural d
 end
@@ -987,18 +1069,18 @@ end
 /-! ## Totality of term resolution -/
 
 /-- `atomize` keeps both lists of names in scope for the operand. -/
-theorem STm.Scoped_atomize {s : Sig} (nv : NameEnv s) (t₀ : ATm s) (u : STm)
+theorem STm.Scoped_atomize {s : Sig} (g : LetTag) (nv : NameEnv s) (t₀ : PTm s) (u : STm)
     (h : STm.Scoped nv.capNames nv.names u = true) :
-    STm.Scoped (atomize nv t₀).names.capNames (atomize nv t₀).names.names u = true := by
+    STm.Scoped (atomize g nv t₀).names.capNames (atomize g nv t₀).names.names u = true := by
   rw [atomize_capNames]
-  exact STm.Scoped_covers u (Covers.rfl' _) (atomize_names_covers nv t₀) h
+  exact STm.Scoped_covers u (Covers.rfl' _) (atomize_names_covers g nv t₀) h
 
 /-- `atomize` keeps a capture set in scope. -/
-theorem SCap.Scoped_atomize {s : Sig} (nv : NameEnv s) (t₀ : ATm s) (C : SCap)
+theorem SCap.Scoped_atomize {s : Sig} (g : LetTag) (nv : NameEnv s) (t₀ : PTm s) (C : SCap)
     (h : SCap.Scoped nv.capNames nv.names C = true) :
-    SCap.Scoped (atomize nv t₀).names.capNames (atomize nv t₀).names.names C = true := by
+    SCap.Scoped (atomize g nv t₀).names.capNames (atomize g nv t₀).names.names C = true := by
   rw [atomize_capNames]
-  exact SCap.Scoped_covers C (Covers.rfl' _) (atomize_names_covers nv t₀) h
+  exact SCap.Scoped_covers C (Covers.rfl' _) (atomize_names_covers g nv t₀) h
 
 /-- A lambda body keeps its scoping under the three binders the resolver
 opens. -/
@@ -1016,7 +1098,8 @@ theorem Scoped_objDefs {s : Sig} (nv : NameEnv s) (x : String) (d : SDefs)
   SDefs.Scoped_covers d (Covers.tail _ "%") (Covers.rfl' _) h
 
 mutual
-/-- Totality of term resolution. -/
+/-- Totality of term resolution.  An empty slot resolves to itself, so the
+conditions read only the written annotations. -/
 theorem resolveTm_isSome : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm),
     STm.Scoped nv.capNames nv.names e = true → STm.LabelsIn Λ e = true →
     STm.FreshPlaced e = true → (resolveTm Λ nv e).isSome = true
@@ -1024,28 +1107,38 @@ theorem resolveTm_isSome : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e :
       simp only [STm.Scoped] at hs
       obtain ⟨i, hi⟩ := Option.isSome_iff_exists.mp (NameEnv.findVar?_isSome nv x hs)
       simp [resolveTm, hi]
-  | _, Λ, nv, .lam κ x T t, hs, hl, hf => by
+  | _, Λ, nv, .lam κ x none t, hs, hl, hf => by
+      simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.true_and] at hs hl hf
+      obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp
+        (resolveTm_isSome Λ _ t (Scoped_lamBody nv κ x t hs) hl hf)
+      simp [resolveTm, resolveDomOpt, ht]
+  | _, Λ, nv, .lam κ x (some T) t, hs, hl, hf => by
       simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.and_eq_true] at hs hl hf
       obtain ⟨T', hT⟩ := Option.isSome_iff_exists.mp
         (resolveTy_isSome T Λ (nv.consC (binderName κ)) (Scoped_arrowDom nv κ T hs.1) hl.1)
       obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp
         (resolveTm_isSome Λ _ t (Scoped_lamBody nv κ x t hs.2) hl.2 hf.2)
       have hn := (resolveTy_avoids T Λ _ T' hT).2 hf.1
-      simp [resolveTm, hT, ht, hn]
-  | _, Λ, nv, .obj x S d, hs, hl, hf => by
+      simp [resolveTm, resolveDomOpt, hT, ht, hn]
+  | _, Λ, nv, .obj x none d, hs, hl, hf => by
+      simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.true_and] at hs hl hf
+      obtain ⟨d', hd⟩ := Option.isSome_iff_exists.mp
+        (resolveDefs_isSome Λ _ d (Scoped_objDefs nv x d hs) hl hf)
+      simp [resolveTm, resolveSelfOpt, hd]
+  | _, Λ, nv, .obj x (some S) d, hs, hl, hf => by
       simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.and_eq_true] at hs hl hf
       obtain ⟨S', hS⟩ := Option.isSome_iff_exists.mp
         (resolveShape_isSome S Λ (nv.cons x) hs.1 hl.1)
       obtain ⟨d', hd⟩ := Option.isSome_iff_exists.mp
         (resolveDefs_isSome Λ _ d (Scoped_objDefs nv x d hs.2) hl.2 hf)
-      simp [resolveTm, hS, hd]
+      simp [resolveTm, resolveSelfOpt, hS, hd]
   | _, Λ, nv, .app t u, hs, hl, hf => by
       simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.and_eq_true] at hs hl hf
       obtain ⟨t₀, ht⟩ := Option.isSome_iff_exists.mp
         (resolveTm_isSome Λ nv t hs.1 hl.1 hf.1)
       obtain ⟨u₀, hu⟩ := Option.isSome_iff_exists.mp
-        (resolveTm_isSome Λ (atomize nv t₀).names u
-          (STm.Scoped_atomize nv t₀ u hs.2) hl.2 hf.2)
+        (resolveTm_isSome Λ (atomize .recv nv t₀).names u
+          (STm.Scoped_atomize .recv nv t₀ u hs.2) hl.2 hf.2)
       simp [resolveTm, ht, hu]
   | _, Λ, nv, .proj t a, hs, hl, hf => by
       simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.and_eq_true] at hs hl hf
@@ -1080,7 +1173,8 @@ theorem resolveTm_isSome : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e :
       obtain ⟨t₀, ht⟩ := Option.isSome_iff_exists.mp
         (resolveTm_isSome Λ nv t hs.2 hl.2 hf)
       obtain ⟨C', hC⟩ := Option.isSome_iff_exists.mp
-        (resolveCap_isSome C Λ (atomize nv t₀).names (SCap.Scoped_atomize nv t₀ C hs.1) hl.1)
+        (resolveCap_isSome C Λ (atomize .recv nv t₀).names
+          (SCap.Scoped_atomize .recv nv t₀ C hs.1) hl.1)
       simp [resolveTm, ht, hC]
   | _, Λ, nv, .asc t T, hs, hl, hf => by
       simp only [STm.Scoped, STm.LabelsIn, STm.FreshPlaced, Bool.and_eq_true] at hs hl hf
@@ -1103,11 +1197,18 @@ theorem resolveDefs_isSome : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d
       obtain ⟨l, hC⟩ := Option.isSome_iff_exists.mp hl.1
       obtain ⟨c', hc'⟩ := Option.isSome_iff_exists.mp (resolveCap_isSome c Λ nv hs hl.2)
       simp [resolveDefs, hC, hc']
-  | _, Λ, nv, .trm a t, hs, hl, hf => by
-      simp only [SDefs.Scoped, SDefs.LabelsIn, SDefs.FreshPlaced, Bool.and_eq_true] at hs hl hf
+  | _, Λ, nv, .trm a none t, hs, hl, hf => by
+      simp only [SDefs.Scoped, SDefs.LabelsIn, SDefs.FreshPlaced, Bool.and_eq_true,
+        Bool.true_and, Bool.and_true] at hs hl hf
       obtain ⟨l, hla⟩ := Option.isSome_iff_exists.mp hl.1
       obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (resolveTm_isSome Λ nv t hs hl.2 hf)
-      simp [resolveDefs, hla, ht]
+      simp [resolveDefs, resolveFieldOpt, hla, ht]
+  | _, Λ, nv, .trm a (some T) t, hs, hl, hf => by
+      simp only [SDefs.Scoped, SDefs.LabelsIn, SDefs.FreshPlaced, Bool.and_eq_true] at hs hl hf
+      obtain ⟨l, hla⟩ := Option.isSome_iff_exists.mp hl.1.1
+      obtain ⟨T', hT⟩ := Option.isSome_iff_exists.mp (resolveTy_isSome T Λ nv hs.1 hl.1.2)
+      obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (resolveTm_isSome Λ nv t hs.2 hl.2 hf)
+      simp [resolveDefs, resolveFieldOpt, hla, hT, ht]
   | _, Λ, nv, .and d e, hs, hl, hf => by
       simp only [SDefs.Scoped, SDefs.LabelsIn, SDefs.FreshPlaced, Bool.and_eq_true] at hs hl hf
       obtain ⟨d', hd⟩ := Option.isSome_iff_exists.mp
@@ -1119,35 +1220,36 @@ end
 
 /-! ## No `any` of the resolver's own
 
-The inserted binders and the bindings of the spine carry no annotation, so a
-program that writes no `any` resolves to a term with none. -/
+The inserted binders and the bindings of the spine carry no annotation, and an
+empty slot holds nothing, so a program that writes no `any` resolves to a
+partial term with none. -/
 
 /-- No `any` in the bindings of a spine. -/
 def Spine.NoAnyAnn {s s' : Sig} (sp : Spine s s') : Bool :=
   match sp with
   | .nil => true
-  | .cons t sp => t.NoAnyAnn && sp.NoAnyAnn
+  | .cons _ t sp => t.NoAnyAnn && sp.NoAnyAnn
 termination_by structural sp
 
 /-- Plugging keeps annotations free of `any`. -/
-theorem Spine.plug_noAny : ∀ {s s' : Sig} (sp : Spine s s') (u : ATm s'),
+theorem Spine.plug_noAny : ∀ {s s' : Sig} (sp : Spine s s') (u : PTm s'),
     sp.NoAnyAnn = true → u.NoAnyAnn = true → (sp.plug u).NoAnyAnn = true
   | _, _, .nil, _, _, hu => hu
-  | _, _, .cons t sp, u, hsp, hu => by
+  | _, _, .cons _ t sp, u, hsp, hu => by
       simp only [Spine.NoAnyAnn, Bool.and_eq_true] at hsp
-      simp [Spine.plug, ATm.NoAnyAnn, hsp.1, Spine.plug_noAny sp u hsp.2 hu]
+      simp [Spine.plug, PTm.NoAnyAnn, hsp.1, Spine.plug_noAny sp u hsp.2 hu]
 
 /-- Appending keeps the bindings free of `any`. -/
 theorem Spine.append_noAny : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s''),
     sp.NoAnyAnn = true → sp'.NoAnyAnn = true → (sp.append sp').NoAnyAnn = true
   | _, _, _, .nil, _, _, h' => h'
-  | _, _, _, .cons t sp, sp', h, h' => by
+  | _, _, _, .cons _ t sp, sp', h, h' => by
       simp only [Spine.NoAnyAnn, Bool.and_eq_true] at h
       simp [Spine.append, Spine.NoAnyAnn, h.1, Spine.append_noAny sp sp' h.2 h']
 
 /-- The binding `atomize` inserts is the term it was given. -/
-theorem atomize_noAny {s : Sig} (nv : NameEnv s) (t : ATm s) (h : t.NoAnyAnn = true) :
-    (atomize nv t).spine.NoAnyAnn = true := by
+theorem atomize_noAny {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s)
+    (h : t.NoAnyAnn = true) : (atomize g nv t).spine.NoAnyAnn = true := by
   cases t with
   | path p => cases p with | var _ => rfl
   | _ => simpa [atomize, Spine.NoAnyAnn] using h
@@ -1159,31 +1261,46 @@ theorem unboxSet_noAny {s : Sig} (C : SCap) {C' : CaptureSet s} (h : CaptureSet.
   cases C <;> simp [unboxSet, h]
 
 mutual
-/-- A resolved term holds `any` in an annotation, a set or a type definition
-only where the written term does. -/
-theorem resolveTm_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) (a : ATm s),
+/-- A resolved term holds `any` in a written annotation, a set or a type
+definition only where the written term does. -/
+theorem resolveTm_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) (a : PTm s),
     STm.Avoids .any e = true → resolveTm Λ nv e = some a → a.NoAnyAnn = true
   | _, Λ, nv, .var x, a, _, h => by
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨i, _, rfl⟩ := h
       rfl
-  | _, Λ, nv, .lam κ x T t, a, ha, h => by
+  | _, Λ, nv, .lam κ x none t, a, ha, h => by
+      simp only [STm.Avoids, Bool.true_and] at ha
+      simp only [resolveTm, resolveDomOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq] at h
+      obtain ⟨T', hT, t', ht, rfl⟩ := h
+      subst hT
+      simp [PTm.NoAnyAnn, resolveTm_noAny Λ _ t t' ha ht]
+  | _, Λ, nv, .lam κ x (some T) t, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
-      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
-      obtain ⟨T', hT, t', ht, h⟩ := h
-      by_cases hn : T'.noFresh = true
-      · simp only [hn, if_true, Option.pure_def, Option.some.injEq] at h
-        subst h
-        simp [ATm.NoAnyAnn, (resolveTy_avoids T Λ _ T' hT).1 ha.1,
+      simp only [resolveTm, resolveDomOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq] at h
+      obtain ⟨T', ⟨T'', hT'', hT⟩, t', ht, rfl⟩ := h
+      by_cases hn : T''.noFresh = true
+      · simp only [hn, if_true, Option.some.injEq] at hT
+        subst hT
+        simp [PTm.NoAnyAnn, (resolveTy_avoids T Λ _ T'' hT'').1 ha.1,
           resolveTm_noAny Λ _ t t' ha.2 ht]
-      · simp [hn] at h
-  | _, Λ, nv, .obj x S d, a, ha, h => by
-      simp only [STm.Avoids, Bool.and_eq_true] at ha
-      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
-        Option.some.injEq] at h
+      · simp [hn] at hT
+  | _, Λ, nv, .obj x none d, a, ha, h => by
+      simp only [STm.Avoids, Bool.true_and] at ha
+      simp only [resolveTm, resolveSelfOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq] at h
       obtain ⟨S', hS, d', hd, rfl⟩ := h
-      simp [ATm.NoAnyAnn, (resolveShape_avoids S Λ _ S' hS).1 ha.1,
+      subst hS
+      simp [PTm.NoAnyAnn, resolveDefs_noAny Λ _ d d' ha hd]
+  | _, Λ, nv, .obj x (some S) d, a, ha, h => by
+      simp only [STm.Avoids, Bool.and_eq_true] at ha
+      simp only [resolveTm, resolveSelfOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq, Option.map_eq_some_iff] at h
+      obtain ⟨S', ⟨S'', hS, rfl⟩, d', hd, rfl⟩ := h
+      simp [PTm.NoAnyAnn, (resolveShape_avoids S Λ _ S'' hS).1 ha.1,
         resolveDefs_noAny Λ _ d d' ha.2 hd]
   | _, Λ, nv, .app t u, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
@@ -1193,13 +1310,13 @@ theorem resolveTm_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : 
       have it := resolveTm_noAny Λ nv t t₀ ha.1 ht
       have iu := resolveTm_noAny Λ _ u u₀ ha.2 hu
       exact Spine.plug_noAny _ _
-        (Spine.append_noAny _ _ (atomize_noAny nv t₀ it) (atomize_noAny _ u₀ iu)) rfl
+        (Spine.append_noAny _ _ (atomize_noAny _ nv t₀ it) (atomize_noAny _ _ u₀ iu)) rfl
   | _, Λ, nv, .proj t a', a, ha, h => by
       simp only [STm.Avoids] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨t₀, ht, l, _, rfl⟩ := h
-      exact Spine.plug_noAny _ _ (atomize_noAny nv t₀ (resolveTm_noAny Λ nv t t₀ ha ht)) rfl
+      exact Spine.plug_noAny _ _ (atomize_noAny _ nv t₀ (resolveTm_noAny Λ nv t t₀ ha ht)) rfl
   | _, Λ, nv, .«let» x ann t u, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
@@ -1211,40 +1328,40 @@ theorem resolveTm_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : 
       | none =>
           simp only [Option.some.injEq] at hann
           subst hann
-          simp [ATm.NoAnyAnn, it, iu]
+          simp [PTm.NoAnyAnn, it, iu]
       | some U =>
           simp only [Option.map_eq_some_iff] at hann
           obtain ⟨U', hU, rfl⟩ := hann
-          simp [ATm.NoAnyAnn, it, iu, (resolveAns_avoids U Λ nv U' hU).1 ha.1.1]
+          simp [PTm.NoAnyAnn, it, iu, (resolveAns_avoids U Λ nv U' hU).1 ha.1.1]
   | _, Λ, nv, .letex κ x t u, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨t', ht, u', hu, rfl⟩ := h
-      simp [ATm.NoAnyAnn, resolveTm_noAny Λ nv t t' ha.1 ht, resolveTm_noAny Λ _ u u' ha.2 hu]
+      simp [PTm.NoAnyAnn, resolveTm_noAny Λ nv t t' ha.1 ht, resolveTm_noAny Λ _ u u' ha.2 hu]
   | _, Λ, nv, .box t, a, ha, h => by
       simp only [STm.Avoids] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨t₀, ht, rfl⟩ := h
-      exact Spine.plug_noAny _ _ (atomize_noAny nv t₀ (resolveTm_noAny Λ nv t t₀ ha ht)) rfl
+      exact Spine.plug_noAny _ _ (atomize_noAny _ nv t₀ (resolveTm_noAny Λ nv t t₀ ha ht)) rfl
   | _, Λ, nv, .unbox C t, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨t₀, ht, C', hC, rfl⟩ := h
       exact Spine.plug_noAny _ _
-        (atomize_noAny nv t₀ (resolveTm_noAny Λ nv t t₀ ha.2 ht))
+        (atomize_noAny _ nv t₀ (resolveTm_noAny Λ nv t t₀ ha.2 ht))
         (unboxSet_noAny C ((resolveCap_avoids C Λ _ C' hC).1 ha.1))
   | _, Λ, nv, .asc t T, a, ha, h => by
       simp only [STm.Avoids, Bool.and_eq_true] at ha
       simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨t', ht, T', hT, rfl⟩ := h
-      simp [ATm.NoAnyAnn, resolveTm_noAny Λ nv t t' ha.1 ht, (resolveTy_avoids T Λ nv T' hT).1 ha.2]
+      simp [PTm.NoAnyAnn, resolveTm_noAny Λ nv t t' ha.1 ht, (resolveTy_avoids T Λ nv T' hT).1 ha.2]
 /-- Resolved definitions hold `any` only where the written ones do. -/
 theorem resolveDefs_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs)
-    (a : ADefs s), SDefs.Avoids .any d = true → resolveDefs Λ nv d = some a →
+    (a : PDefs s), SDefs.Avoids .any d = true → resolveDefs Λ nv d = some a →
     a.NoAnyAnn = true
   | _, Λ, nv, .typ A S, a, ha, h => by
       simp only [SDefs.Avoids] at ha
@@ -1258,36 +1375,59 @@ theorem resolveDefs_noAny : ∀ {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d 
         Option.some.injEq] at h
       obtain ⟨l, _, c', hc, rfl⟩ := h
       exact (resolveCap_avoids c Λ nv c' hc).1 ha
-  | _, Λ, nv, .trm a' t, a, ha, h => by
-      simp only [SDefs.Avoids] at ha
-      simp only [resolveDefs, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
-        Option.some.injEq] at h
-      obtain ⟨l, _, t', ht, rfl⟩ := h
-      exact resolveTm_noAny Λ nv t t' ha ht
+  | _, Λ, nv, .trm a' none t, a, ha, h => by
+      simp only [SDefs.Avoids, Bool.true_and] at ha
+      simp only [resolveDefs, resolveFieldOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq] at h
+      obtain ⟨l, _, T', hT, t', ht, rfl⟩ := h
+      subst hT
+      simp [PDefs.NoAnyAnn, resolveTm_noAny Λ nv t t' ha ht]
+  | _, Λ, nv, .trm a' (some T) t, a, ha, h => by
+      simp only [SDefs.Avoids, Bool.and_eq_true] at ha
+      simp only [resolveDefs, resolveFieldOpt, Option.bind_eq_bind, Option.bind_eq_some_iff,
+        Option.pure_def, Option.some.injEq, Option.map_eq_some_iff] at h
+      obtain ⟨l, _, T', ⟨T'', hT, rfl⟩, t', ht, rfl⟩ := h
+      simp [PDefs.NoAnyAnn, (resolveTy_avoids T Λ nv T'' hT).1 ha.1,
+        resolveTm_noAny Λ nv t t' ha.2 ht]
   | _, Λ, nv, .and d e, a, ha, h => by
       simp only [SDefs.Avoids, Bool.and_eq_true] at ha
       simp only [resolveDefs, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
       obtain ⟨d', hd, e', he, rfl⟩ := h
-      simp [ADefs.NoAnyAnn, resolveDefs_noAny Λ nv d d' ha.1 hd,
+      simp [PDefs.NoAnyAnn, resolveDefs_noAny Λ nv d d' ha.1 hd,
         resolveDefs_noAny Λ nv e e' ha.2 he]
 end
 
-/-- A program that writes no `any` resolves to a term with none in an
-annotation, a set or a type definition. -/
-theorem resolve_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {e : STm} {a : ATm s}
-    (he : STm.Avoids .any e = true) (h : resolveTm Λ nv e = some a) :
+/-- A program that writes no `any` resolves to a partial term with none in a
+written annotation, a set or a type definition. -/
+theorem resolve_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {e : STm} {p : PTm s}
+    (he : STm.Avoids .any e = true) (h : resolveTm Λ nv e = some p) :
+    PTm.NoAnyAnn p = true :=
+  resolveTm_noAny Λ nv e p he h
+
+/-- A term with every slot written holds no `any` in an annotation either. -/
+theorem resolveIn_noAny {s : Sig} {Λ : LabelTable} {nv : NameEnv s} {e : STm} {a : ATm s}
+    (he : STm.Avoids .any e = true) (h : resolveIn Λ nv e = some a) :
+    ATm.NoAnyAnn a = true := by
+  simp only [resolveIn, Option.bind_eq_some_iff] at h
+  obtain ⟨p, hp, ha⟩ := h
+  exact PTm.NoAnyAnn_of_full? ha (resolve_noAny he hp)
+
+/-- A closed program with every slot written that writes no `any` holds none
+in an annotation. -/
+theorem resolveTop_noAny {Λ : LabelTable} {π : PlatformNames} {e : STm} {a : ATm π.sig}
+    (he : STm.Avoids .any e = true) (h : resolveTop Λ π e = some a) :
     ATm.NoAnyAnn a = true :=
-  resolveTm_noAny Λ nv e a he h
+  resolveIn_noAny he h
 
 /-! ## Spine equations -/
 
 /-- Plugging into an appended spine is plugging twice. -/
 theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s'')
-    (u : ATm s''), (sp.append sp').plug u = sp.plug (sp'.plug u)
+    (u : PTm s''), (sp.append sp').plug u = sp.plug (sp'.plug u)
   | _, _, _, .nil, _, _ => rfl
-  | _, _, _, .cons t sp, sp', u => by
-      show ATm.let none t ((sp.append sp').plug u) = _
+  | _, _, _, .cons g t sp, sp', u => by
+      show PTm.let g none t ((sp.append sp').plug u) = _
       rw [Spine.plug_append sp sp' u]
       rfl
 
@@ -1295,14 +1435,14 @@ theorem Spine.plug_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine 
 theorem Spine.rename_append : ∀ {s s' s'' : Sig} (sp : Spine s s') (sp' : Spine s' s''),
     (sp.append sp').rename = Rename.comp sp.rename sp'.rename
   | _, _, _, .nil, sp' => Rename.funext' (fun _ => rfl)
-  | _, _, _, .cons _ sp, sp' => by
+  | _, _, _, .cons _ _ sp, sp' => by
       show Rename.comp Rename.succ ((sp.append sp').rename) = _
       rw [Spine.rename_append sp sp']
       exact Rename.funext' (fun _ => rfl)
 
 /-- A variable is already in variable position, so no binding is inserted. -/
-theorem atomize_var {s : Sig} (nv : NameEnv s) (i : BVar s .var) :
-    atomize nv (.path (.var i)) = ⟨s, .nil, nv, i⟩ := rfl
+theorem atomize_var {s : Sig} (g : LetTag) (nv : NameEnv s) (i : BVar s .var) :
+    atomize g nv (.path (.var i)) = ⟨s, .nil, nv, i⟩ := rfl
 
 /-! ## The programs
 
@@ -1310,7 +1450,7 @@ The programs of `Notation.lean` are resolved with the labels of the version's
 examples and compared by `decide` with hand-written annotated terms, or with
 the version's own types and terms. -/
 
-open CapturesCC.DotMNF.Examples (k1 k2 platSet fileS unitTy unitTm arrowS lread lC
+open CapturesCC.DotMNF.Examples (k1 k2 platSet fileS unitTy unitTm arrowS lread lC la
   W2TyAny W2Ty Z1TyF Z1Ty S1TyAny)
 
 /-- The labels of the version's examples (`DotMNF/Examples.lean`). -/
@@ -1478,7 +1618,7 @@ def EscAnn : ATm πc.sig :=
 example : resolveTop Λc πc EscSrc = some EscAnn := by decide
 
 /-- The totality theorem applies to the escape. -/
-example : (resolveTop Λc πc EscSrc).isSome = true :=
+example : (resolvePTop Λc πc EscSrc).isSome = true :=
   resolveTm_isSome Λc πc.names EscSrc (by decide) (by decide) (by decide)
 
 /-! ### Z1, the caller of `freshCell`, and two calls in a row
@@ -1557,9 +1697,323 @@ example :
 
 /-! ### No `any` of the resolver's own -/
 
-/-- A program that writes no `any` resolves to a term with none. -/
+/-- A program that writes no `any` resolves to a partial term with none. -/
+example : ∀ p, resolvePTop Λc πc (cc% λ(f : ⊤). λ(g : ⊤). f (g f)) = some p →
+    p.NoAnyAnn = true :=
+  fun _ h => resolve_noAny (by decide) h
+
+/-- So does the program with every slot written. -/
 example : ∀ a, resolveTop Λc πc (cc% λ(f : ⊤). λ(g : ⊤). f (g f)) = some a →
     a.NoAnyAnn = true :=
+  fun _ h => resolveTop_noAny (by decide) h
+
+/-! ## Partial programs
+
+A program with an empty slot resolves by `resolvePTop` to a partial term with
+that slot empty, and `resolveTop` returns `none` on it.  The checks below show
+the empty slots, the written field types and the tags.  Then each example
+program loses some of its annotations: the erased source resolves to the
+resolved written program with the same annotations erased by `PTm.eraseDoms`,
+`PTm.eraseSelf`, `PTm.eraseArgs`, `PTm.eraseChecked` or `PTm.eraseG`. -/
+
+example : resolvePTop Λc πc (cc% λx. x) = some (.lam none (.path (.var .here))) := by decide
+
+example : resolveTop Λc πc (cc% λx. x) = none := by decide
+
+/-- A lambda passed as an argument is bound by an `arg` binding. -/
+example : resolvePTop Λc πc (cc% λ(f : ⊤). f (λx. x)) =
+    some (.lam (some unitTy)
+      (.let .arg none (.lam none (.path (.var .here))) (.app (.there .here) .here))) := by decide
+
+/-- An operator, a receiver and the operand of a box are bound by `recv`
+bindings. -/
+example : resolvePTop Λc πc (cc% λ(f : ⊤). λ(x : ⊤). (f x) x) =
+    some (.lam (some unitTy) (.lam (some unitTy)
+      (.let .recv none (.app (.there (.there (.there .here))) .here)
+        (.app .here (.there .here))))) := by decide
+
+example : resolvePTop Λc πc (cc% λ(f : ⊤). λ(x : ⊤). (f x).a) =
+    some (.lam (some unitTy) (.lam (some unitTy)
+      (.let .recv none (.app (.there (.there (.there .here))) .here) (.proj .here la)))) := by
+  decide
+
+example : resolvePTop Λc πc (cc% λ(f : ⊤). λ(x : ⊤). □ (f x)) =
+    some (.lam (some unitTy) (.lam (some unitTy)
+      (.let .recv none (.app (.there (.there (.there .here))) .here) (.box .here)))) := by decide
+
+/-- A `let` of the source is a `written` binding. -/
+example : resolvePTop Λc πc (cc% λ(f : ⊤). let i = λx. x in f i) =
+    some (.lam (some unitTy)
+      (.let .written none (.lam none (.path (.var .here))) (.app (.there .here) .here))) := by
+  decide
+
+/-- The ascription keeps its constructor, here over a lambda with an empty
+domain. -/
+example : resolvePTop Λc πc (cc% λ(y : ⊤). (λx. x : ∀(z : ⊤) ⊤)) =
+    some (.lam (some unitTy)
+      (.asc (.lam none (.path (.var .here))) (.capt [] (.all unitTy (.ty unitTy))))) := by decide
+
+/-- `λ[c]x. t` resolves: the resolver opens the arrow's binder over the body
+whether the domain is written or not. -/
+example : resolvePTop Λc πc (cc% λ[c]x. let y : ⊤ ^ {c} = x in y) =
+    some (.lam none
+      (.let .written (some (.ty (.capt [CapAtom.cvar (.there .here)] .top)))
+        (.path (.var .here)) (.path (.var .here)))) := by decide
+
+/-- An empty domain holds no `fresh`, so `FreshPlaced` reads only written
+domains. -/
+example : (resolvePTop Λc πc (cc% λx. let y : ⊤ ^ {fresh} = x in y)).isSome = true := by decide
+
+/-- A literal without a self shape, with a written field type. -/
+example : resolvePTop Λc πc (cc% ν(x. {a : ⊤ = x})) =
+    some (.obj none (.trm la (some unitTy) (.path (.var .here)))) := by decide
+
+/-- A written field type keeps its `any`, as every written type does. -/
+example : resolvePTop Λc πc (cc% ν(x. {a : ⊤ ^ {any} = x})) =
+    some (.obj none (.trm la (some (.capt [CapAtom.any] .top)) (.path (.var .here)))) := by
+  decide
+
+/-- A written field type makes the program partial. -/
+example : resolveTop Λc πc (cc% ν(x. {a : ⊤ = x})) = none := by decide
+
+/-- A field type is read under the class root and the self.  An outer `f` is
+two binders further out than in the self shape. -/
+example : resolvePTop Λc πc (cc% λ(f : ⊤). ν(z : {a : ⊤ ^ {f}}. {a : ⊤ ^ {f} = f})) =
+    some (.lam (some unitTy)
+      (.obj (some (.fld la (.capt [CapAtom.var (.there .here)] .top)))
+        (.trm la (some (.capt [CapAtom.var (.there (.there .here))] .top))
+          (.path (.var (.there (.there .here))))))) := by decide
+
+/-- A field type under a written self shape resolves.  It agrees with the self
+shape's field read under the class root, so the program agrees with the one
+that leaves the field type out (`PTm.fills`). -/
+example :
+    (resolvePTop Λc πc (cc% λ(f : ⊤). ν(z : {a : ⊤ ^ {f}}. {a : ⊤ ^ {f} = f}))).bind
+        (fun p => (resolveTop Λc πc (cc% λ(f : ⊤). ν(z : {a : ⊤ ^ {f}}. {a = f}))).map p.fills) =
+      some true := by decide
+
+/-- A field type that differs from the self shape's field does not agree. -/
+example :
+    (resolvePTop Λc πc (cc% λ(f : ⊤). ν(z : {a : ⊤ ^ {f}}. {a : ⊤ = f}))).bind
+        (fun p => (resolveTop Λc πc (cc% λ(f : ⊤). ν(z : {a : ⊤ ^ {f}}. {a = f}))).map p.fills) =
+      some false := by decide
+
+/-! ### Erased sources
+
+The written programs of `Examples.lean` come after this module, so the ones
+below restate them, each under its name with `W`. -/
+
+/-- E2 of `Examples.lean`. -/
+def E2srcW : STm :=
+  cc% let x = ν(s : {A : ∀(y : s.A) s.A .. ∀(y : s.A) s.A} ∧ {a : ∀(y : s.A) s.A}.
+                  {type A = ∀(y : s.A) s.A} ∧ {a = λ(y : s.A). y})
+       in let f = x.a in f f
+
+/-- E2 with the lambda domain erased. -/
+def E2srcD : STm :=
+  cc% let x = ν(s : {A : ∀(y : s.A) s.A .. ∀(y : s.A) s.A} ∧ {a : ∀(y : s.A) s.A}.
+                  {type A = ∀(y : s.A) s.A} ∧ {a = λy. y})
+       in let f = x.a in f f
+
+/-- E2 with the self shape erased. -/
+def E2srcS : STm :=
+  cc% let x = ν(s. {type A = ∀(y : s.A) s.A} ∧ {a = λ(y : s.A). y}) in let f = x.a in f f
+
+/-- E5 of `Examples.lean`. -/
+def E5srcW : STm :=
+  cc% λ(w : {A : ⊤..⊤}).
+         let f = λ(v : {A : ⊤..⊤}). ν(z : {a : v.A}. {a = v})
+         in let o = f w in o.a
+
+/-- E5 with the self shape erased. -/
+def E5srcS : STm :=
+  cc% λ(w : {A : ⊤..⊤}). let f = λ(v : {A : ⊤..⊤}). ν(z. {a = v}) in let o = f w in o.a
+
+/-- E7 of `Examples.lean`. -/
+def E7srcW : STm :=
+  cc% ν(x : {A : x.B .. x.B} ∧ {B : x.A .. x.A}. {type A = x.B} ∧ {type B = x.A})
+
+/-- E7 with the self shape erased. -/
+def E7srcS : STm := cc% ν(x. {type A = x.B} ∧ {type B = x.A})
+
+/-- E8 of `Examples.lean`. -/
+def E8srcW : STm := cc% λ(x : {A : ⊥ .. {a : ⊤}}). λ(y : x.A ∧ {a : ⊤}). y.a
+
+/-- E8 with every lambda domain erased. -/
+def E8srcD : STm := cc% λx. λy. y.a
+
+/-- S3 of `Examples.lean`. -/
+def S3srcW : STm :=
+  cc% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        let o = ν(z : {A : □((∀(u : ⊤) ⊤) ^ {f}) .. □((∀(u : ⊤) ⊤) ^ {f})} ∧ {elem : z.A}.
+                   {type A = □((∀(u : ⊤) ⊤) ^ {f})} ∧ {elem = □ f})
+        in let e = o.elem in {f} ⊸ e
+
+/-- S3 with the self shape erased. -/
+def S3srcS : STm :=
+  cc% λ(f : (∀(u : ⊤) ⊤) ^ {k1}).
+        let o = ν(z. {type A = □((∀(u : ⊤) ⊤) ^ {f})} ∧ {elem = □ f})
+        in let e = o.elem in {f} ⊸ e
+
+/-- C2 of `Examples.lean`. -/
+def C2srcW : STm :=
+  cc% let c = λ(x : μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in gb
+
+/-- C2 with both self shapes erased. -/
+def C2srcS : STm :=
+  cc% let c = λ(x : μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z. {C^ = {k1}} ∧ {run = λ(u : ⊤). u}) in
+      let b = ν(z. {C^ = {k2}} ∧ {run = λ(u : ⊤). u}) in
+      let ga = c a in let gb = c b in gb
+
+/-- C2 with the domain of every lambda in a checked position erased: the
+fields of the two literals, whose self shapes are written. -/
+def C2srcG : STm :=
+  cc% let c = λ(x : μ(z. {C^ : {}..{k1, k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}) ^ {k1, k2}).
+                λ(u : ⊤). x.run u in
+      let a = ν(z : {C^ : {k1}..{k1}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k1}} ∧ {run = λu. u}) in
+      let b = ν(z : {C^ : {k2}..{k2}} ∧ {run : (∀(u : ⊤) ⊤) ^ {z.C}}.
+                 {C^ = {k2}} ∧ {run = λu. u}) in
+      let ga = c a in let gb = c b in gb
+
+/-- S1 of `Examples.lean`. -/
+def S1srcW : STm :=
+  cc% let withFile =
+        (λ(cp : μ(c. {C^ : {}..{fs}}) ^ {}).
+           λ(op : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}) ⊤) ^ {cp.C}).
+             let fl = ν(f : {read : (∀(u : ⊤) ⊤) ^ {f}}. {read = λ(u : ⊤). u}) in op fl
+         : (∀(cp : μ(c. {C^ : {}..{fs}}))
+              (∀(op : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}) ⊤) ^ {cp.C}) ⊤ ^ {any})
+                ^ {fs, cp}) ^ {fs}) in
+      let cp = ν(c : {C^ : {fs}..{fs}}. {C^ = {fs}}) in
+      let op = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}). λ(u : ⊤). u in
+      let g = withFile cp in
+      let r = g op in
+      r
+
+/-- S1 as a Scala programmer writes it: no self shape, and no domain where the
+ascription gives one. -/
+def S1srcG : STm :=
+  cc% let withFile =
+        (λcp. λop. let fl = ν(f. {read = λ(u : ⊤). u}) in op fl
+         : (∀(cp : μ(c. {C^ : {}..{fs}}))
+              (∀(op : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}) ⊤) ^ {cp.C}) ⊤ ^ {any})
+                ^ {fs, cp}) ^ {fs}) in
+      let cp = ν(c. {C^ = {fs}}) in
+      let op = λ(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {fs}). λ(u : ⊤). u in
+      let g = withFile cp in
+      let r = g op in
+      r
+
+/-- S2 of `Examples.lean`. -/
+def S2srcW : STm :=
+  cc% let mk =
+        (λ(u : ⊤). let it = ν(i : {C^ : {fs}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}.
+                            {C^ = {fs}} ∧ {next = λ(v : ⊤). v}) in it
+         : (∀(u : ⊤) μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {any}) ^ {fs}) in
+      let un = (λ(y : ⊤). y : ⊤) in
+      let it = mk un in let n = it.next in let r = n un in r
+
+/-- S2 as a Scala programmer writes it. -/
+def S2srcG : STm :=
+  cc% let mk =
+        (λu. let it = ν(i. {C^ = {fs}} ∧ {next = λ(v : ⊤). v}) in it
+         : (∀(u : ⊤) μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {any}) ^ {fs}) in
+      let un = (λy. y : ⊤) in
+      let it = mk un in let n = it.next in let r = n un in r
+
+/-- `freshCell` of `Examples.lean`, bound by an ascription. -/
+def Z1srcW : STm :=
+  cc% (λ(u : ⊤). let r = ν(f : {read : (∀(v : ⊤) ⊤) ^ {f}}. {read = λ(v : ⊤). v}) in r
+        : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs})
+
+/-- `freshCell` with every lambda domain erased. -/
+def Z1srcD : STm :=
+  cc% (λu. let r = ν(f : {read : (∀(v : ⊤) ⊤) ^ {f}}. {read = λv. v}) in r
+        : (∀(u : ⊤) μ(f. {read : (∀(v : ⊤) ⊤) ^ {f}}) ^ {fresh}) ^ {fs})
+
+/-- Z3 of `Examples.lean`. -/
+def Z3srcW : STm :=
+  cc% (λ(u : ⊤). let it = ν(i : {C^ : {fs}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}.
+                            {C^ = {fs}} ∧ {next = λ(v : ⊤). v}) in
+                 (it : μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {fs})
+         : (∀(u : ⊤) μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {fresh})
+             ^ {fs})
+
+/-- Z3 with the self shape erased. -/
+def Z3srcS : STm :=
+  cc% (λ(u : ⊤). let it = ν(i. {C^ = {fs}} ∧ {next = λ(v : ⊤). v}) in
+                 (it : μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {fs})
+         : (∀(u : ⊤) μ(i. {C^ : {}..{fs}} ∧ {next : (∀(v : ⊤) ⊤ ^ {i.C}) ^ {i.C}}) ^ {fresh})
+             ^ {fs})
+
+/-- The escape of `Notation.lean` as a Scala programmer writes it: the
+callback's domains come from the written answer of its `let`. -/
+def EscSrcG : STm :=
+  cc% λ(g : ⊤).
+    let cb : (∀(f : μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any})
+                (∀(u : ⊤) μ(f. {read : (∀(u : ⊤) ⊤) ^ {f}}) ^ {any}) ^ {any}) ^ {}
+      = λf. λu. f
+    in cb
+
+/-- A lambda passed to a callee whose parameter type is written. -/
+def K1src : STm := cc% λ(k : ∀(h : ∀(x : {a : ⊤}) ⊤) ⊤). k (λ(y : {a : ⊤}). y)
+
+/-- `K1src` with the domain of the argument erased. -/
+def K1srcA : STm := cc% λ(k : ∀(h : ∀(x : {a : ⊤}) ⊤) ⊤). k (λy. y)
+
+example : (resolvePTop Λc .empty E2srcW).map PTm.eraseDoms = resolvePTop Λc .empty E2srcD := by
+  decide
+example : (resolvePTop Λc .empty E2srcW).map PTm.eraseSelf = resolvePTop Λc .empty E2srcS := by
+  decide
+example : (resolvePTop Λc .empty E2srcW).map (PTm.eraseChecked false false) =
+    resolvePTop Λc .empty E2srcD := by decide
+example : (resolvePTop Λc .empty E2srcW).map PTm.eraseG = resolvePTop Λc .empty E2srcS := by
+  decide
+example : (resolvePTop Λc .empty E5srcW).map PTm.eraseSelf = resolvePTop Λc .empty E5srcS := by
+  decide
+example : (resolvePTop Λc .empty E7srcW).map PTm.eraseSelf = resolvePTop Λc .empty E7srcS := by
+  decide
+example : (resolvePTop Λc .empty E8srcW).map PTm.eraseDoms = resolvePTop Λc .empty E8srcD := by
+  decide
+example : (resolvePTop Λc πc S3srcW).map PTm.eraseSelf = resolvePTop Λc πc S3srcS := by decide
+example : (resolvePTop Λc πc C2srcW).map PTm.eraseSelf = resolvePTop Λc πc C2srcS := by decide
+example : (resolvePTop Λc πc C2srcW).map (PTm.eraseChecked false false) =
+    resolvePTop Λc πc C2srcG := by decide
+example : (resolvePTop Λc πc C2srcW).map PTm.eraseG = resolvePTop Λc πc C2srcS := by decide
+example : (resolvePTop Λc πz S1srcW).map PTm.eraseG = resolvePTop Λc πz S1srcG := by decide
+example : (resolvePTop Λc πz S2srcW).map PTm.eraseG = resolvePTop Λc πz S2srcG := by decide
+example : (resolvePTop Λc πz Z1srcW).map PTm.eraseDoms = resolvePTop Λc πz Z1srcD := by decide
+example : (resolvePTop Λc πz Z1srcW).map (PTm.eraseChecked false false) =
+    resolvePTop Λc πz Z1srcD := by decide
+example : (resolvePTop Λc πz Z3srcW).map PTm.eraseSelf = resolvePTop Λc πz Z3srcS := by decide
+example : (resolvePTop Λc πc EscSrc).map PTm.eraseG = resolvePTop Λc πc EscSrcG := by decide
+example : (resolvePTop Λc .empty K1src).map PTm.eraseArgs = resolvePTop Λc .empty K1srcA := by
+  decide
+
+/-- The written programs are full, so `resolveTop` gives their terms, and the
+erased ones are not. -/
+example : (resolveTop Λc .empty E2srcW).isSome = true := by decide
+example : resolveTop Λc .empty E2srcD = none := by decide
+example : resolveTop Λc .empty E2srcS = none := by decide
+example : resolveTop Λc πz S1srcG = none := by decide
+example : (resolveTop Λc πc EscSrc).map ATm.toI = resolvePTop Λc πc EscSrc := by decide
+
+/-- The totality theorem applies to an erased program. -/
+example : (resolvePTop Λc πz S2srcG).isSome = true :=
+  resolveTm_isSome Λc πz.names S2srcG (by decide) (by decide) (by decide)
+
+/-- By `resolve_noAny`, an erased program that writes no `any` resolves to a
+partial term with none. -/
+example : ∀ p, resolvePTop Λc πc C2srcS = some p → p.NoAnyAnn = true :=
   fun _ h => resolve_noAny (by decide) h
 
 end CapturesCCFrontend
