@@ -10,6 +10,7 @@ import Coercions.Captures.Frontend.Alg
 import Coercions.Captures.Frontend.Avoid
 import Coercions.Captures.Frontend.Adapt
 import Coercions.Captures.Frontend.Typer
+import Coercions.Captures.Frontend.Elab
 import Coercions.Captures.Frontend.Step
 import Coercions.Captures.Frontend.StepFC
 import Coercions.Captures.Frontend.Pipeline
@@ -25,6 +26,11 @@ returns the version's derivation, translated to FCdot, checked and run.  The
 typer follows the compiler's subtyping and subcapturing (`TypeComparer`),
 member lookup (`Types.findMember`) and avoidance (`TypeOps.avoid`), on one fuel
 tank.
+
+The elaborator (`Elab.lean`) fills the annotations a program leaves out and
+types the result with the typer.  It rejects a program with a `Reason`, the
+type that `Coercions.Frontend.Reason` shares among the front ends, at the
+labels of this version.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
