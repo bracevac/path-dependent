@@ -19,7 +19,11 @@ with a `let` per prefix, which `Resolve.lean` inserts.
 A partial term `PTm` is an `ATm` whose slots may be empty: a lambda's domain,
 a literal's self type, and a written field type.  The resolver returns one, and
 the elaborator fills its slots.  `ATm` is the elaborated term, the input of the
-typer and of `ATm.erase`, so the typer never sees an empty slot.
+typer and of `ATm.erase`, so the typer never sees an empty slot.  `PTm.deps`
+reads off a field of a literal the fields it needs typed first: the fields it
+projects off the self, and the first fields of the paths at the self in the
+types it writes, through the self's type members.  This decides the order in
+which fields without a written type are typed.
 
 `ATm.erase` drops the annotations and gives back a `Tm`.  Nothing here is part
 of the metatheory.  The size functions count nodes and are positive, so a
@@ -565,5 +569,132 @@ theorem sizePDefs_toI : ∀ {s : Sig} (d : ADefs s), sizePDefs d.toI = sizeADefs
   | _, .and d e => by
       simp only [ADefs.toI, sizePDefs, sizeADefs, sizePDefs_toI d, sizePDefs_toI e]
 end
+
+/-! ## Dependencies on the self
+
+A field of a literal without a self type is typed once the fields it reads off
+the self are.  `PTm.deps` reads them off a right-hand side.  `vs` are the
+variables that stand for the self: the self itself, and every variable a `let`
+without a type binds to one of them.
+
+- A projection `w.a` with `w` among them depends on `a`.
+- A path rooted at one of them, in a type the right-hand side writes, depends
+  on its first field: `x.c.A` and `x.c.type` depend on `c`.  A path names a
+  member through a stable field, so the field must be typed before the path
+  can be looked up.  The types are lambda domains, `let` types, the self types
+  and type members of nested literals, and written field types.
+- A selection `x.A` of a type member of the self depends on what the body of
+  that member depends on.  `ms` gives, for each type member of the literal,
+  the first fields its body reaches, through other type members too
+  (`PDefs.memberHeads`).  The singleton `x.type` of the self depends on
+  nothing.  The body of a type member of a nested literal is the one place
+  where a selection adds nothing: the member names the type and never reads
+  its body, so `{c = ν(w. {type A = x.B})}` does not wait for what `x.B`
+  stands for.  The compiler does not dealias an alias it only names.
+- Any other use of a variable that stands for the self, as a function, an
+  argument, a result or a term bound at a written type, sets the flag, since
+  it needs the whole self type. -/
+
+open Paths.DotMNF (Path)
+
+/-- The first entry at a label. -/
+def lookupL {β : Type} : List (Label × β) → Label → Option β
+  | [], _ => none
+  | (b, v) :: l, a => if a = b then some v else lookupL l a
+termination_by structural l => l
+
+/-- The first field of a path rooted at a variable of `vs`, if the path
+selects one. -/
+def Path.headIn {s : Sig} : Path s → List (BVar s .var) → Option Label
+  | .var _, _ => none
+  | .sel (.var y) a, vs => if vs.contains y then some a else none
+  | .sel p _, vs => Path.headIn p vs
+termination_by structural p => p
+
+/-- The first fields of the paths rooted at a variable of `vs` in a type.  A
+selection of a type member of the self gives the fields that `ms` lists for
+that member. -/
+def Ty.heads {s : Sig} (ms : List (Label × List Label)) : Ty s → List (BVar s .var) → List Label
+  | .top, _ => []
+  | .bot, _ => []
+  | .typ _ S T, vs => Ty.heads ms S vs ++ Ty.heads ms T vs
+  | .fld _ T, vs => Ty.heads ms T vs
+  | .vfld _ T, vs => Ty.heads ms T vs
+  | .sngl p, vs => (Path.headIn p vs).toList
+  | .sel (.var y) A, vs => if vs.contains y then (lookupL ms A).getD [] else []
+  | .sel p _, vs => (Path.headIn p vs).toList
+  | .mu T, vs => Ty.heads ms T (vs.map .there)
+  | .all S T, vs => Ty.heads ms S vs ++ Ty.heads ms T (vs.map .there)
+  | .and S T, vs => Ty.heads ms S vs ++ Ty.heads ms T vs
+termination_by structural T => T
+
+/-- The first fields of a written type, and none for an empty slot. -/
+def optHeads {s : Sig} (ms : List (Label × List Label)) : Option (Ty s) → List (BVar s .var) →
+    List Label
+  | some T, vs => Ty.heads ms T vs
+  | none, _ => []
+
+/-- The bound term of a `let` makes its variable stand for the self: no
+written type, and a variable that already does. -/
+def PTm.isAlias {s : Sig} (vs : List (BVar s .var)) : Option (Ty s) → PTm s → Bool
+  | none, .path y => vs.contains y
+  | _, _ => false
+
+mutual
+/-- The fields a term depends on, in term order, and whether it uses the self
+any other way. -/
+def PTm.deps : {s : Sig} → PTm s → List (Label × List Label) → List (BVar s .var) →
+    List Label × Bool
+  | _, .path y, _, vs => ([], vs.contains y)
+  | _, .lam o t, ms, vs =>
+      match t.deps ms (vs.map .there) with
+      | (l, b) => (optHeads ms o vs ++ l, b)
+  | _, .obj o d, ms, vs =>
+      match d.deps ms (vs.map .there) with
+      | (l, b) => (optHeads ms o (vs.map .there) ++ l, b)
+  | _, .app x y, _, vs => ([], vs.contains x || vs.contains y)
+  | _, .proj x a, _, vs => (if vs.contains x then [a] else [], false)
+  | _, .let _ ann t u, ms, vs =>
+      if PTm.isAlias vs ann t then u.deps ms (.here :: vs.map .there)
+      else
+        match t.deps ms vs, u.deps ms (vs.map .there) with
+        | (l1, b1), (l2, b2) => (optHeads ms ann vs ++ l1 ++ l2, b1 || b2)
+termination_by structural _ t => t
+/-- The fields a definition list depends on, and the flag.  The body of a
+type member counts its paths through fields only, since the member never reads
+the bodies of the type members it selects. -/
+def PDefs.deps : {s : Sig} → PDefs s → List (Label × List Label) → List (BVar s .var) →
+    List Label × Bool
+  | _, .typ _ T, _, vs => (Ty.heads [] T vs, false)
+  | _, .trm _ o t, ms, vs =>
+      match t.deps ms vs with
+      | (l, b) => (optHeads ms o vs ++ l, b)
+  | _, .and d e, ms, vs =>
+      match d.deps ms vs, e.deps ms vs with
+      | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
+termination_by structural _ d => d
+end
+
+/-- The type members of a definition list, with their bodies, in source
+order. -/
+def PDefs.typeMembers {s : Sig} : PDefs s → List (Label × Ty s)
+  | .typ A T => [(A, T)]
+  | .trm _ _ _ => []
+  | .and d e => d.typeMembers ++ e.typeMembers
+termination_by structural d => d
+
+/-- The first fields each type member reaches from the self `v`, through at
+most `n` selections of other type members. -/
+def memberHeadsUpTo {s : Sig} (ts : List (Label × Ty s)) (v : BVar s .var) :
+    Nat → List (Label × List Label)
+  | 0 => ts.map fun m => (m.1, [])
+  | n + 1 => ts.map fun m => (m.1, Ty.heads (memberHeadsUpTo ts v n) m.2 [v])
+termination_by structural n => n
+
+/-- The first fields each type member of the definitions reaches from the self
+`v`.  A chain of selections that adds a field passes each member once, so as
+many steps as there are members reach every field. -/
+def PDefs.memberHeads {s : Sig} (d : PDefs s) (v : BVar s .var) : List (Label × List Label) :=
+  memberHeadsUpTo d.typeMembers v d.typeMembers.length
 
 end PathsFrontend
