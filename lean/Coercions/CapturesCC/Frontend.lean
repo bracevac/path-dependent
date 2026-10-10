@@ -10,6 +10,7 @@ import Coercions.CapturesCC.Frontend.Alg
 import Coercions.CapturesCC.Frontend.Avoid
 import Coercions.CapturesCC.Frontend.Adapt
 import Coercions.CapturesCC.Frontend.Typer
+import Coercions.CapturesCC.Frontend.Elab
 import Coercions.CapturesCC.Frontend.Step
 import Coercions.CapturesCC.Frontend.StepFC
 import Coercions.CapturesCC.Frontend.Pipeline
@@ -26,6 +27,11 @@ version's notation is resolved, typed by a typer that returns the version's
 derivation, translated, checked and run.  The typer follows the compiler's
 algorithm on one tank of fuel.  The source is DOT-MNF with scopes and levels,
 translated to FCdot.
+
+The elaborator (`Elab.lean`) fills the annotations a program leaves out and
+types the result with the typer.  It rejects a program with a `Reason`, the
+type that `Coercions.Frontend.Reason` shares among the front ends, at the
+labels of this version and with the typer's own reasons.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
