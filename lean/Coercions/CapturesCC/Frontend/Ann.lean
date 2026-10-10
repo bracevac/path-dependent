@@ -40,7 +40,8 @@ resolver produces it and the elaborator fills the empty slots.  `ATm` stays the
 elaborated term, since the typer and every theorem about it read every slot.
 `PTm.full?` and `ATm.toI` translate between the two, `PTm.fills` says that an
 elaborated term agrees with the slots the programmer wrote, and `PTm.skel`
-gives a partial term the skeleton of each of its fillings.
+gives a partial term the skeleton of each of its fillings.  `PTm.deps` reads
+off a right-hand side the fields it reads off the self of its literal.
 -/
 
 namespace CapturesCCFrontend
@@ -1418,5 +1419,66 @@ example : (PTm.let .arg none (.lam (some pTop) (.lam (some pTop) (.path (.var .h
 example : (PTm.let .recv none (.lam (some pTop) (.path (.var .here)))
       (.app .here .here) : PTm []).eraseG =
     .let .recv none (.lam (some pTop) (.path (.var .here))) (.app .here .here) := by decide
+
+/-! ## Dependencies on the self
+
+A field of a literal without a self shape is typed once the fields it reads
+off the self are.  `PTm.deps` reads them off a right-hand side.  `vs` are the
+variables that stand for the self: the self itself, and every variable a `let`
+without a written answer binds to one of them.  A projection `w.a` with `w`
+among them depends on `a`.  Any other use of one of them, as a value, a
+function, an argument, a box, an unboxing or a term bound at a written answer,
+sets the flag, since it needs the whole self shape.  A type `x.A` or a set
+`{x.C}` in an annotation is no dependency, since type and capture members are
+known at once.  The variables move under every binder a term opens: three
+under a lambda, the root, the arrow binder and the parameter, two under the
+class root and the self of a literal, and two under the witness and the
+payload of an unpacking. -/
+
+/-- The bound term of a `let` makes its variable stand for the self: no
+written answer, and a variable of `vs`. -/
+def PTm.isAlias {s : Sig} (vs : List (BVar s .var)) : Option (ETy s) → PTm s → Bool
+  | none, .path (.var y) => vs.contains y
+  | _, _ => false
+
+mutual
+/-- The labels a term projects off the self, in term order, and whether it
+uses the self any other way. -/
+def PTm.deps : {s : Sig} → PTm s → List (BVar s .var) → List Label × Bool
+  | _, .path (.var y), vs => ([], vs.contains y)
+  | _, .lam _ t, vs => t.deps (vs.map fun y => BVar.there (BVar.there (BVar.there y)))
+  | _, .obj _ d, vs => d.deps (vs.map fun y => BVar.there (BVar.there y))
+  | _, .app x y, vs => ([], vs.contains x || vs.contains y)
+  | _, .proj x a, vs => (if vs.contains x then [a] else [], false)
+  | _, .let _ ann t u, vs =>
+      if PTm.isAlias vs ann t then u.deps (.here :: vs.map .there)
+      else
+        match t.deps vs, u.deps (vs.map .there) with
+        | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
+  | _, .letex t u, vs =>
+      match t.deps vs, u.deps (vs.map fun y => BVar.there (BVar.there y)) with
+      | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
+  | _, .box x, vs => ([], vs.contains x)
+  | _, .unbox _ x, vs => ([], vs.contains x)
+  | _, .asc t _, vs => t.deps vs
+/-- The labels a definition list projects off the self, and the flag. -/
+def PDefs.deps : {s : Sig} → PDefs s → List (BVar s .var) → List Label × Bool
+  | _, .typ _ _, _ => ([], false)
+  | _, .cap _ _, _ => ([], false)
+  | _, .trm _ _ t, vs => t.deps vs
+  | _, .and d e, vs =>
+      match d.deps vs, e.deps vs with
+      | (l1, b1), (l2, b2) => (l1 ++ l2, b1 || b2)
+end
+
+/-- A field that reads a later one depends on its label.  A projection
+through an alias of the self depends on the label too, and a bare use sets
+the flag.  A self type `x.A` in an ascription is no dependency. -/
+example : (PTm.proj .here (.trm 1) : PTm [.var]).deps [.here] = ([.trm 1], false) := by decide
+example : (PTm.let .written none (.path (.var .here)) (.proj .here (.trm 0)) : PTm [.var]).deps
+    [.here] = ([.trm 0], false) := by decide
+example : (PTm.path (.var .here) : PTm [.var]).deps [.here] = ([], true) := by decide
+example : (PTm.asc (.proj .here (.trm 0)) (.capt [] (.sel (.var .here) (.typ 0))) : PTm [.var]).deps
+    [.here] = ([.trm 0], false) := by decide
 
 end CapturesCCFrontend
