@@ -43,6 +43,17 @@ reference when a round types nothing.  A literal without a self type and
 without a `μ` goal is filled at the formed self type and typed by the object
 clause of the typer (`obj_none_landed`).
 
+`compileE` (`Pipeline.lean`) resolves a program to a partial term and
+elaborates it.  It returns the fill with its derivation, or the reason the
+program is rejected, which `ppReason` (`Pretty.lean`) prints.  `compile` is
+the same without the reason.  A program with every slot written compiles as
+the typer's synthesis (`compile_full`).  A program whose empty slots are
+lambda domains at the direct sites compiles to the fill the typer accepts,
+from some fuel on (`compile_complete_direct`).  `Examples.lean` states the
+verdict on each example with its annotations erased in five ways, one row of
+`decide +kernel` facts per program.  It applies `compile_complete_direct` to
+programs whose domains are erased at those sites.
+
 The library imports the version and changes nothing in it.  It is not a
 default build target.
 -/
