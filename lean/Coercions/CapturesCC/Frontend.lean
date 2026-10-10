@@ -31,7 +31,11 @@ translated to FCdot.
 The elaborator (`Elab.lean`) fills the annotations a program leaves out and
 types the result with the typer.  It rejects a program with a `Reason`, the
 type that `Coercions.Frontend.Reason` shares among the front ends, at the
-labels of this version and with the typer's own reasons.
+labels of this version and with the typer's own reasons.  `formSelfF` forms
+the self shape of a literal that has none from its definitions, in rounds, as
+the completers of `Namer` type the members of a class.  The literal is then
+filled at the formed shape and typed by the typer, so its derivation is the
+version's object rule.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
