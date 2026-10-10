@@ -36,7 +36,12 @@ a theorem the kernel checks.
 The elaborator (`Elab.lean`) fills the annotations a program leaves out and
 types the result with the typer.  It rejects a program with a `Reason`, the
 type that `Coercions.Frontend.Reason` shares among the front ends, at the
-labels of this version.
+labels of this version.  `formSelfF` forms a literal's self type from its
+definitions, in rounds that type each field without a written type at its
+least candidate, after the fields it reads off the self, and names the cyclic
+reference when a round types nothing.  A literal without a self type and
+without a `μ` goal is filled at the formed self type and typed by the object
+clause of the typer (`obj_none_landed`).
 
 The library imports the version and changes nothing in it.  It is not a
 default build target.
