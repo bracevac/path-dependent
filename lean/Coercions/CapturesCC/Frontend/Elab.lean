@@ -5080,7 +5080,7 @@ example : elabSOut πz exTopSrc = (.no .mismatch, ⟨defaultFuel - 62, false⟩)
 
 `NestKSrc false k` nests `k + 1` literals without a self shape.  Each field is
 elaborated once and checked once more by the typer at each enclosing literal,
-so the fuel is `(k + 1) (k + 2) / 2`, against `k + 3` for the written form. -/
+so the fuel is `(k + 2) (k + 3) / 2`, against `k + 3` for the written form. -/
 
 example : elabOut .empty (NestKSrc false 2) =
       ((writtenOut .empty (NestKSrc true 2)).1, ⟨defaultFuel - 10, false⟩) ∧
