@@ -35,7 +35,14 @@ labels of this version and with the typer's own reasons.  `formSelfF` forms
 the self shape of a literal that has none from its definitions, in rounds, as
 the completers of `Namer` type the members of a class.  The literal is then
 filled at the formed shape and typed by the typer, so its derivation is the
-version's object rule.
+version's object rule.  `compile` (`Pipeline.lean`) runs the elaborator on the
+body of a whole program and returns the fill, the body with its empty slots
+filled, with the typer's derivation.  `compileE` returns the reason a program
+is rejected as well, and `Pretty.lean` prints partial terms and reasons.
+`Examples.lean` takes every program through the front end, written and with
+the annotations of its body erased.  At the direct sites a program with its
+body erased compiles as its written form does, from some fuel on
+(`compile_complete_canonAt`).
 
 The library only imports the version.  It is not a default build target.
 -/
