@@ -23,6 +23,9 @@ program with every slot written resolves as the typer expects
 (`resolveTm_full`).  Each `let` carries a tag that says where it comes from:
 `written` for a `let` of the source, `arg` for the binding of an operand of an
 application, and `recv` for every other inserted binding.  No kind is a slot.
+A whole program resolves to its header (`resolveHeader`) and the partial term
+of its body (`resolvePProg`), and `resolveProg` is that pair with every slot of
+the body written (`resolveProg_eq`).
 
 ## Names of two kinds
 
@@ -931,6 +934,75 @@ def resolveProg (Λ : LabelTable) (p : SProg) : Option (ResolvedProg p.platNames
     | some K => (resolveKind κt K).map some)
   let body ← resolveTop Λ κt p.platNames p.body
   pure ⟨κt, P, uses, kind, body⟩
+
+/-! ### The header alone
+
+The header of a program resolves apart from its body, so a body with an
+empty slot can be resolved to a partial term against the header's table and
+filled later. -/
+
+/-- The resolved header of a program over the signature `s` of its
+platform. -/
+structure ProgHeader (s : Sig) where
+  /-- The classifier table of the declarations. -/
+  table : ClsTable
+  /-- The platform, each binder at its classifier when one is written. -/
+  plat : Platform s
+  /-- The declared use set, read over the platform. -/
+  uses : Option (CaptureSet s)
+  /-- The declared kind. -/
+  kind : Option Cls.Kind
+
+/-- Resolve the header of a program: the declarations into a table, then the
+platform, the declared use set and the declared kind.  The body is not
+read. -/
+def resolveHeader (Λ : LabelTable) (p : SProg) : Option (ProgHeader p.platNames.sig) := do
+  let κt ← clsTableOf [] p.classifiers
+  let P ← resolvePlatform κt p.platform
+  let uses ← (match p.uses with
+    | none => some none
+    | some C => (resolveCap Λ κt p.platNames.names C).map some)
+  let kind ← (match p.kind with
+    | none => some none
+    | some K => (resolveKind κt K).map some)
+  pure ⟨κt, P, uses, kind⟩
+
+/-- A resolved header with a body. -/
+def ProgHeader.withBody {s : Sig} (h : ProgHeader s) (b : ATm s) : ResolvedProg s :=
+  ⟨h.table, h.plat, h.uses, h.kind, b⟩
+
+/-- Resolve a whole program to its header and the partial term of its body,
+read against the header's table. -/
+def resolvePProg (Λ : LabelTable) (p : SProg) :
+    Option (ProgHeader p.platNames.sig × PTm p.platNames.sig) :=
+  (resolveHeader Λ p).bind fun h => (resolvePTop Λ h.table p.platNames p.body).map (h, ·)
+
+/-- `resolveProg` is `resolvePProg` with the body's slots all written. -/
+theorem resolveProg_eq (Λ : LabelTable) (p : SProg) :
+    resolveProg Λ p = (resolvePProg Λ p).bind fun r => r.2.full?.map r.1.withBody := by
+  unfold resolveProg resolvePProg resolveHeader resolveTop
+  simp only [Option.bind_eq_bind, Option.pure_def]
+  rcases clsTableOf [] p.classifiers with _ | κt
+  · rfl
+  simp only [Option.bind_some]
+  rcases resolvePlatform κt p.platform with _ | P
+  · rfl
+  simp only [Option.bind_some]
+  generalize (match p.uses with
+      | none => some none
+      | some C => (resolveCap Λ κt p.platNames.names C).map some) = ou
+  generalize (match p.kind with
+      | none => some none
+      | some K => (resolveKind κt K).map some) = ok
+  rcases ou with _ | u
+  · rfl
+  rcases ok with _ | k
+  · rfl
+  simp only [Option.bind_some]
+  rcases resolvePTop Λ κt p.platNames p.body with _ | b
+  · rfl
+  simp only [Option.bind_some, Option.map_some]
+  rcases b.full? with _ | a <;> rfl
 
 /-! ## Surface side conditions about atoms
 
@@ -2894,6 +2966,62 @@ theorem resolveProg_isSome (Λ : LabelTable) (p : SProg) {κt : ClsTable}
   simp only [resolveProg, hκ, hPl, hu'', hk'', hb', Option.bind_eq_bind,
     Option.bind_some, Option.pure_def, Option.isSome_some]
 
+/-- **Totality of header resolution.**  The header resolves when its
+declarations give a table and its platform, declared use set and declared
+kind meet the side conditions against that table. -/
+theorem resolveHeader_isSome (Λ : LabelTable) (p : SProg) {κt : ClsTable}
+    (hκ : clsTableOf [] p.classifiers = some κt)
+    (hP : SPlatform.ClassifiersIn κt p.platform = true)
+    (hu : ∀ C, p.uses = some C →
+      SCap.Scoped p.platNames.names.capNames p.platNames.names.names C = true ∧
+        SCap.LabelsIn Λ C = true ∧ SCap.ClassifiersIn κt C = true)
+    (hk : ∀ K, p.kind = some K → SKind.ClassifiersIn κt K = true) :
+    ∃ h, resolveHeader Λ p = some h ∧ h.table = κt := by
+  obtain ⟨P, hPl⟩ := Option.isSome_iff_exists.mp (resolvePlatform_isSome κt p.platform hP)
+  have hu' : ∃ u, (match p.uses with
+      | none => some none
+      | some C => (resolveCap Λ κt p.platNames.names C).map some) = some u := by
+    cases hU : p.uses with
+    | none => exact ⟨none, rfl⟩
+    | some C =>
+        obtain ⟨h1, h2, h3⟩ := hu C hU
+        obtain ⟨c, hc'⟩ := Option.isSome_iff_exists.mp
+          (resolveCap_isSome C Λ κt p.platNames.names h1 h2 h3)
+        exact ⟨some c, by simp [hc']⟩
+  have hk' : ∃ k, (match p.kind with
+      | none => some none
+      | some K => (resolveKind κt K).map some) = some k := by
+    cases hK : p.kind with
+    | none => exact ⟨none, rfl⟩
+    | some K =>
+        obtain ⟨k, hk''⟩ := Option.isSome_iff_exists.mp (resolveKind_isSome κt K (hk K hK))
+        exact ⟨some k, by simp [hk'']⟩
+  obtain ⟨u, hu''⟩ := hu'
+  obtain ⟨k, hk''⟩ := hk'
+  refine ⟨⟨κt, P, u, k⟩, ?_, rfl⟩
+  simp only [resolveHeader, hκ, hPl, hu'', hk'', Option.bind_eq_bind, Option.bind_some,
+    Option.pure_def]
+
+/-- **Totality of program resolution to a partial body.**  The side
+conditions of `resolveProg_isSome`, except that a slot of the body may be
+empty. -/
+theorem resolvePProg_isSome (Λ : LabelTable) (p : SProg) {κt : ClsTable}
+    (hκ : clsTableOf [] p.classifiers = some κt)
+    (hP : SPlatform.ClassifiersIn κt p.platform = true)
+    (hu : ∀ C, p.uses = some C →
+      SCap.Scoped p.platNames.names.capNames p.platNames.names.names C = true ∧
+        SCap.LabelsIn Λ C = true ∧ SCap.ClassifiersIn κt C = true)
+    (hk : ∀ K, p.kind = some K → SKind.ClassifiersIn κt K = true)
+    (hs : STm.Scoped p.platNames.names.capNames p.platNames.names.names p.body = true)
+    (hl : STm.LabelsIn Λ p.body = true) (hc : STm.ClassifiersIn κt p.body = true)
+    (hf : STm.FreshPlaced p.body = true) :
+    (resolvePProg Λ p).isSome = true := by
+  obtain ⟨h, hh, ht⟩ := resolveHeader_isSome Λ p hκ hP hu hk
+  obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp
+    (resolveTm_isSome Λ κt p.platNames.names p.body hs hl hc hf)
+  have hb' : resolvePTop Λ h.table p.platNames p.body = some b := by rw [ht]; exact hb
+  simp only [resolvePProg, hh, hb', Option.bind_some, Option.map_some, Option.isSome_some]
+
 /-! ## The classifier examples
 
 CE1 to CE3 of `Notation.lean` against the version's E1 to E3
@@ -3517,6 +3645,24 @@ example : (resolvePTop Λk exCls CE3src.platNames CE3src.body).map PTm.eraseG =
     resolvePTop Λk exCls CE3src.platNames CE3BodyS := by decide
 example : (resolvePTop Λk exCls CE3src.platNames CE3src.body).map PTm.eraseDoms =
     resolvePTop Λk exCls CE3src.platNames CE3BodyD := by decide
+
+/-- The header of CE1 alone, and its body as a partial term.  The body with
+every lambda domain erased resolves against the same header, and
+`resolveProg` gives no program for it. -/
+example : (resolveHeader Λk CE1src).map (·.table) = some exCls := by decide
+example : (resolveHeader Λk CE1src).map (·.plat) = some E1Plat := rfl
+example : (resolveHeader Λk CE1src).map (·.uses) = some (some E1Filt) := by decide
+example : (resolveHeader Λk CE1src).map (·.kind) = some (some (Cls.only Cls.Control)) := by
+  decide
+example : (resolvePProg Λk CE1src).map (·.2) =
+    (resolveProg Λk CE1src).map (·.body.toI) := by decide
+example : (resolvePProg Λk { CE1src with body := CE1BodyD }).map (·.2) =
+    resolvePTop Λk exCls CE1src.platNames CE1BodyD := by decide
+example : (resolveProg Λk { CE1src with body := CE1BodyD }).isNone = true := by decide
+example : (resolvePProg Λk { CE1src with body := CE1BodyD }).isSome = true :=
+  resolvePProg_isSome Λk _ clsTableOf_examples (by decide)
+    (fun C h => by cases h; exact ⟨by decide, by decide, by decide⟩)
+    (fun K h => by cases h; decide) (by decide) (by decide) (by decide) (by decide)
 
 /-- The written programs are full, so `resolveTop` gives their terms, and the
 erased ones are not. -/

@@ -11,6 +11,7 @@ import Coercions.Classifiers.Frontend.Alg
 import Coercions.Classifiers.Frontend.Avoid
 import Coercions.Classifiers.Frontend.Adapt
 import Coercions.Classifiers.Frontend.Typer
+import Coercions.Classifiers.Frontend.Elab
 import Coercions.Classifiers.Frontend.Step
 import Coercions.Classifiers.Frontend.StepFC
 import Coercions.Classifiers.Frontend.Pipeline
@@ -25,8 +26,14 @@ programs of the `Classifiers` version (capability classifiers) without
 assembling derivations by hand.  A program in the version's notation is
 resolved, typed by a typer that returns the version's derivation, translated
 to FCdot, checked and run.  The typer follows the compiler's algorithm on one
-tank of fuel.  The library only imports the version.  It is not a default
-build target.
+tank of fuel.
+
+The elaborator (`Elab.lean`) fills the annotations a program leaves out and
+types the result with the typer.  It rejects a program with a `Reason`, the
+type that `Coercions.Frontend.Reason` shares among the front ends, at the
+labels of this version and with the typer's own reasons.
+
+The library only imports the version.  It is not a default build target.
 -/
 
 /-! Every definition is structural, so the kernel reduces it. -/
