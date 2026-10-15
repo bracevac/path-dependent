@@ -4,10 +4,12 @@ import Coercions.Classifiers.Frontend.Pipeline
 /-!
 # The pretty printer
 
-An unparser from the four syntaxes of this library back into the paper's
-notation, so that an `#eval` of a compilation or of a run is readable.  The
-syntax of the version has no `Repr` instance, so this module is the only way
-to look at a `Classifiers.DotMNF.Ty` or `Tm` as text.
+An unparser from the syntaxes of this library back into the paper's
+notation, so that an `#eval` of a compilation or of a run is readable: surface
+programs, partial terms with their empty slots, annotated terms, the version's
+syntax and the states of its machine.  It also prints the reason a program is
+rejected.  The syntax of the version has no `Repr` instance, so this module is
+the only way to look at a `Classifiers.DotMNF.Ty` or `Tm` as text.
 
 It prints the capture binder an arrow opens before its parameter, the class
 root an object literal opens before its self, the existential answer
@@ -475,6 +477,116 @@ def ppATm (nv : NameEnv s) (t : ATm s) : String := ppATmWith [] [] nv t
 /-- An annotated definition list in the paper's notation, with no tables. -/
 def ppADefs (nv : NameEnv s) (d : ADefs s) : String := ppADefsWith [] [] nv d
 
+/-! ## Partial terms
+
+The syntax `resolvePTop` returns, whose slots may be empty.  A written slot
+prints as in an annotated term.  An empty domain prints as `λx. t`, an empty
+self shape as `ν(x. d)`, and a written field type as `{a : T = t}`.  Every
+`let` prints as a `let`, whatever its tag. -/
+
+mutual
+/-- A partial term in the paper's notation, at the precedence of its
+position. -/
+def ppPTmAt (Λ : LabelTable) (κt : ClsTable) {s : Sig} (p : Nat) (nv : NameEnv s) (t : PTm s) :
+    String :=
+  match t with
+  | .path (.var x) => nv.nameAt x
+  | .lam (some T) t' =>
+      let κ := freshCapName (NameEnv.allNames nv)
+      let nv1 := NameEnv.consC nv κ
+      let r := freshCapName (NameEnv.allNames nv1)
+      let nv2 := NameEnv.consC nv1 r
+      let y := freshName (NameEnv.allNames nv2)
+      parenIf (p > 1)
+        ("λ(" ++ y ++ " : " ++ ppTyWith Λ κt nv1 T ++ "). "
+          ++ ppPTmAt Λ κt 0 (NameEnv.cons nv2 y) t')
+  | .lam none t' =>
+      let κ := freshCapName (NameEnv.allNames nv)
+      let nv1 := NameEnv.consC nv κ
+      let r := freshCapName (NameEnv.allNames nv1)
+      let nv2 := NameEnv.consC nv1 r
+      let y := freshName (NameEnv.allNames nv2)
+      parenIf (p > 1) ("λ" ++ y ++ ". " ++ ppPTmAt Λ κt 0 (NameEnv.cons nv2 y) t')
+  | .obj (some S) d =>
+      let y := freshName (NameEnv.allNames nv)
+      let κ := freshCapName (y :: NameEnv.allNames nv)
+      "ν(" ++ y ++ " : " ++ ppShapeAt Λ κt 0 (NameEnv.cons nv y) S ++ ". "
+        ++ ppPDefsWith Λ κt ((NameEnv.consC nv κ).cons y) d ++ ")"
+  | .obj none d =>
+      let y := freshName (NameEnv.allNames nv)
+      let κ := freshCapName (y :: NameEnv.allNames nv)
+      "ν(" ++ y ++ ". " ++ ppPDefsWith Λ κt ((NameEnv.consC nv κ).cons y) d ++ ")"
+  | .app x y => nv.nameAt x ++ " " ++ nv.nameAt y
+  | .proj x a => nv.nameAt x ++ "." ++ ppLabel Λ a
+  | .let _ ann t' u =>
+      let y := freshName (NameEnv.allNames nv)
+      let ann? :=
+        match ann with
+        | none => ""
+        | some E => " : " ++ ppETyWith Λ κt nv E
+      parenIf (p > 0)
+        ("let " ++ y ++ ann? ++ " = " ++ ppPTmAt Λ κt 1 nv t' ++ " in "
+          ++ ppPTmAt Λ κt 0 (NameEnv.cons nv y) u)
+  | .letex t' u =>
+      let κ := freshCapName (NameEnv.allNames nv)
+      let x := freshName (κ :: NameEnv.allNames nv)
+      parenIf (p > 0)
+        ("let ⟨" ++ κ ++ ", " ++ x ++ "⟩ = " ++ ppPTmAt Λ κt 1 nv t' ++ " in "
+          ++ ppPTmAt Λ κt 0 ((NameEnv.consC nv κ).cons x) u)
+  | .box x => "□ " ++ nv.nameAt x
+  | .unbox C x => ppCapWith Λ κt nv (C.getD []) ++ " ⊸ " ++ nv.nameAt x
+  | .asc t' T => "(" ++ ppPTmAt Λ κt 1 nv t' ++ " : " ++ ppTyWith Λ κt nv T ++ ")"
+termination_by structural t
+/-- The definitions of a partial term in the paper's notation. -/
+def ppPDefsWith (Λ : LabelTable) (κt : ClsTable) {s : Sig} (nv : NameEnv s) (d : PDefs s) :
+    String :=
+  match d with
+  | .typ A S => "{type " ++ ppLabel Λ A ++ " = " ++ ppShapeAt Λ κt 0 nv S ++ "}"
+  | .cap C c => "{" ++ ppLabel Λ C ++ "^ = " ++ ppCapWith Λ κt nv c ++ "}"
+  | .trm a none t => "{" ++ ppLabel Λ a ++ " = " ++ ppPTmAt Λ κt 0 nv t ++ "}"
+  | .trm a (some T) t =>
+      "{" ++ ppLabel Λ a ++ " : " ++ ppTyWith Λ κt nv T ++ " = " ++ ppPTmAt Λ κt 0 nv t ++ "}"
+  | .and d' e => ppPDefsWith Λ κt nv d' ++ " ∧ " ++ ppPDefsWith Λ κt nv e
+termination_by structural d
+end
+
+/-- A partial term in the paper's notation, with a label and a classifier
+table. -/
+def ppPTmWith (Λ : LabelTable) (κt : ClsTable) (nv : NameEnv s) (t : PTm s) : String :=
+  ppPTmAt Λ κt 0 nv t
+
+/-- A partial term in the paper's notation, with no tables. -/
+def ppPTm (nv : NameEnv s) (t : PTm s) : String := ppPTmWith [] [] nv t
+
+/-! ## Reasons
+
+A rejection prints as the compiler's message where the compiler has one:
+"Missing parameter type" for `AnonymousFunctionMissingParamType`, "Recursive
+value a needs type" for a cyclic reference, and "Value a needs a written type"
+for `CheckCaptures.checkInferredResult`.  A label prints through the table.  A
+reason of the typer prints as its name, as `ppRun` prints it. -/
+
+/-- A reason of the front end as a message, with a label table. -/
+def ppReasonWith (Λ : LabelTable) : EReason → String
+  | .missingParamType none => "Missing parameter type"
+  | .missingParamType (some l) => "Missing parameter type in " ++ ppLabel Λ l
+  | .cyclicRef l => "Recursive value " ++ ppLabel Λ l ++ " needs type"
+  | .needsExplicitType l => "Value " ++ ppLabel Λ l ++ " needs a written type"
+  | .ambiguous l => "The types of " ++ ppLabel Λ l ++ " have no least one"
+  | .landed r => "Rejected by the typer: " ++ Reason.name r
+  | .mismatch => "Type mismatch"
+  | .limit => "Recursion limit exceeded"
+
+/-- A reason of the front end as a message, with no label table. -/
+def ppReason (r : EReason) : String := ppReasonWith [] r
+
+/-- The answer of `compileE` on the program `p`: the fill of its body,
+printed with the classifier table of its header, or the reason. -/
+def ppCompileE (Λ : LabelTable) (p : SProg) :
+    Except EReason ((r : ResolvedProg p.platNames.sig) × Compiled r.plat r.body) → String
+  | .ok r => ppATmWith Λ r.1.table p.platNames.names r.1.body
+  | .error r => ppReasonWith Λ r
+
 /-! ## Surface phrases
 
 The surface syntax carries its own names, so these printers need no table and
@@ -766,3 +878,100 @@ example : ppSTm (cls% (λx. x : ⊤)) = "(λx. x : ⊤)" := rfl
 /-- A written domain and a written self shape print in full. -/
 example : ppSTm (cls% λ(x : ⊤). ν(z : {a : ⊤}. {a = x})) = "λ(x : ⊤). ν(z : {a : ⊤}. {a = x})" :=
   rfl
+
+/-- A call argument with an empty domain, resolved: the binding the resolver
+inserts at the operand prints as a `let`. -/
+example :
+    ((resolvePTop Λc [] .empty (cls% λ(f : ∀(x : ⊤) ⊤). f (λx. x))).map
+        (ppPTmWith Λc [] PlatformNames.empty.names))
+      = some "λ(x : ∀[j](x : ⊤) ⊤). let y = λy. y in x y" := rfl
+
+/-- An ascription over a lambda with an empty domain, resolved. -/
+example :
+    ((resolvePTop Λc [] .empty (cls% (λx. x : ∀(x : ⊤) ⊤))).map
+        (ppPTmWith Λc [] PlatformNames.empty.names))
+      = some "(λx. x : ∀[k](x : ⊤) ⊤)" := rfl
+
+/-- A literal without a self shape, with a written field type, resolved. -/
+example :
+    ((resolvePTop Λc [] .empty (cls% ν(x. {a : ⊤ = x} ∧ {b = x.a}))).map
+        (ppPTmWith Λc [] PlatformNames.empty.names))
+      = some "ν(x. {a : ⊤ = x} ∧ {b = x.a})" := rfl
+
+/-- A program with every slot written prints as its annotated term. -/
+example :
+    (resolvePTop Λc [] πc W2defSrc).map (ppPTmWith Λc [] πc.names)
+      = (resolveTop Λc [] πc W2defSrc).map (ppATmWith Λc [] πc.names) := rfl
+
+/-- The reasons, with the labels of the table. -/
+example :
+    [Frontend.Reason.Reason.missingParamType none, .cyclicRef (.trm 0),
+        .needsExplicitType (.trm 0), .ambiguous (.trm 1), .mismatch, .limit].map
+        (ppReasonWith Λc)
+      = ["Missing parameter type", "Recursive value a needs type",
+        "Value a needs a written type", "The types of b have no least one", "Type mismatch",
+        "Recursion limit exceeded"] := rfl
+
+/-- A label outside any table prints as its sort and number. -/
+example : ppReason (.cyclicRef (.trm 0)) = "Recursive value a0 needs type" := rfl
+
+/-- A lambda under an ascription takes its domain from the ascription, and
+the answer prints the fill. -/
+example :
+    ppCompileE Λc (SProg.plain [] AscSrcD) (compileE {} Λc (SProg.plain [] AscSrcD))
+      = "(λ(x : ⊤). x : ∀[k](x : ⊤) ⊤)" := by
+  decide +kernel
+
+/-- Three rejections for a reason of inference. -/
+example :
+    ppCompileE Λc (SProg.plain [] Id0SrcD) (compileE {} Λc (SProg.plain [] Id0SrcD))
+        = "Missing parameter type" ∧
+      ppCompileE Λc (SProg.plain [] CycSrcS) (compileE {} Λc (SProg.plain [] CycSrcS))
+        = "Recursive value a needs type" ∧
+      ppCompileE Λc (SProg.plain [] NESrcS) (compileE {} Λc (SProg.plain [] NESrcS))
+        = "Value a needs a written type" := by
+  decide +kernel
+
+/-- `Try.apply` with its body passed as a closure whose domain is left out.
+The header declares the classifiers and the platform `[ctl : Control, io :
+IO]`.  The closure is a call argument, so its domain is the formal of `f`. -/
+def CE1argSrcD : SProg :=
+  clsProg% classifiers IO, ThreadLocal, Control extends ThreadLocal
+    platform [ctl : Control, io : IO]
+    let f = ((λ(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io}).
+                ν(z : {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}. {body = λ(u : ⊤ ^ {}). u})) :
+              (∀(body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {ctl, io})
+                μ(z. {body : (∀(u : ⊤ ^ {}) ⊤ ^ {}) ^ {z}}) ^ {body.only[Control]}) ^ {}) in
+    f (λu. u)
+
+/-- Its body resolves with the domain empty.  It prints with the platform's
+names and with a set projected at a classifier of the header. -/
+example :
+    (resolvePProg Λk CE1argSrcD).map
+        (fun r => ppPTmWith Λk r.1.table CE1argSrcD.platNames.names r.2)
+      = some ("let x = (λ(x : (∀[j](x : ⊤) ⊤) ^ {ctl, io}). " ++
+          "ν(y : {body : (∀[i](z : ⊤) ⊤) ^ {y}}. {body = λ(z : ⊤). z}) : " ++
+          "∀[k](x : (∀[j](x : ⊤) ⊤) ^ {ctl, io}) μ(y. {body : (∀[j](z : ⊤) ⊤) ^ {y}}) " ++
+          "^ {x.only[Control]}) in let y = λy. y in x y") := by
+  decide +kernel
+
+/-- It compiles, and its fill is the program with the domain written. -/
+example :
+    ppCompileE Λk CE1argSrcD (compileE {} Λk CE1argSrcD)
+      = ppCompileE Λk CE1argSrc (compileE {} Λk CE1argSrc) := by
+  decide +kernel
+
+-- The escape with the callback's domains erased.  The elaborator finds no
+-- candidate, and the typer's verdict on the fill names the level escape.  The
+-- certificate reads the well-founded `Ctx.caps`, so this runs as compiled
+-- code.
+#eval expect (ppCompileE Λc (SProg.plain ["k1", "k2"] AscEscSrcG)
+    (compileE {} Λc (SProg.plain ["k1", "k2"] AscEscSrcG))
+    == "Rejected by the typer: levelEscape") "AscEsc with its domains erased"
+
+/-- A domain whose written type is outside the notation: the typer's reason
+on the fill. -/
+example :
+    ppCompileE Λc (SProg.plain [] DeepSrcD) (compileE {} Λc (SProg.plain [] DeepSrcD))
+      = "Rejected by the typer: anyNotOk" := by
+  decide +kernel

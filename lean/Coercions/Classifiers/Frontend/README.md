@@ -9,8 +9,10 @@ a tree, as in `Control extends ThreadLocal`. A kind is a set of classifiers.
 A program is written inside `clsProg%`. Its header declares the classifiers,
 the platform (the capabilities it is given), and optionally a use set (the
 capabilities it may use) and a kind that this set must satisfy. The front end
-resolves names, adds `let`s, finds a typing derivation, translates it to
-FCdot, a DOT variant with coercions and a checker, and runs the program.
+resolves names, adds `let`s, fills the annotations the program leaves out,
+finds a typing derivation, translates it to FCdot, a DOT variant with
+coercions and a checker, and runs the program. A program whose capability
+escapes its scope is rejected with a proof.
 
 ```lean
 def CE1src : SProg :=
@@ -43,35 +45,56 @@ state, carries a classifier `only[Control]` admits.
 
 `compile b Λ p` types the program `p` at the fuel of `b : Budget`, by default
 `defaultFuel = 2 ^ 15`, with label table `Λ`. The `Verdict` is `ok` with the
-elaborated term, its use set, its type and the `DotMNF.HasTy` derivation (DOT in
-monadic normal form), `rejected` with a `Reason` and its proof, or `unknown`,
-which covers the recursion limit. A `Reason` is an `any` or `fresh` atom where
-the calculus reads none, a level escape (a capability leaving its scope) or an
-existential answer at the top. `compileKinded`, `compileFiltered` and
-`compileAndRun` add a kinding, a filter proof and a run.
+filled body, the elaborated term, its use set, its type and the
+`DotMNF.HasTy` derivation (DOT in monadic normal form), `rejected` with a
+`Reason` and its proof, or `unknown`, which covers the recursion limit. A
+`Reason` is an `any` or `fresh` atom where the calculus reads none, a level
+escape or an existential answer at the top.
+`compileE` returns the reason of every rejection and `ppReason` prints it.
+`compileKinded`, `compileFiltered` and `compileAndRun` add a kinding, a filter
+proof and a run.
+
+## What the programmer may leave out
+
+The domain of a lambda, the self shape of an object literal and the type of a
+field, but not the header: `Try.apply` above compiles with `f (λu. u)` for its
+last line (`CE1argSrcD`), and a program that writes every domain and self shape
+is typed as it is, at the same fuel.
+
+## Where an expected type comes from
+
+The elaborator passes a goal down: the written type of a `let`, the type of an
+ascription, the dominant formal of the callee at a call argument (the
+parameter type that the others of an intersection of functions lie below),
+the declaration of a field in the self shape, and the `μ` goal of a literal,
+all found through aliases. A lambda takes its domain from the function part of
+its goal, or from `g` when its body is `g x`. A literal with no `μ` goal forms
+its self shape from its fields. If the attempt at a goal fails, the typer's own
+route runs.
+
+## The compiler's errors
+
+A lambda with no domain and no goal is rejected with "Missing parameter type",
+fields that read each other without written types with "Recursive value a needs
+type", a field whose type holds a root capability the self shape cannot state
+with "Value a needs a written type", and candidates with no least type with
+"The types of a have no least one" (`compileE_slot`, for a program with an empty
+slot). The others are a type mismatch, a level escape with its proof, and the
+recursion limit. A body whose use set the kind does not admit, as `Future.apply`
+with a thread-local body, has no reason of its own: the kinding search finds no
+derivation and the verdict is `unknown`, printed "Type mismatch".
 
 ## Modules
 
 | module | contents |
 |---|---|
-| `Surface` | the named syntax with kinds, filters and the program header |
-| `Notation` | the notation `clsProg%`, `cls%`, `clsTy%` and the example programs |
-| `Ann` | DOT-MNF terms with the annotations the typer needs |
-| `Resolve` | name resolution, classifiers, platforms and let insertion |
-| `Decide` | decision procedures for the side conditions |
-| `Search` | the first type of a variable and the proof behind a level escape |
-| `Look` | member lookup on demand and the default fuel |
-| `Sub` | subtyping, subcapturing and kinding in the compiler's case order |
-| `Alg` | the algorithmic judgment, completeness and soundness |
-| `Kind` | the kinding goal checked at the examples of the calculus |
-| `Avoid` | avoidance at a `let` and at an unpacking |
-| `Adapt` | box adaptation at a variable |
-| `Typer` | the typer and its entry points `synthTop?` and `synthIn?` |
-| `Step` | the DOT-MNF machine and its driver `run` |
-| `StepFC` | the FCdot machine and its driver `fcRun` |
-| `Pipeline` | `compile`, its variants and the pipeline theorems |
-| `Pretty` | printers back to the notation |
-| `Examples` | the programs taken end to end, each with its verdict in the kernel |
+| `Surface`, `Notation`, `Ann`, `Resolve` | the surface syntax with kinds, filters and the program header, the notations `clsProg%`, `cls%` and `clsTy%`, terms with annotations and partial terms, name resolution, classifiers, platforms and `let` insertion |
+| `Decide`, `Search`, `Look` | decision procedures, the first type of a variable, the proof behind a level escape, the fuel and member lookup |
+| `Sub`, `Kind`, `Alg` | subtyping, subcapturing and kinding in the compiler's case order, the kinding goal at the examples of the calculus, the judgment `Alg`, its completeness and soundness |
+| `Avoid`, `Adapt`, `Typer` | avoidance, box adaptation, the typer and its entry points `synthTop?` and `synthIn?` |
+| `Elab`, `Step`, `StepFC` | the elaborator that fills the empty slots of a partial term, the DOT-MNF and FCdot machines as functions |
+| `Pipeline` | `compileE`, `compile`, its variants, the pipeline theorems and completeness at the direct sites |
+| `Pretty`, `Examples` | printers back to the notation, and the programs end to end, written and with annotations erased, each verdict checked in the kernel |
 
 ## The typer
 
@@ -82,37 +105,34 @@ scala/scala3 at commit 4dae25087d: the case order of `TypeComparer`
 as `TypeOps.avoid` does, replacing a type that mentions the bound variable. The
 typer computes the least use set the rules allow, and a declared use set binds.
 
-The whole typing runs on one fuel tank, a counter of work. When the tank runs
-short, the typer reports a recursion limit, never a rejection. `Alg` states its
-algorithm as rules without fuel. Up to that limit its shape, subtype, subcapture,
-kind, answer and variable checks are complete with respect to `Alg`. The typer
-as a whole has no such theorem. As scalac does, it rejects E1, E3 and E4 of `Examples`, which
-need a middle type (an intermediate type of a subtyping chain) that the program
-omits. What the programmer writes binds. E1s and E3s write it and compile.
+The whole typing runs on one fuel tank, a counter of work, the elaborator's
+included. When the tank runs short, the typer reports a recursion limit, never
+a rejection. `Alg` states its algorithm as rules without fuel. Up to that limit
+its goals are complete with respect to `Alg`. As scalac does, it rejects E1, E3
+and E4 of `Examples`, which need a middle type (an intermediate type of a
+subtyping chain) that the program omits, and it chooses none. What the
+programmer writes binds. E1s and E3s write it and compile.
 
 ## Main theorems
 
-- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: for a program that compiles, the FCdot checker accepts the translated derivation and its use set. `compile_erase`: the translation erases to the erasure of the compiled term.
-- `compile_faithful`, `compile_faithful_get`: if `compile b Λ p = .ok ⟨r, c⟩`, then `resolveProg Λ p = some r`, the typer `synthIn?` at the platform's context answers on the resolved body `r.body` with a result whose term is `c.tm`, whose answer is the plain type `c.ty`, and whose use set is `c.use` or else the program declares `c.use` (`q.uses = c.use ∨ r.uses = some c.use`), and `ATm.skel c.tm = ATm.skel r.body`. `ATm.skel` forgets annotations, capture sets, boxes, unboxings, ascriptions and capture binders. It inlines a `let` of a variable and does not tell `let` from `letex`. So the elaborated term differs from the resolved body only there. `C7_faithful` in `Examples` is an instance where the two terms differ and the skeletons agree.
-- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: a run of a compiled program from the platform's initial store never gets stuck. `compile_safe` is `DotMNF.dot_safety_platform` and `compile_not_stuck` is `DotMNF.dot_not_stuck_platform`. `compile_capture_prediction`: along such a run, an FCdot state with the same erasure and a typed store exists. It is reached by a run of the translated derivation from the platform's target store, it is typed, and it uses no more than the use set the typer found, translated and renamed along the store extension.
-- `compile_effect_safety`: let `κ` be a platform capability that the use set lacks, where the use set contains no projection (no filter). The matched FCdot state is reached from the platform's target store, is typed, and reads the variable the reached state reads, and `κ` renamed along the store extension is not a root of that variable.
-- `compile_consistent`, `compile_realized`: every FCdot state that a run of the translated derivation reaches from the platform's target store has a typed store. Its context proves no closed `⊤ ≤ ⊥` at any pair of capture sets (`DotMNF.reachable_consistent`), and every block name of every store binder is defined by closed equality evidence (`DotMNF.reachable_realized`).
-- `compile_lvl_safety`: for each member-free subcapturing `lo <: hi` in the log of the derivation, and each atom `ρ`, if the resolution of `hi` in the entry's context, translated to FCdot, is confined to `ρ` at every depth, so is the resolution of `lo` at every depth.
-- `compile_kind_checks`: after `compileKinded` at a kind `φ`, the FCdot checker accepts the kinding. `compile_classified_effect_safety`: after `compileKinded`, every root of a variable a run reads carries a classifier `φ` admits. `compile_filtered_effect_safety`: the same after `compileFiltered`. Both are statements about the matched FCdot state of a run from the platform's initial store, which is reached by a run of the translated derivation, is typed, and reads the variable the source state reads.
-- `shp?_complete`, `cap?_complete`, `kind?_complete`, `esub?_complete`, `sub?_complete`, `var?_complete`: if `Alg` derives the goal and the run ends with the tank unmarked, it is answered.
-- `shp?_reject`, `cap?_reject`, `kind?_reject`, `esub?_reject`, `sub?_reject`, `var?_reject`: a rejection with the tank unmarked means `Alg` derives no such goal, or for `sub?` not both halves. `Alg.sound`: a goal `Alg` derives has a derivation of the calculus, or for a variable goal a map from typings of the variable at the first type to typings at the second.
-- `sub?_mono`, `synthTop?_mono`: an answer stays the same at more fuel. `kind?_stable`, `synthTop?_stable`: a verdict that ends with the tank unmarked stays the same at more fuel.
-
-A rejection for a level escape carries a certificate that no member-free subcapturing proves the goal the typer reached. `certify?` builds it by `escape_rejected_at`. It reads the resolution `FCdot.Ctx.caps`, which is well founded, through `capsK`, a structural twin on a budget of steps whose answers are the resolution (`capsK_sound`). A resolution that needs more than the budget of `certify?` gives no certificate. So the kernel computes the verdict. `compile_rejected_goal` in `Examples`: `compile {} Λc (onC EscSrc)` is `.rejected (.levelEscape EscGoalCtx [f] [κ_g] κ_g cert)` for a certificate `cert : ¬ ∃ d : Subcap EscGoalCtx [f] [κ_g], d.MemberFree`. `TopEsc_compile_rejected` is the same for the escape at the top, at `TopGoalCtx` and the universal root. `Esc_rejected'` and `top_escape_rejected` prove the two certificates by hand.
-
-- In `Examples`: a type, a compile and a checker verdict for each accepted program, a rejection at every budget for each rejected one, the reason of each rejection by a level escape, and the recursion limit for `LP_limit`, `PF_limit` and `LQ2_limit`.
+- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation and its use set. `compile_erase`, `compile_faithful`: the translation erases to the compiled term, which has the skeleton of the fill.
+- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: a run of a compiled program never gets stuck. `compile_capture_prediction`, `compile_effect_safety`: a run uses no more than the use set, and never reads a capability outside a use set with no filter.
+- `compile_lvl_safety`, `compile_rejected_goal`: a subcapturing of the derivation that reads no capture member keeps capabilities in their scopes, and a rejection for a level escape proves that no such subcapturing reaches its goal.
+- `compile_kind_checks`, `compile_classified_effect_safety`, `compile_filtered_effect_safety`: after `compileKinded` or `compileFiltered` at a kind `φ`, the FCdot checker accepts the kinding, and a run reads only capabilities whose classifier `φ` admits.
+- `shp?_complete`, `cap?_complete`, `kind?_complete`, `esub?_complete`, `sub?_complete`, `var?_complete` and the `_reject` versions: a goal `Alg` derives is answered when the tank did not run short, and a rejection then means `Alg` derives no such goal. `Alg.sound`: a goal `Alg` derives has a derivation of the calculus.
+- `sub?_mono`, `kind?_stable`, `synthTop?_mono`, `synthTop?_stable`, `elabTop?_mono`, `elabTop?_stable`, `elabProg?_mono`, `elabProg?_stable`: an answer, or a rejection when the tank did not run short, stays the same at more fuel.
+- `compile_full`, `compileE_fills`: a program with every slot written compiles as the typer's verdict on it, declared use set included, and the fill agrees with every written slot.
+- `elab_complete_direct`, `compile_complete_direct`, `compile_complete_canonAt`: where the elaborator runs the typer's own clause on the fill, a canonical fill the typer accepts is found from some fuel on, and an erased program compiles as the written one.
+- In `Examples`, for a program `X`: `X_compiles`, `X_checks` for each accepted one, `X_rejected` at every budget for each rejected one, `X_erased` for the erasure tables, `X_complete` where completeness applies, and `LP_limit`, `PF_limit` and `LQ2_limit` at the limit.
 
 ## What it leaves out
 
 - A derivation through a middle type the program does not write, and a merge of two members of one name. The calculus has no rule for the merge, so the typer tries each member.
+- A union of two domains, which scalac forms and the typer rejects as a mismatch.
+- Completeness over every filling, which fails at a call argument the typer types only at a non-dominant formal (`Mid` in `Examples`), and for the typer as a whole.
 - A judgment whose search needs more than the fuel, such as Pierce's divergence of F<:.
 - A lookup through a cyclic member, cut as the compiler cuts a cyclic reference.
-- A completeness theorem for the typer as a whole, and a safety theorem at a context other than the platform's.
+- A safety theorem at a context other than the platform's.
 - `fresh` under a filter and in a lambda domain, and a kind built from `only` and `except` together, which may print as `name \ {names}`, a form the notation does not parse.
 
 ## Building

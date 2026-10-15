@@ -144,6 +144,31 @@ closure declared at a filtered set that names `io`.  The logs of C2, S1, CE1, CE
 pinned.  S2, C2, E2, CE1, CE2 and CE3 are run from their platform's initial
 store, printed with the platform's own names, and pinned at the step count at
 which they become final.
+
+## Annotations erased
+
+The closed programs above, the programs of `Elab.lean` with their written
+forms, and the classifier programs are taken through the front end again with
+the annotations of their bodies erased, in five ways: every lambda domain (`D`),
+every self shape (`S`), the domain of every lambda passed as an argument
+(`A`), the domain of every lambda in a checked position (`C`), and `C` with
+every self shape erased too (`G`).  The classifier declarations, the platform,
+the declared use set and the declared kind stay as written.  `row` gives the
+verdict on each, by `decide +kernel`.  `RejectedWith`, `erasedCell_same` and
+`erasedCell_other` read a cell as a fact about `compile`.  Each erased program
+that compiles has its `_checks` theorem.
+
+## Completeness at the direct sites
+
+Each erased program whose empty slots sit at direct sites, as `Canon` of
+`Pipeline.lean` names them, has a `_complete` theorem: it compiles as its
+written form does, header, fill, term, use set, type and derivation, at every
+budget from some fuel on (`CompilesAs`, `compile_complete_canonAt`).  These
+are the erased programs of the tables that compile at the written body but
+those whose self shapes the rounds form, and SideCurry, whose inner lambda
+takes its domain through an intersection.  Mid is a call argument the typer
+accepts at a formal other than the dominant one, which the elaborator
+rejects.
 -/
 
 namespace ClassifiersFrontend
@@ -288,7 +313,8 @@ budget.**  Above the fuel of the check this is `synthInF_stable`.  Below it,
 an answer would be kept by `synthInF_mono` and contradict the check.  With no
 candidate, `synthIn?` is `rejected` or `unknown`, and `compile` passes either
 on.  A program that does not resolve gives a marked tank in `judgProg`, so it
-cannot meet the premise. -/
+cannot meet the premise.  So the program resolves with every slot of its body
+written, and `compile_full` makes its compile the typer's verdict. -/
 theorem judgProg_rejects {Λ : LabelTable} {p : SProg} {n k : Nat}
     (h : judgProg Λ p n = (none, ⟨k, false⟩)) (b : Budget) : (compile b Λ p).isOk = false := by
   unfold judgProg at h
@@ -325,7 +351,8 @@ theorem judgProg_rejects {Λ : LabelTable} {p : SProg} {n k : Nat}
     have ht : (typeAt b p.platNames r.plat r.body).isOk = false := by
       unfold typeAt synthPlat?
       exact Verdict.isOk_bind_false (Verdict.isOk_bind_false hin)
-    simp only [compile, hr]
+    rw [compile_full hr]
+    unfold compileLanded
     exact Verdict.isOk_map_false (Verdict.isOk_bind_false ht)
 
 /-- A run that answers with the tank unmarked gives a derivation. -/
@@ -3229,5 +3256,3314 @@ example : (runFinal? {} 12 Λk CE3src && ! runFinal? {} 11 Λk CE3src) = true :=
   decide +kernel
 
 end Examples
+
+/-! ## Annotations erased
+
+Each program below is written with every slot, then its body is erased in
+five ways.  `D` erases every lambda domain, `S` every self shape, and `A` the
+domain of every lambda passed as an argument.  `C` erases the domain of every
+lambda in a checked position, where the typer passes a goal: directly under an
+ascription, an argument, the bound term of `let x : A = t in x`, the body of a
+`let` with a written answer, a field of a literal whose self shape is written,
+and the body of a lambda or a block in such a position.  `G` is `C` with every
+self shape erased too.  `G` is the program a Scala programmer writes where an
+expected type reaches.  The erasures act on the body of the surface program,
+so `compile` applies to the result, and each agrees with the erasure of the
+same name on the resolved body (`Erasure.agrees`).  The classifier
+declarations, the platform, the declared use set and the declared kind stay as
+written: a kind is no slot.
+
+A cell is the verdict of `compileE` on an erased program at `defaultFuel`,
+with the tank the elaborator leaves.  An erasure that changes nothing is
+`noSlot`, whose verdict is the written one by `compile_full`.  A program that
+compiles does so at the written body (`same`) or at another fill (`other`),
+with the type `compile` returns.  The fill is the body `compile` returns.  A
+fill that fails the agreement or the skeleton test of `compileE` is `shape`,
+and `compileE` reports a mismatch there.  A fill the elaborator types whose
+record does not reach the declared use set is `undeclared`.  A rejected
+program has its reason, with the typer's own reason named.  When the
+elaborator finds no candidate and no reason of its own, the reason is the
+typer's verdict on the fill, as `compileE` reports it.  The first cell of a
+row is the written program itself.
+
+A cell whose reason search reaches the certificate builder of a level escape
+is one the kernel does not evaluate, since the builder reads the well-founded
+`Ctx.caps`.  These are the escapes and CapPure.  Their rows are checked by
+`#eval expect`, and their other cells by the kernel.  No cell of the tables
+is `undeclared`. -/
+
+section Erasures
+
+mutual
+/-- Every lambda domain erased. -/
+def STm.eraseDoms (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .lam κ x _ t => .lam κ x none (STm.eraseDoms t)
+  | .obj x S d => .obj x S (SDefs.eraseDoms d)
+  | .app t u => .app (STm.eraseDoms t) (STm.eraseDoms u)
+  | .proj t a => .proj (STm.eraseDoms t) a
+  | .«let» x ann t u => .«let» x ann (STm.eraseDoms t) (STm.eraseDoms u)
+  | .letex κ x t u => .letex κ x (STm.eraseDoms t) (STm.eraseDoms u)
+  | .box t => .box (STm.eraseDoms t)
+  | .unbox C t => .unbox C (STm.eraseDoms t)
+  | .asc t T => .asc (STm.eraseDoms t) T
+termination_by structural e
+/-- Every lambda domain erased, in definitions. -/
+def SDefs.eraseDoms (d : SDefs) : SDefs :=
+  match d with
+  | .typ A S => .typ A S
+  | .cap C c => .cap C c
+  | .trm a T t => .trm a T (STm.eraseDoms t)
+  | .and d e => .and (SDefs.eraseDoms d) (SDefs.eraseDoms e)
+termination_by structural d
+end
+
+mutual
+/-- Every self shape erased. -/
+def STm.eraseSelf (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .lam κ x T t => .lam κ x T (STm.eraseSelf t)
+  | .obj x _ d => .obj x none (SDefs.eraseSelf d)
+  | .app t u => .app (STm.eraseSelf t) (STm.eraseSelf u)
+  | .proj t a => .proj (STm.eraseSelf t) a
+  | .«let» x ann t u => .«let» x ann (STm.eraseSelf t) (STm.eraseSelf u)
+  | .letex κ x t u => .letex κ x (STm.eraseSelf t) (STm.eraseSelf u)
+  | .box t => .box (STm.eraseSelf t)
+  | .unbox C t => .unbox C (STm.eraseSelf t)
+  | .asc t T => .asc (STm.eraseSelf t) T
+termination_by structural e
+/-- Every self shape erased, in definitions. -/
+def SDefs.eraseSelf (d : SDefs) : SDefs :=
+  match d with
+  | .typ A S => .typ A S
+  | .cap C c => .cap C c
+  | .trm a T t => .trm a T (STm.eraseSelf t)
+  | .and d e => .and (SDefs.eraseSelf d) (SDefs.eraseSelf e)
+termination_by structural d
+end
+
+/-- A lambda's domain erased, at the head only. -/
+def STm.dropDom : STm → STm
+  | .lam κ x _ t => .lam κ x none t
+  | e => e
+
+mutual
+/-- The domain of every lambda passed as an argument erased.  The resolver
+binds such a lambda by an `arg` binding. -/
+def STm.eraseArgs (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .lam κ x T t => .lam κ x T (STm.eraseArgs t)
+  | .obj x S d => .obj x S (SDefs.eraseArgs d)
+  | .app t u => .app (STm.eraseArgs t) (STm.dropDom (STm.eraseArgs u))
+  | .proj t a => .proj (STm.eraseArgs t) a
+  | .«let» x ann t u => .«let» x ann (STm.eraseArgs t) (STm.eraseArgs u)
+  | .letex κ x t u => .letex κ x (STm.eraseArgs t) (STm.eraseArgs u)
+  | .box t => .box (STm.eraseArgs t)
+  | .unbox C t => .unbox C (STm.eraseArgs t)
+  | .asc t T => .asc (STm.eraseArgs t) T
+termination_by structural e
+/-- The domain of every lambda passed as an argument erased, in definitions. -/
+def SDefs.eraseArgs (d : SDefs) : SDefs :=
+  match d with
+  | .typ A S => .typ A S
+  | .cap C c => .cap C c
+  | .trm a T t => .trm a T (STm.eraseArgs t)
+  | .and d e => .and (SDefs.eraseArgs d) (SDefs.eraseArgs e)
+termination_by structural d
+end
+
+mutual
+/-- The domain of every lambda in a checked position erased, and with `fS`
+every self shape too.  A position is checked when the typer passes it a goal:
+directly under an ascription, an argument of an application, the bound term
+of `let x : A = t in x`, the body of a `let` with a written answer, a field of
+a literal whose self shape is written, and the body of a lambda or a block in
+a checked position.  `chk` says whether the term itself sits in one. -/
+def STm.eraseChecked (fS chk : Bool) (e : STm) : STm :=
+  match e with
+  | .var x => .var x
+  | .lam κ x T t => .lam κ x (if chk then none else T) (STm.eraseChecked fS chk t)
+  | .obj x S d => .obj x (if fS then none else S) (SDefs.eraseChecked fS (!fS && S.isSome) d)
+  | .app t u => .app (STm.eraseChecked fS false t) (STm.eraseChecked fS true u)
+  | .proj t a => .proj (STm.eraseChecked fS false t) a
+  | .«let» x ann t u =>
+      .«let» x ann (STm.eraseChecked fS (ann.isSome && decide (u = .var x)) t)
+        (STm.eraseChecked fS (chk || ann.isSome) u)
+  | .letex κ x t u => .letex κ x (STm.eraseChecked fS false t) (STm.eraseChecked fS chk u)
+  | .box t => .box (STm.eraseChecked fS false t)
+  | .unbox C t => .unbox C (STm.eraseChecked fS false t)
+  | .asc t T => .asc (STm.eraseChecked fS true t) T
+termination_by structural e
+/-- The domain of every lambda in a checked position erased, in
+definitions. -/
+def SDefs.eraseChecked (fS chk : Bool) (d : SDefs) : SDefs :=
+  match d with
+  | .typ A S => .typ A S
+  | .cap C c => .cap C c
+  | .trm a T t => .trm a T (STm.eraseChecked fS chk t)
+  | .and d e => .and (SDefs.eraseChecked fS chk d) (SDefs.eraseChecked fS chk e)
+termination_by structural d
+end
+
+/-- The five erasures of the tables. -/
+inductive Erasure where
+  /-- Every lambda domain. -/
+  | D
+  /-- Every self shape. -/
+  | S
+  /-- The domain of every lambda passed as an argument. -/
+  | A
+  /-- The domain of every lambda in a checked position. -/
+  | C
+  /-- Every self shape, and the domain of every lambda in a checked
+  position. -/
+  | G
+deriving DecidableEq
+
+/-- An erasure on the surface body. -/
+def Erasure.surface : Erasure → STm → STm
+  | .D, e => STm.eraseDoms e
+  | .S, e => STm.eraseSelf e
+  | .A, e => STm.eraseArgs e
+  | .C, e => STm.eraseChecked false false e
+  | .G, e => STm.eraseChecked true false e
+
+/-- The same erasure on the resolved body. -/
+def Erasure.resolved {s : Sig} : Erasure → PTm s → PTm s
+  | .D, p => p.eraseDoms
+  | .S, p => p.eraseSelf
+  | .A, p => p.eraseArgs
+  | .C, p => p.eraseChecked false false
+  | .G, p => p.eraseG
+
+/-- A whole program with another body, its header as written. -/
+def SProg.withSBody (p : SProg) (b : STm) : SProg := { p with body := b }
+
+/-- A whole program with its body erased. -/
+def Erasure.prog (k : Erasure) (p : SProg) : SProg := p.withSBody (k.surface p.body)
+
+/-- The erased surface program resolves to the resolved body erased, under
+the same header. -/
+def Erasure.agrees (k : Erasure) (Λ : LabelTable) (p : SProg) : Bool :=
+  decide ((resolvePProg Λ (k.prog p)).map Prod.snd =
+    (resolvePProg Λ p).map fun r => k.resolved r.2)
+
+/-- A reason with the typer's own reason replaced by its name. -/
+abbrev RView := Frontend.Reason.Reason Label String
+
+/-- The verdict on one erased program. -/
+inductive Cell (s : Sig) where
+  /-- The erasure changes nothing. -/
+  | noSlot
+  /-- Compiled at the written body, with its type and the tank left. -/
+  | same (T : Ty s) (t : Tank)
+  /-- Compiled at another fill, with its type and the tank left. -/
+  | other (T : Ty s) (t : Tank)
+  /-- Rejected, with the reason and the tank left. -/
+  | no (r : RView) (t : Tank)
+  /-- The erased program is not the written one with some slots empty, or
+  its fill does not agree with it. -/
+  | shape
+  /-- Elaborated, but the record does not reach the declared use set: the
+  reason `atDeclared` gives. -/
+  | undeclared (r : RView)
+deriving DecidableEq
+
+/-- The elaborator's verdict on the resolved body `q` of a program `p` with
+header `h` at `defaultFuel`, read as `compileE` reads it.  `a?` is the written
+body, when there is one: a fill equal to it is `same`, any other fill
+`other`. -/
+def cellOf (p : SProg) (h : ProgHeader p.platNames.sig) (q : PTm p.platNames.sig)
+    (a? : Option (ATm p.platNames.sig)) : Cell p.platNames.sig :=
+  match elabProgF defaultFuel p h q with
+  | (.ok c, t) =>
+      match c.e.split with
+      | .inl e =>
+          if q.fills c.fill = true then
+            if hs : ATm.skel e.tm = ATm.skel c.fill then
+              match atDeclared {} h.plat ⟨e.tm, e.uses, e.ty, e.deriv, hs⟩ h.uses with
+              | .ok c' => if some c.fill = a? then .same c'.ty t else .other c'.ty t
+              | .rejected r => .undeclared (.landed r.name)
+              | .unknown => .undeclared .mismatch
+            else .shape
+          else .shape
+      | .inr x => .no (EReason.view (.landed (existentialAt h.plat.ctx x))) t
+  | (.error .mismatch, t) => .no (fillReason {} p h q).view t
+  | (.error r, t) => .no r.view t
+
+/-- The verdict on `w` with the body `b`, the written body with some slots
+empty.  `PTm.fills` checks that `b` is such a body. -/
+def erasedCell (Λ : LabelTable) (w : SProg) (b : STm) : Cell w.platNames.sig :=
+  match resolveProg Λ w, resolvePProg Λ (w.withSBody b) with
+  | some r, some (h, q) => if q.fills r.body then cellOf (w.withSBody b) h q (some r.body) else .shape
+  | _, _ => .shape
+
+/-- The verdict on a program with no written form. -/
+def openCell (Λ : LabelTable) (e : SProg) : Cell e.platNames.sig :=
+  match resolvePProg Λ e with
+  | some (h, q) => cellOf e h q none
+  | none => .shape
+
+/-- The verdict on the program `w` erased by `k`. -/
+def cell (k : Erasure) (Λ : LabelTable) (w : SProg) : Cell w.platNames.sig :=
+  if k.surface w.body = w.body then .noSlot else erasedCell Λ w (k.surface w.body)
+
+/-- A row of the table: the written program, then its five erasures. -/
+def row (Λ : LabelTable) (w : SProg) : List (Cell w.platNames.sig) :=
+  [erasedCell Λ w w.body, cell .D Λ w, cell .S Λ w, cell .A Λ w, cell .C Λ w, cell .G Λ w]
+
+/-- The written program, then the same program with another body. -/
+def pair (Λ : LabelTable) (w : SProg) (b : STm) : List (Cell w.platNames.sig) :=
+  [erasedCell Λ w w.body, erasedCell Λ w b]
+
+/-- The type `compile` gives a written program, `⊤` when it gives none. -/
+def tyOf (Λ : LabelTable) (w : SProg) : Ty w.platNames.sig :=
+  match compile {} Λ w with
+  | .ok r => r.2.ty
+  | _ => Shape.top ^ []
+
+/-- The tank left after `n` units of `defaultFuel`, unmarked. -/
+def spent (n : Nat) : Tank := ⟨defaultFuel - n, false⟩
+
+/-- The tank left after `n` units of `defaultFuel`, marked. -/
+def marked (n : Nat) : Tank := ⟨defaultFuel - n, true⟩
+
+/-- A missing parameter type after `n` units. -/
+def missing {s : Sig} (n : Nat) : Cell s := .no (.missingParamType none) (spent n)
+
+/-- The written verdict, a missing parameter type under `D` from a full tank,
+and no slot for the other erasures: a program whose outermost term is a
+lambda, with no self shape and no domain in a checked position. -/
+abbrev LambdaRow (Λ : LabelTable) (w : SProg) (c : Cell w.platNames.sig) : Prop :=
+  row Λ w = [c, missing 0, .noSlot, .noSlot, .noSlot, .noSlot]
+
+/-! ### What a cell says about `compile`
+
+A cell is computed from `elabProgF`, the fill and `atDeclared`, as `compileE`
+is, so a cell fact is a fact about `compile`.  A rejection that ends unmarked
+is a rejection at every budget, by `elabProg?_stable` above `defaultFuel` and
+`elabProg?_mono` below it.  The reason is the one `compileE` reports at the
+default budget.  A reason of inference comes from the elaborator alone, so it
+is also the reason at every budget from `defaultFuel` up.  A reason of the
+typer may come from the fill of a failed elaboration, whose own tank no
+theorem follows. -/
+
+/-- The reason of a result, with the typer's own reason replaced by its
+name. -/
+def errView {α : Type} : Except EReason α → Option RView
+  | .ok _ => none
+  | .error r => some r.view
+
+/-- The reason `compileE` reports at the budget `b`, if it reports one. -/
+def reasonAt (b : Budget) (Λ : LabelTable) (e : SProg) : Option RView :=
+  errView (compileE b Λ e)
+
+/-- A program rejected at every budget, with the reason `compileE` reports
+at the default budget. -/
+def RejectedWith (Λ : LabelTable) (e : SProg) (r : RView) : Prop :=
+  (∀ b, (compile b Λ e).isOk = false) ∧ reasonAt {} Λ e = some r
+
+/-- A program rejected at every budget, with the same reason at every budget
+from `defaultFuel` up. -/
+def RejectedAbove (Λ : LabelTable) (e : SProg) (r : RView) : Prop :=
+  RejectedWith Λ e r ∧ ∀ b : Budget, defaultFuel ≤ b.fuel → reasonAt b Λ e = some r
+
+/-- A result that is an error is no success. -/
+theorem verdictOf_error {α : Type} {x : Except EReason α} {r : EReason} (h : x = .error r) :
+    (verdictOf x).isOk = false := by
+  subst h
+  cases r <;> rfl
+
+/-- More fuel keeps a record that reaches the declared use set. -/
+theorem atDeclared_mono {b b' : Budget} {s₀ : Sig} {P : Platform s₀} {a : ATm s₀}
+    {c c' : Compiled P a} {U : Option (CaptureSet s₀)} (h : atDeclared b P c U = .ok c')
+    (hb : b.fuel ≤ b'.fuel) : atDeclared b' P c U = .ok c' := by
+  cases U with
+  | none => exact h
+  | some U =>
+    unfold atDeclared at h ⊢
+    dsimp only at h ⊢
+    by_cases hu : c.use = U
+    · rw [if_pos hu] at h ⊢
+      exact h
+    · rw [if_neg hu] at h ⊢
+      cases he : (cap? P.ctx c.use U b.fuel).1 with
+      | some e =>
+        rw [he] at h
+        rw [cap?_mono he hb]
+        exact h
+      | none =>
+        rw [he] at h
+        exfalso
+        revert h
+        cases certify? P.ctx c.use U <;> intro h <;> cases h
+
+/-- An elaboration that ends in a reason with the tank unmarked fails at
+every budget. -/
+theorem elabProgF_error_all {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {r : EReason} {n : Nat}
+    (het : elabProgF defaultFuel p h q = (.error r, ⟨n, false⟩)) (m : Nat) :
+    ∃ r', (elabProgF m p h q).1 = .error r' := by
+  cases hm : (elabProgF m p h q).1 with
+  | error r' => exact ⟨r', rfl⟩
+  | ok c =>
+    exfalso
+    rcases Nat.le_total defaultFuel m with hle | hle
+    · have hs := elabProg?_stable het (m - defaultFuel)
+      rw [Nat.add_sub_cancel' hle, hm] at hs
+      cases hs
+    · have hd := elabProg?_mono hm hle
+      rw [het] at hd
+      cases hd
+
+/-- `compileE` after resolution reads the elaborator's first answer. -/
+theorem compileE_error_of {b : Budget} {Λ : LabelTable} {p : SProg}
+    {h : ProgHeader p.platNames.sig} {q : PTm p.platNames.sig} {r : EReason}
+    (hp : resolvePProg Λ p = some (h, q)) (het : (elabProgF b.fuel p h q).1 = .error r) :
+    ∃ r', compileE b Λ p = .error r' := by
+  unfold compileE
+  rw [hp]
+  simp only [het]
+  cases r <;> exact ⟨_, rfl⟩
+
+/-- An existential answer is an error of `compileE`. -/
+theorem compileE_ex_of {b : Budget} {Λ : LabelTable} {p : SProg}
+    {h : ProgHeader p.platNames.sig} {q : PTm p.platNames.sig} {c : ECand h.plat.ctx}
+    {x : XElab h.plat.ctx} (hp : resolvePProg Λ p = some (h, q))
+    (het : (elabProgF b.fuel p h q).1 = .ok c) (hs : c.e.split = .inr x) :
+    compileE b Λ p = .error (.landed (existentialAt h.plat.ctx x)) := by
+  unfold compileE
+  rw [hp]
+  simp only [het, hs]
+
+/-- **An elaboration that fails unmarked rejects at every budget.** -/
+theorem rejects_of_error {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {r : EReason} {n : Nat}
+    (hp : resolvePProg Λ p = some (h, q))
+    (het : elabProgF defaultFuel p h q = (.error r, ⟨n, false⟩)) (b : Budget) :
+    (compile b Λ p).isOk = false := by
+  obtain ⟨r', hr'⟩ := elabProgF_error_all het b.fuel
+  obtain ⟨r'', h⟩ := compileE_error_of hp hr'
+  exact verdictOf_error h
+
+/-- An elaboration whose first answer is existential rejects at every
+budget. -/
+theorem rejects_of_ex {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {c : ECand h.plat.ctx} {x : XElab h.plat.ctx}
+    (hp : resolvePProg Λ p = some (h, q))
+    (het : (elabProgF defaultFuel p h q).1 = .ok c) (hs : c.e.split = .inr x) (b : Budget) :
+    (compile b Λ p).isOk = false := by
+  cases hb : (elabProgF b.fuel p h q).1 with
+  | error r =>
+    obtain ⟨r', h⟩ := compileE_error_of hp hb
+    exact verdictOf_error h
+  | ok c' =>
+    have hc' : c' = c := by
+      rcases Nat.le_total defaultFuel b.fuel with hle | hle
+      · have hm := elabProg?_mono het hle
+        rw [hb] at hm
+        cases hm
+        rfl
+      · have hm := elabProg?_mono hb hle
+        rw [het] at hm
+        cases hm
+        rfl
+    subst hc'
+    exact verdictOf_error (compileE_ex_of hp hb hs)
+
+/-- The elaborator's tank on a rejected cell, and the reason `compileE` gives
+at the default budget. -/
+theorem cellOf_no {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {a? : Option (ATm p.platNames.sig)} {r : RView} {n : Nat}
+    (hp : resolvePProg Λ p = some (h, q)) (hc : cellOf p h q a? = .no r ⟨n, false⟩) :
+    RejectedWith Λ p r ∧
+      ((∃ r0, elabProgF defaultFuel p h q = (.error r0, ⟨n, false⟩) ∧
+          (r0 ≠ .mismatch → r0.view = r)) ∨
+        ∃ c x, elabProgF defaultFuel p h q = (.ok c, ⟨n, false⟩) ∧ c.e.split = .inr x) := by
+  unfold cellOf at hc
+  split at hc
+  · rename_i c t het
+    split at hc
+    · split at hc
+      · split at hc
+        · split at hc
+          · split at hc <;> cases hc
+          · cases hc
+          · cases hc
+        · cases hc
+      · cases hc
+    · rename_i x hs
+      cases hc
+      have het1 : (elabProgF defaultFuel p h q).1 = .ok c := by rw [het]
+      refine ⟨⟨rejects_of_ex hp het1 hs, ?_⟩, .inr ⟨c, x, het, hs⟩⟩
+      unfold reasonAt
+      rw [compileE_ex_of (b := {}) hp het1 hs]
+      rfl
+  · rename_i t het
+    cases hc
+    refine ⟨⟨rejects_of_error hp het, ?_⟩, .inl ⟨.mismatch, het, fun h => absurd rfl h⟩⟩
+    unfold reasonAt compileE
+    rw [hp]
+    have h1 : (elabProgF ({} : Budget).fuel p h q).1 = .error .mismatch := by rw [het]
+    simp only [h1]
+    rfl
+  · rename_i r0 t hne het
+    cases hc
+    refine ⟨⟨rejects_of_error hp het, ?_⟩, .inl ⟨r0, het, fun _ => rfl⟩⟩
+    unfold reasonAt compileE
+    rw [hp]
+    have h1 : (elabProgF ({} : Budget).fuel p h q).1 = .error r0 := by rw [het]
+    simp only [h1]
+    cases r0 with
+    | mismatch => exact absurd rfl hne
+    | _ => rfl
+
+/-- **A rejected cell with the tank unmarked is a rejection at every
+budget.** -/
+theorem erasedCell_rejected {Λ : LabelTable} {w : SProg} {b : STm} {r : RView} {n : Nat}
+    (h : erasedCell Λ w b = .no r ⟨n, false⟩) : RejectedWith Λ (w.withSBody b) r := by
+  unfold erasedCell at h
+  split at h
+  · rename_i a hd q _ hp
+    split at h
+    · exact (cellOf_no hp h).1
+    · cases h
+  · cases h
+
+/-- **A program with no written form, rejected with the tank unmarked, is
+rejected at every budget.** -/
+theorem openCell_rejected {Λ : LabelTable} {e : SProg} {r : RView} {n : Nat}
+    (h : openCell Λ e = .no r ⟨n, false⟩) : RejectedWith Λ e r := by
+  unfold openCell at h
+  split at h
+  · rename_i hd q hp
+    exact (cellOf_no hp h).1
+  · cases h
+
+/-- A slot reason comes from the elaborator, never from the fill. -/
+theorem view_slot {r : EReason} : r.view.isSlotReason = r.isSlotReason := by
+  cases r <;> rfl
+
+/-- The reason of an elaboration that fails unmarked is `compileE`'s reason at
+every budget from `defaultFuel` up, when it is not a mismatch. -/
+theorem reasonAt_above {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {r0 : EReason} {n : Nat} (hp : resolvePProg Λ p = some (h, q))
+    (het : elabProgF defaultFuel p h q = (.error r0, ⟨n, false⟩)) (hne : r0 ≠ .mismatch)
+    (b : Budget) (hb : defaultFuel ≤ b.fuel) : reasonAt b Λ p = some r0.view := by
+  have hs := elabProg?_stable het (b.fuel - defaultFuel)
+  rw [Nat.add_sub_cancel' hb] at hs
+  unfold reasonAt compileE
+  rw [hp]
+  simp only [hs]
+  cases r0 with
+  | mismatch => exact absurd rfl hne
+  | _ => rfl
+
+/-- **A slot reason holds at every budget.**  A rejected cell whose reason is
+a reason of inference, with the tank unmarked, is the reason of `compileE` at
+every budget from `defaultFuel` up. -/
+theorem cellOf_slot {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {a? : Option (ATm p.platNames.sig)} {r : RView} {n : Nat}
+    (hp : resolvePProg Λ p = some (h, q)) (hc : cellOf p h q a? = .no r ⟨n, false⟩)
+    (hr : r.isSlotReason = true) : RejectedAbove Λ p r := by
+  obtain ⟨hw, hcase⟩ := cellOf_no hp hc
+  refine ⟨hw, fun b hb => ?_⟩
+  rcases hcase with ⟨r0, het, hv⟩ | ⟨c, x, het, hs⟩
+  · have hne : r0 ≠ .mismatch := by
+      intro h0
+      subst h0
+      unfold cellOf at hc
+      rw [het] at hc
+      simp only at hc
+      cases hc
+      rw [view_slot, fillReason_not_slot] at hr
+      cases hr
+    rw [reasonAt_above hp het hne b hb, hv hne]
+  · exfalso
+    unfold cellOf at hc
+    rw [het] at hc
+    simp only [hs] at hc
+    cases hc
+    cases hr
+
+/-- **A slot reason of an erased program holds at every budget.** -/
+theorem erasedCell_slot {Λ : LabelTable} {w : SProg} {b : STm} {r : RView} {n : Nat}
+    (h : erasedCell Λ w b = .no r ⟨n, false⟩) (hr : r.isSlotReason = true) :
+    RejectedAbove Λ (w.withSBody b) r := by
+  unfold erasedCell at h
+  split at h
+  · rename_i a hd q _ hp
+    split at h
+    · exact cellOf_slot hp h hr
+    · cases h
+  · cases h
+
+/-- **A slot reason of a program with no written form holds at every
+budget.** -/
+theorem openCell_slot {Λ : LabelTable} {e : SProg} {r : RView} {n : Nat}
+    (h : openCell Λ e = .no r ⟨n, false⟩) (hr : r.isSlotReason = true) :
+    RejectedAbove Λ e r := by
+  unfold openCell at h
+  split at h
+  · rename_i hd q hp
+    exact cellOf_slot hp h hr
+  · cases h
+
+/-- An elaboration whose fill passes the two tests and whose record reaches
+the declared use set is `compile`: the fill, at the record's type. -/
+theorem compile_of_fill {b : Budget} {Λ : LabelTable} {p : SProg}
+    {h : ProgHeader p.platNames.sig} {q : PTm p.platNames.sig} {c : ECand h.plat.ctx}
+    {e : PElab h.plat.ctx} {c' : Compiled h.plat c.fill} (hp : resolvePProg Λ p = some (h, q))
+    (het : (elabProgF b.fuel p h q).1 = .ok c) (hs : c.e.split = .inl e)
+    (hf : q.fills c.fill = true) (hk : ATm.skel e.tm = ATm.skel c.fill)
+    (hd : atDeclared b h.plat ⟨e.tm, e.uses, e.ty, e.deriv, hk⟩ h.uses = .ok c') :
+    (compile b Λ p).toOption.map (fun r => (r.1.body, r.2.ty)) = some (c.fill, c'.ty) := by
+  show (verdictOf (compileE b Λ p)).toOption.map _ = _
+  unfold compileE
+  rw [hp]
+  simp only [het, hs, hf, if_true, dif_pos hk, hd]
+  rfl
+
+/-- A compiled cell is `compile` at every budget from `defaultFuel` up: the
+fill and the type. -/
+theorem cellOf_ok {Λ : LabelTable} {p : SProg} {h : ProgHeader p.platNames.sig}
+    {q : PTm p.platNames.sig} {a? : Option (ATm p.platNames.sig)} {d : Cell p.platNames.sig}
+    (hp : resolvePProg Λ p = some (h, q)) (hc : cellOf p h q a? = d)
+    (hd : ∃ T t, d = .same T t ∨ d = .other T t) :
+    ∃ (c : ECand h.plat.ctx) (T : Ty p.platNames.sig),
+      (elabProgF defaultFuel p h q).1 = .ok c ∧
+      (∀ b : Budget, defaultFuel ≤ b.fuel →
+        (compile b Λ p).toOption.map (fun r => (r.1.body, r.2.ty)) = some (c.fill, T)) ∧
+      d = (if some c.fill = a? then .same T (elabProgF defaultFuel p h q).2
+        else .other T (elabProgF defaultFuel p h q).2) := by
+  obtain ⟨T0, t0, hd⟩ := hd
+  unfold cellOf at hc
+  split at hc
+  · rename_i c t het
+    have het1 : (elabProgF defaultFuel p h q).1 = .ok c := by rw [het]
+    split at hc
+    · rename_i e hs
+      split at hc
+      · rename_i hf
+        split at hc
+        · rename_i hk
+          split at hc
+          · rename_i c' hdc
+            refine ⟨c, c'.ty, het1,
+              fun b hb => compile_of_fill hp (elabProg?_mono het1 hb) hs hf hk
+                (atDeclared_mono hdc hb), ?_⟩
+            rw [← hc, het]
+          · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+          · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+        · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+      · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+    · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+  · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+  · rcases hd with hd | hd <;> rw [hd] at hc <;> cases hc
+
+/-- **A cell at the written body is `compile` at the written body.**  At every
+budget from `defaultFuel` up, the erased program compiles to the body the
+written program resolves to, at the cell's type. -/
+theorem erasedCell_same {Λ : LabelTable} {w : SProg} {b : STm} {T : Ty w.platNames.sig}
+    {t : Tank} (h : erasedCell Λ w b = .same T t) (bud : Budget) (hb : defaultFuel ≤ bud.fuel) :
+    (compile bud Λ (w.withSBody b)).toOption.map (fun r => (r.1.body, r.2.ty)) =
+      (resolveProg Λ w).map (fun r => (r.body, T)) := by
+  unfold erasedCell at h
+  split at h
+  · rename_i r hd q hw hp
+    split at h
+    · obtain ⟨c, T', _, hcomp, heq⟩ := cellOf_ok hp h ⟨T, t, .inl rfl⟩
+      rw [hcomp bud hb, hw]
+      split at heq
+      · rename_i hfa
+        cases heq
+        simp only [Option.map_some, Option.some.injEq] at hfa ⊢
+        rw [hfa]
+        rfl
+      · cases heq
+    · cases h
+  · cases h
+
+/-- **A cell at another fill is `compile` at the cell's type**, at every
+budget from `defaultFuel` up. -/
+theorem erasedCell_other {Λ : LabelTable} {w : SProg} {b : STm} {T : Ty w.platNames.sig}
+    {t : Tank} (h : erasedCell Λ w b = .other T t) (bud : Budget) (hb : defaultFuel ≤ bud.fuel) :
+    (compile bud Λ (w.withSBody b)).toOption.map (fun r => r.2.ty) = some T := by
+  unfold erasedCell at h
+  split at h
+  · rename_i r hd q hw hp
+    split at h
+    · obtain ⟨c, T', _, hcomp, heq⟩ := cellOf_ok hp h ⟨T, t, .inr rfl⟩
+      have h2 := congrArg (Option.map Prod.snd) (hcomp bud hb)
+      simp only [Option.map_map] at h2
+      split at heq
+      · cases heq
+      · cases heq
+        exact h2
+    · cases h
+  · cases h
+
+/-- A cell of an erasure that changes the body is the erased program's
+cell. -/
+theorem cell_erased {k : Erasure} {Λ : LabelTable} {w : SProg} (h : cell k Λ w ≠ .noSlot) :
+    cell k Λ w = erasedCell Λ w (k.surface w.body) := by
+  unfold cell at h ⊢
+  split
+  · rename_i he
+    rw [if_pos he] at h
+    exact absurd rfl h
+  · rfl
+
+/-- A program the elaborator rejects with the tank unmarked, as
+`elabProgOut` reports it, is rejected at every budget. -/
+theorem elabProgOut_rejects {Λ : LabelTable} {e : SProg} {r : RView} {n : Nat}
+    (h : elabProgOut Λ e = (.no r, ⟨n, false⟩)) (b : Budget) : (compile b Λ e).isOk = false := by
+  unfold elabProgOut at h
+  split at h
+  · rename_i hd q hp
+    split at h
+    · cases h
+    · rename_i r0 t het
+      cases h
+      exact rejects_of_error hp het b
+  · cases h
+
+/-! ### Written forms of programs given with empty slots
+
+`Elab.lean` checks programs written with an empty slot.  Here each gets a
+written form, and its erasure is checked to be the program there.  Where an
+erased program compiles at a self shape other than the written one, a written
+form at the formed shape states its type: `E5srcR`, `E6srcR`, `C7srcF`,
+`SelfProjSrcF`, `BareCapSrcF` and `KSelfSrcF` of `Elab.lean`, and `NestSrcW`
+here. -/
+
+/-- E6 closed over its parameter, with its self shape written as in the
+version's derivation. -/
+def E6srcW : STm :=
+  cls% λ(n : {a : ⊤}). ν(x : {T : {a : ⊤} .. {a : ⊤}} ∧ {v : x.T}. {type T = {a : ⊤}} ∧ {v = n})
+
+/-- A lambda bound with no type, the domain written. -/
+def Id0Src : STm := cls% let i = λ(x : ⊤). x in i
+
+/-- A lambda ascribed at `⊤`, the domain written. -/
+def IdTopSrc : STm := cls% (λ(x : ⊤). x : ⊤)
+
+/-- Two function sides with incomparable domains, and a lambda at `⊤` below
+both. -/
+def AndIncSrc : STm := cls% (λ(y : ⊤). y : (∀(x : {a : ⊤}) ⊤) ∧ (∀(x : {b : ⊤}) ⊤))
+
+/-- One function side and a field the lambda does not have. -/
+def AndOneSrc : STm := cls% (λ(y : ⊤). y : (∀(x : ⊤) ⊤) ∧ {a : ⊤})
+
+/-- An abstract type with a function upper bound as the goal. -/
+def UpperSrc : STm := cls% λ(y : {A : ⊥ .. ∀(x : ⊤) ⊤}). (λ(x : ⊤). x : y.A)
+
+/-- An abstract type with a function lower bound as the goal. -/
+def LowerSrc : STm := cls% λ(y : {A : ∀(x : ⊤) ⊤ .. ⊤}). (λ(x : ⊤). x : y.A)
+
+/-- A lambda bound by a written `let` and then passed, the domain written. -/
+def LetArgSrc : STm := cls% λ(g : ∀(h : ∀(x : ⊤) ⊤) ⊤). let i = λ(x : ⊤). x in g i
+
+/-- A callee whose two formals are incomparable, applied to a lambda at `⊤`. -/
+def IncSrc : STm :=
+  cls% λ(g : (∀(h : ∀(x : {a : ⊤}) ⊤) ⊤) ∧ (∀(h : ∀(x : {b : ⊤}) ⊤) ⊤)). g (λ(x : ⊤). x)
+
+/-- A callee with no function type, applied to a lambda. -/
+def NoFnSrc : STm := cls% λ(g : ⊤). g (λ(x : ⊤). x)
+
+/-- A body that calls `g` on another variable. -/
+def CalleeOtherSrc : STm := cls% λ(g : ∀(y : ⊤) ⊤). λ(z : ⊤). let h = λ(x : ⊤). g z in h
+
+/-- A callee at incomparable domains. -/
+def CalleeIncSrc : STm :=
+  cls% λ(g : (∀(y : {a : ⊤}) ⊤) ∧ (∀(y : {b : ⊤}) ⊤)). let h = λ(x : {a : ⊤}). g x in h
+
+/-- Two fields that read each other, the self shape written. -/
+def CycSrc : STm := cls% ν(z : {a : ⊤} ∧ {b : ⊤}. {a = z.b} ∧ {b = z.a})
+
+/-- A field that reads a cycle between two later fields, the self shape
+written. -/
+def Cyc3Src : STm :=
+  cls% ν(z : {a : ⊤} ∧ {b : ⊤} ∧ {v : ⊤}. {a = z.b} ∧ {b = z.v} ∧ {v = z.b})
+
+/-- A recursive field that reads itself through an alias of the self, the
+self shape written. -/
+def AliasRecSrc : STm :=
+  cls% ν(z : {a : ∀(y : ⊤) ⊤}. {a = λ(y : ⊤). let w = z in let u = w.a in u y})
+
+/-- A field whose right-hand side has two incomparable types, the self shape
+written at one of them. -/
+def AmbSrc : STm := cls% λ(y : {a : {b : ⊤}} ∧ {a : {v : ⊤}}). ν(s : {a : {b : ⊤}}. {a = y.a})
+
+/-- A field that is a lambda, the self shape and the domain written. -/
+def NoDomSrc : STm := cls% ν(z : {a : ∀(y : ⊤) ⊤}. {a = λ(y : ⊤). y})
+
+/-- A lambda ascribed at a type that puts `any` below a field of its domain,
+the domain written. -/
+def DeepAscSrc : STm := cls% (λ(x : {read : ⊤ ^ {any}}). x : ∀(x : {read : ⊤ ^ {any}}) ⊤)
+
+/-- Nest with both self shapes written at the shapes its definitions form:
+the inner field at the type of `y`. -/
+def NestSrcW : STm :=
+  cls% λ(y : {b : ⊤} ∧ {elem : ⊤}).
+        ν(o : {a : μ(z. {b : {b : ⊤} ∧ {elem : ⊤}})}.
+           {a = ν(z : {b : {b : ⊤} ∧ {elem : ⊤}}. {b = y})})
+
+/-- A literal ascribed at an alias of a `μ`: the alias is followed to the
+self shape. -/
+def AliasMuSrc : STm :=
+  cls% λ(y : {A : μ(z. {run : ∀(u : ⊤) ⊤}) .. μ(z. {run : ∀(u : ⊤) ⊤})}).
+        (ν(z : {run : ∀(u : ⊤) ⊤}. {run = λ(u : ⊤). u}) : y.A)
+
+/-- A written lambda ascribed at an intersection with one function side and an
+abstract side, whose body holds a literal with a written self shape. -/
+def X4Src : STm :=
+  cls% λ(y : {A : (∀(x : {a : ⊤}) {a : ⊤}) .. ⊤}).
+        (λ(x : {a : ⊤}). let o = ν(z : {B : ⊤ .. ⊤}. {type B = ⊤}) in x :
+          (∀(x : {a : ⊤}) ⊤) ∧ y.A)
+
+-- The erasures give the programs of `Resolve.lean` and `Elab.lean`.
+example : Erasure.D.surface E2src = E2srcD ∧ Erasure.S.surface E2src = E2srcS ∧
+    Erasure.S.surface E5src = E5srcS ∧ Erasure.S.surface E7src = E7srcS ∧
+    Erasure.D.surface E8src = E8srcD ∧ Erasure.S.surface S3src = S3srcS ∧
+    Erasure.S.surface C2src = C2srcS ∧ Erasure.C.surface C2src = C2srcG ∧
+    Erasure.G.surface S1progSrc = S1srcG ∧ Erasure.G.surface S2src = S2srcG ∧
+    Erasure.D.surface Z1progSrc = Z1srcD ∧ Erasure.S.surface Z3src = Z3srcS ∧
+    Erasure.G.surface EscSrc = EscSrcG ∧ Erasure.A.surface K1src = K1srcA ∧
+    Erasure.S.surface E6srcW = E6srcS := by
+  and_intros <;> rfl
+example : Erasure.D.surface W2ascSrc = W2ascSrcD ∧ Erasure.C.surface AndSameSrc = AndSameSrcD ∧
+    Erasure.C.surface X3Src = X3SrcD ∧ Erasure.C.surface AndTwoSrc = AndTwoSrcD ∧
+    Erasure.C.surface AndResSrc = AndResSrcD ∧ Erasure.C.surface AndIncSrc = AndIncSrcD ∧
+    Erasure.C.surface AndOneSrc = AndOneSrcD ∧ Erasure.C.surface AndTopSrc = AndTopSrcD ∧
+    Erasure.C.surface AscSrc = AscSrcD ∧ Erasure.C.surface AliasSrc = AliasSrcD ∧
+    Erasure.C.surface Alias2Src = Alias2SrcD ∧ Erasure.C.surface UpperSrc = UpperSrcD ∧
+    Erasure.C.surface LowerSrc = LowerSrcD ∧ Erasure.C.surface LoopSrc = LoopSrcD ∧
+    Erasure.D.surface Id0Src = Id0SrcD ∧ Erasure.C.surface IdTopSrc = IdTopSrcD ∧
+    Erasure.C.surface CurrySrc = CurrySrcD ∧ Erasure.C.surface SideCurrySrc = SideCurrySrcD ∧
+    Erasure.C.surface LetBodySrc = LetBodySrcD ∧ Erasure.C.surface BlockSrc = BlockSrcD ∧
+    Erasure.C.surface CapSrc = CapSrcD ∧ Erasure.C.surface CapPureSrc = CapPureSrcD ∧
+    Erasure.C.surface FldSrc = FldSrcD ∧ Erasure.S.surface AscObjSrc = AscObjSrcS ∧
+    Erasure.S.surface AscWideSrc = AscWideSrcS ∧ Erasure.D.surface DeepAscSrc = DeepSrcD := by
+  and_intros <;> rfl
+example : Erasure.A.surface S1callSrc = S1callSrcA ∧ Erasure.C.surface S1callSrc = S1callSrcG ∧
+    Erasure.A.surface KcapSrc = KcapSrcA ∧ Erasure.A.surface E11aSrc = E11aSrcA ∧
+    Erasure.A.surface X1Src = X1SrcA ∧ Erasure.A.surface DomFSrc = DomFSrcA ∧
+    Erasure.A.surface DomSrc = DomSrcA ∧ Erasure.A.surface TwoFSrc = TwoFSrcA ∧
+    Erasure.A.surface IncSrc = IncSrcA ∧ Erasure.A.surface NoFnSrc = NoFnSrcA ∧
+    Erasure.A.surface AliasArgSrc = AliasArgSrcA ∧ Erasure.C.surface BlockArgSrc = BlockArgSrcG ∧
+    Erasure.C.surface CurriedSrc = CurriedSrcG ∧ Erasure.A.surface BoxCalleeSrc = BoxCalleeSrcA ∧
+    Erasure.A.surface BoxFSrc = BoxFSrcA ∧ Erasure.A.surface AnyAscSrc = AnyAscSrcA ∧
+    Erasure.A.surface FitsSrc = FitsSrcA ∧ Erasure.A.surface TooBigSrc = TooBigSrcA ∧
+    Erasure.C.surface CalleeTopSrc = CalleeTopSrcD ∧
+    Erasure.A.surface CalleeArgSrc = CalleeArgSrcA ∧ Erasure.C.surface ValSrc = ValSrcD ∧
+    Erasure.C.surface Z1defSrc = Z1defSrcD ∧ Erasure.C.surface EscOkSrc = EscOkSrcG ∧
+    Erasure.C.surface TopEscSrc = TopEscSrcG ∧ Erasure.D.surface TopEscSrc = TopEscSrcG ∧
+    Erasure.C.surface EscSrc = EscSrcG ∧ Erasure.C.surface AscEscSrc = AscEscSrcG := by
+  and_intros <;> rfl
+example : Erasure.S.surface RecObjSrc = RecSrcS ∧ Erasure.S.surface CycSrc = CycSrcS ∧
+    Erasure.S.surface Cyc3Src = Cyc3SrcS ∧ Erasure.S.surface AliasRecSrc = AliasRecSrcS ∧
+    Erasure.S.surface BareSrc = BareSrcS ∧ Erasure.S.surface FwdSelfSrc = FwdSelfSrcS ∧
+    Erasure.S.surface BareProjSrc = BareProjSrcS ∧ Erasure.S.surface AmbSrc = AmbSrcS ∧
+    Erasure.S.surface AmbUseSrc = AmbUseSrcS ∧ Erasure.S.surface AmbUse2Src = AmbUse2SrcS ∧
+    Erasure.S.surface (NestKSrc true 2) = NestKSrc false 2 ∧ Erasure.S.surface Z1litF = Z1litS ∧
+    Erasure.S.surface FldTySrc = NoShapeSrcS := by
+  and_intros <;> rfl
+example : Erasure.D.surface CE1src.body = CE1BodyD ∧ Erasure.S.surface CE3src.body = CE3BodyS ∧
+    Erasure.D.surface CE3src.body = CE3BodyD := by
+  and_intros <;> rfl
+
+/-- The programs of the tables, each with its label table. -/
+def tablePrograms : List (LabelTable × SProg) :=
+  [(Λc, onE E1src), (Λc, onE E2src), (Λc, onE E3src), (Λc, onE E4src), (Λc, onE E5src),
+   (Λc, onE E6srcW), (Λc, onE E7src), (Λc, onE E8src), (Λc, onE E1ssrc), (Λc, onE E3ssrc),
+   (Λc, onE PA1src), (Λc, onE P4src), (Λc, onE P5src), (Λc, onE R1src), (Λc, onE R2src),
+   (Λc, onE R3src), (Λc, onE R4src), (Λc, onE B1src), (Λc, onE A1src), (Λc, onE (chainSrc 16)),
+   (Λc, onE X1src), (Λc, onE X2src), (Λc, onE LPsrc), (Λc, onE PFsrc), (Λc, onE LQ2src),
+   (Λc, onC C7boxSrc), (Λc, onC C7src), (Λc, onC S3src), (Λc, onC C2src), (Λc, onZ S1progSrc),
+   (Λc, onZ S2src), (Λc, onZ Z1progSrc), (Λc, onZ Z1defSrc), (Λc, onZ Z2src), (Λc, onZ Z3src),
+   (Λc, onC W2defSrc), (Λc, onC cov2Src), (Λc, onC cov3Src), (Λc, onC cov4Src),
+   (Λc, onC accountedSrc), (Λc, onC deepSrc), (Λc, onZ exTopSrc), (Λc, onC EscSrc),
+   (Λc, onC AscEscSrc), (Λc, onC TopEscSrc), (Λc, onC EscOkSrc), (Λc, onC BX2src),
+   (Λc, onC BXsrc), (Λc, onZ LetExSrc),
+   (Λc, onZ S1callSrc), (Λc, onE K1src), (Λc, onC KcapSrc), (Λc, onE E11aSrc), (Λc, onE X1Src),
+   (Λc, onE DomFSrc), (Λc, onE DomSrc), (Λc, onE TwoFSrc), (Λc, onE IncSrc), (Λc, onE NoFnSrc),
+   (Λc, onE AliasArgSrc), (Λc, onE BlockArgSrc), (Λc, onE CurriedSrc), (Λc, onE BoxCalleeSrc),
+   (Λc, onE BoxFSrc), (Λc, onC AnyAscSrc), (Λc, onC FitsSrc), (Λc, onC TooBigSrc),
+   (Λc, onE CalleeSrc), (Λc, onE CalleeAnySrc), (Λc, onE CalleeTopSrc), (Λc, onE CalleeArgSrc),
+   (Λc, onE CalleeOtherSrc), (Λc, onE CalleeIncSrc), (Λc, onE LetArgSrc), (Λc, onE Id0Src),
+   (Λc, onE ValSrc),
+   (Λc, onC W2ascSrc), (Λc, onE AndSameSrc), (Λc, onE X3Src), (Λc, onE X4Src),
+   (Λc, onE AndTwoSrc), (Λc, onE AndResSrc), (Λc, onE AndIncSrc), (Λc, onE AndOneSrc),
+   (Λc, onE AndTopSrc), (Λc, onE AscSrc), (Λc, onE AliasSrc), (Λc, onE Alias2Src),
+   (Λc, onE UpperSrc), (Λc, onE LowerSrc), (Λc, onE LoopSrc), (Λc, onE IdTopSrc),
+   (Λc, onE CurrySrc), (Λc, onE SideCurrySrc), (Λc, onE LetBodySrc), (Λc, onE BlockSrc),
+   (Λc, onC CapSrc), (Λc, onC CapPureSrc), (Λc, onE DeepAscSrc),
+   (Λc, onC FldSrc), (Λc, onE FldTySrc), (Λc, onE AscObjSrc), (Λc, onE AscWideSrc),
+   (Λc, onE AliasMuSrc), (Λc, onE NestSrc), (Λc, onE FwdObjSrc), (Λc, onC Cap1Src),
+   (Λc, onC SelfProjSrc), (Λc, onE RecObjSrc), (Λc, onE BareSrc), (Λc, onC BareCapSrc),
+   (Λc, onC LamCapSrc), (Λc, onE FwdSelfSrc), (Λc, onE BareProjSrc), (Λc, onE AmbUseSrc),
+   (Λc, onE AmbUse2Src), (Λc, onE OrdASrc), (Λc, onE OrdBSrc), (Λc, onE AmbSrc),
+   (Λc, onE E2objSrc), (Λc, onE CycSrc), (Λc, onC Cyc3Src), (Λc, onE AliasRecSrc),
+   (Λc, onE NoDomSrc), (Λc, onZ Z1litF),
+   (Λk, CE1src), (Λk, CE2src), (Λk, CE3src), (Λk, CE3sSrc), (Λk, CE4src),
+   (Λk, CE4negSrc), (Λk, CE4posSrc), (Λk, CE5src), (Λk, CE5ioSrc), (Λk, CE1argSrc),
+   (Λk, CE5argSrc), (Λk, CE5argIoSrc), (Λk, KSelfSrc), (Λk, KSelfIoSrc), (Λk, M5src),
+   (Λk, WSrc), (Λk, WnegSrc), (Λk, KDomSrc)]
+
+-- Every erasure of every program agrees with the erasure of the resolved body.
+example : tablePrograms.all (fun (Λ, w) => [Erasure.D, .S, .A, .C, .G].all (·.agrees Λ w)) =
+    true := by
+  decide +kernel
+
+/-! ### The programs of the typer
+
+Every closed program of `Notation.lean`, `Typer.lean` and the sections above
+that declares no classifier.  Each one whose outermost term is a lambda is a
+missing parameter type under `D`, since nothing gives the lambda a goal, as in
+Scala.  E2, Z1, Z1def, Z2 and Z3 keep compiling under `D`, since their lambdas
+take their domains from a written self shape, a written `let` type or an
+ascription.  S1 and S2 are rejected under `D` at a lambda bound by a `let`
+with no type, after the fuel their first steps take.
+
+Under `S` and `G` a literal forms its self shape from its definitions.  E2, E7
+and accounted compile at the written body.  E5, E6 and C7 compile at the types
+of their right-hand sides, which `E5srcR`, `E6srcR` and `C7srcF` write.  S3,
+C2, S1, S2 and Z3 compile at the written type, with a self shape other than
+the written one, which names a member or its set.  The literal of `freshCell`
+forms `read` pure, and the version has no subtyping between two `μ` shapes,
+so Z1, Z1def, Z2 and exTop do not meet the written `μ` and are a type
+mismatch.  C7 with its boxes written boxes each capability at its own set,
+where its written unboxing names `{k1}`, so it is a type mismatch too.  The
+recursion limit of LP, PF and LQ2 stays at its fuel. -/
+
+/-- E1 under each erasure.  The written program is rejected, with no reason
+of the typer. -/
+theorem E1_erased : LambdaRow Λc (onE E1src) (.no .mismatch (spent 11)) := by
+  decide +kernel
+
+/-- E2 under each erasure.  Its one lambda is a field of a literal, so `D`
+and `C` take its domain from the written self shape, and `S` and `G` form
+the written self shape. -/
+theorem E2_erased : row Λc (onE E2src) =
+    [.same (tyOf Λc (onE E2src)) (spent 60), .same (tyOf Λc (onE E2src)) (spent 62),
+     .same (tyOf Λc (onE E2src)) (spent 61), .noSlot, .same (tyOf Λc (onE E2src)) (spent 62),
+     .same (tyOf Λc (onE E2src)) (spent 61)] := by
+  decide +kernel
+
+/-- E3 under each erasure. -/
+theorem E3_erased : LambdaRow Λc (onE E3src) (.no .mismatch (spent 11)) := by
+  decide +kernel
+
+/-- E4 under each erasure. -/
+theorem E4_erased : LambdaRow Λc (onE E4src) (.no .mismatch (spent 16)) := by
+  decide +kernel
+
+/-- E5 under each erasure.  `S` and `G` compile at the type of the
+right-hand side. -/
+theorem E5_erased : row Λc (onE E5src) =
+    [.same (tyOf Λc (onE E5src)) (spent 20), missing 0, .other (tyOf Λc (onE E5srcR)) (spent 11),
+     .noSlot, .noSlot, .other (tyOf Λc (onE E5srcR)) (spent 11)] := by
+  decide +kernel
+
+/-- E6 closed over its parameter, under each erasure.  `S` and `G` compile at
+the type of the right-hand side. -/
+theorem E6_erased : row Λc (onE E6srcW) =
+    [.same (tyOf Λc (onE E6srcW)) (spent 14), missing 0, .other (tyOf Λc (onE E6srcR)) (spent 3),
+     .noSlot, .noSlot, .other (tyOf Λc (onE E6srcR)) (spent 3)] := by
+  decide +kernel
+
+/-- E7 under each erasure.  `S` and `G` form the written self shape. -/
+theorem E7_erased : row Λc (onE E7src) =
+    [.same (tyOf Λc (onE E7src)) (spent 1), .noSlot, .same (tyOf Λc (onE E7src)) (spent 1),
+     .noSlot, .noSlot, .same (tyOf Λc (onE E7src)) (spent 1)] := by
+  decide +kernel
+
+/-- E8 under each erasure. -/
+theorem E8_erased : LambdaRow Λc (onE E8src) (.same (tyOf Λc (onE E8src)) (spent 13)) := by
+  decide +kernel
+
+/-- E1s under each erasure. -/
+theorem E1s_erased : LambdaRow Λc (onE E1ssrc) (.same (tyOf Λc (onE E1ssrc)) (spent 20)) := by
+  decide +kernel
+
+/-- E3s under each erasure. -/
+theorem E3s_erased : LambdaRow Λc (onE E3ssrc) (.same (tyOf Λc (onE E3ssrc)) (spent 18)) := by
+  decide +kernel
+
+/-- QP1 under each erasure. -/
+theorem QP1_erased : LambdaRow Λc (onE PA1src) (.same (tyOf Λc (onE PA1src)) (spent 45)) := by
+  decide +kernel
+
+/-- QP4 under each erasure. -/
+theorem QP4_erased : LambdaRow Λc (onE P4src) (.same (tyOf Λc (onE P4src)) (spent 28)) := by
+  decide +kernel
+
+/-- QP5 under each erasure. -/
+theorem QP5_erased : LambdaRow Λc (onE P5src) (.same (tyOf Λc (onE P5src)) (spent 13)) := by
+  decide +kernel
+
+/-- R1 under each erasure. -/
+theorem R1_erased : LambdaRow Λc (onE R1src) (.same (tyOf Λc (onE R1src)) (spent 17)) := by
+  decide +kernel
+
+/-- R2 under each erasure. -/
+theorem R2_erased : LambdaRow Λc (onE R2src) (.same (tyOf Λc (onE R2src)) (spent 10)) := by
+  decide +kernel
+
+/-- R3 under each erasure. -/
+theorem R3_erased : LambdaRow Λc (onE R3src) (.same (tyOf Λc (onE R3src)) (spent 11)) := by
+  decide +kernel
+
+/-- R4 under each erasure. -/
+theorem R4_erased : LambdaRow Λc (onE R4src) (.same (tyOf Λc (onE R4src)) (spent 9)) := by
+  decide +kernel
+
+/-- B1 under each erasure. -/
+theorem B1_erased : LambdaRow Λc (onE B1src) (.no .mismatch (spent 2)) := by
+  decide +kernel
+
+/-- A1 under each erasure. -/
+theorem A1_erased : LambdaRow Λc (onE A1src) (.no .mismatch (spent 11)) := by
+  decide +kernel
+
+/-- The alias chain of sixteen links under each erasure. -/
+theorem chain16_erased :
+    LambdaRow Λc (onE (chainSrc 16)) (.same (tyOf Λc (onE (chainSrc 16))) (spent 203)) := by
+  decide +kernel
+
+/-- X1, a variable at its own abstract type, under each erasure. -/
+theorem X1_erased : LambdaRow Λc (onE X1src) (.same (tyOf Λc (onE X1src)) (spent 5)) := by
+  decide +kernel
+
+/-- X2 under each erasure. -/
+theorem X2_erased : LambdaRow Λc (onE X2src) (.same (tyOf Λc (onE X2src)) (spent 10)) := by
+  decide +kernel
+
+/-- LP under each erasure.  The written program is at the recursion limit. -/
+theorem LP_erased : LambdaRow Λc (onE LPsrc) (.no .limit (marked 32737)) := by
+  decide +kernel
+
+/-- PF under each erasure.  The written program is at the recursion limit. -/
+theorem PF_erased : LambdaRow Λc (onE PFsrc) (.no .limit (marked 32693)) := by
+  decide +kernel
+
+/-- LQ2 under each erasure.  The written program is at the recursion limit. -/
+theorem LQ2_erased : LambdaRow Λc (onE LQ2src) (.no .limit (marked 32763)) := by
+  decide +kernel
+
+/-- C7 with its boxes written, under each erasure.  `S` and `G` box each
+capability at its own set, where the written unboxing names `{k1}`. -/
+theorem C7box_erased : row Λc (onC C7boxSrc) =
+    [.same (tyOf Λc (onC C7boxSrc)) (spent 31), missing 0, .no .mismatch (spent 13), .noSlot,
+     .noSlot, .no .mismatch (spent 13)] := by
+  decide +kernel
+
+/-- C7 with no box written, under each erasure.  `S` and `G` compile at the
+self shape the definitions form, the fields at the capabilities they hold. -/
+theorem C7_erased : row Λc (onC C7src) =
+    [.same (tyOf Λc (onC C7src)) (spent 80), missing 0, .other (tyOf Λc (onC C7srcF)) (spent 44),
+     .noSlot, .noSlot, .other (tyOf Λc (onC C7srcF)) (spent 44)] := by
+  decide +kernel
+
+/-- S3 under each erasure.  `S` and `G` compile at the written type, the
+field at the boxed capability where the written shape names `z.A`. -/
+theorem S3_erased : row Λc (onC S3src) =
+    [.same (tyOf Λc (onC S3src)) (spent 46), missing 0, .other (tyOf Λc (onC S3src)) (spent 15),
+     .noSlot, .noSlot, .other (tyOf Λc (onC S3src)) (spent 15)] := by
+  decide +kernel
+
+/-- C2 under each erasure.  `C` takes the domains of the fields from the
+written self shapes.  `S` and `G` compile at the written type, with `run`
+pure. -/
+theorem C2_erased : row Λc (onC C2src) =
+    [.same (tyOf Λc (onC C2src)) (spent 214), missing 0, .other (tyOf Λc (onC C2src)) (spent 244),
+     .noSlot, .same (tyOf Λc (onC C2src)) (spent 218),
+     .other (tyOf Λc (onC C2src)) (spent 244)] := by
+  decide +kernel
+
+/-- S1 under each erasure.  `D` erases the domain of `op`, bound by a `let`
+with no type.  `C` takes the domains from the ascription and the self shape. -/
+theorem S1_erased : row Λc (onZ S1progSrc) =
+    [.same (tyOf Λc (onZ S1progSrc)) (spent 86), missing 28,
+     .other (tyOf Λc (onZ S1progSrc)) (spent 97), .noSlot,
+     .same (tyOf Λc (onZ S1progSrc)) (spent 88), .other (tyOf Λc (onZ S1progSrc)) (spent 97)] := by
+  decide +kernel
+
+/-- S2 under each erasure.  `C` and `G` erase the domain of `(λy. y : ⊤)`,
+whose goal has no function part, so they are a missing parameter type. -/
+theorem S2_erased : row Λc (onZ S2src) =
+    [.same (tyOf Λc (onZ S2src)) (spent 138), missing 96, .other (tyOf Λc (onZ S2src)) (spent 191),
+     .noSlot, missing 96, missing 143] := by
+  decide +kernel
+
+/-- Z1 under each erasure.  `D` and `C` take the domains from the ascription
+and the self shape.  `S` and `G` form `read` pure, which does not meet the
+written `μ`. -/
+theorem Z1_erased : row Λc (onZ Z1progSrc) =
+    [.same (tyOf Λc (onZ Z1progSrc)) (spent 12), .same (tyOf Λc (onZ Z1progSrc)) (spent 14),
+     .no .mismatch (spent 62), .noSlot, .same (tyOf Λc (onZ Z1progSrc)) (spent 14),
+     .no .mismatch (spent 62)] := by
+  decide +kernel
+
+/-- Z1def under each erasure.  `D` and `C` take the domains from the written
+`let` type and the self shape.  `S` and `G` form `read` pure. -/
+theorem Z1def_erased : row Λc (onZ Z1defSrc) =
+    [.same (tyOf Λc (onZ Z1defSrc)) (spent 31), .same (tyOf Λc (onZ Z1defSrc)) (spent 45),
+     .no .mismatch (spent 112), .noSlot, .same (tyOf Λc (onZ Z1defSrc)) (spent 45),
+     .no .mismatch (spent 62)] := by
+  decide +kernel
+
+/-- Z2 under each erasure.  `D` and `C` fill the domain with the goal's, its
+`any` read at the arrow's binder, where the written program holds `any`.
+`S` and `G` form `read` pure. -/
+theorem Z2_erased : row Λc (onZ Z2src) =
+    [.same (tyOf Λc (onZ Z2src)) (spent 12), .other (tyOf Λc (onZ Z2src)) (spent 14),
+     .no .mismatch (spent 62), .noSlot, .other (tyOf Λc (onZ Z2src)) (spent 14),
+     .no .mismatch (spent 62)] := by
+  decide +kernel
+
+/-- Z3 under each erasure.  Every erasure compiles, `S` and `G` with a self
+shape other than the written one. -/
+theorem Z3_erased : row Λc (onZ Z3src) =
+    [.same (tyOf Λc (onZ Z3src)) (spent 101), .same (tyOf Λc (onZ Z3src)) (spent 107),
+     .other (tyOf Λc (onZ Z3src)) (spent 154), .noSlot, .same (tyOf Λc (onZ Z3src)) (spent 107),
+     .other (tyOf Λc (onZ Z3src)) (spent 154)] := by
+  decide +kernel
+
+/-- W2def under each erasure. -/
+theorem W2def_erased : LambdaRow Λc (onC W2defSrc) (.same (tyOf Λc (onC W2defSrc)) (spent 2)) := by
+  decide +kernel
+
+/-- cov2 under each erasure. -/
+theorem cov2_erased : LambdaRow Λc (onC cov2Src) (.same (tyOf Λc (onC cov2Src)) (spent 14)) := by
+  decide +kernel
+
+/-- cov3 under each erasure. -/
+theorem cov3_erased : LambdaRow Λc (onC cov3Src) (.same (tyOf Λc (onC cov3Src)) (spent 2)) := by
+  decide +kernel
+
+/-- cov4 under each erasure. -/
+theorem cov4_erased : LambdaRow Λc (onC cov4Src) (.same (tyOf Λc (onC cov4Src)) (spent 32)) := by
+  decide +kernel
+
+/-- accounted under each erasure.  `S` and `G` form the written self shape. -/
+theorem accounted_erased : row Λc (onC accountedSrc) =
+    [.same (tyOf Λc (onC accountedSrc)) (spent 36), missing 0,
+     .same (tyOf Λc (onC accountedSrc)) (spent 36), .noSlot, .noSlot,
+     .same (tyOf Λc (onC accountedSrc)) (spent 36)] := by
+  decide +kernel
+
+/-- W2 deep under each erasure.  The typer rejects the written domain with
+`anyNotOk`. -/
+theorem deep_erased : LambdaRow Λc (onC deepSrc) (.no (.landed "anyNotOk") (spent 0)) := by
+  decide +kernel
+
+/-- exTop under each erasure.  The written program and `C` are rejected by
+the typer with `existentialAtTop`.  `D` erases the domain of the lambda
+bound to `un` by a written `let`.  `S` and `G` form `read` pure. -/
+theorem exTop_erased : row Λc (onZ exTopSrc) =
+    [.no (.landed "existentialAtTop") (spent 19), missing 14, .no .mismatch (spent 62), .noSlot,
+     .no (.landed "existentialAtTop") (spent 21), .no .mismatch (spent 62)] := by
+  decide +kernel
+
+/-- The escape under each erasure.  `C` and `G` take the callback's domains from
+the written answer of its `let`, and the typer rejects the fill with the
+escape the written program has.  The kernel checks the cells of `D`, `S` and
+`A`, and `#eval expect` the whole row. -/
+theorem Esc_erased :
+    cell .D Λc (onC EscSrc) = missing 0 ∧
+    cell .S Λc (onC EscSrc) = .noSlot ∧
+    cell .A Λc (onC EscSrc) = .noSlot := by
+  decide +kernel
+#eval expect (row Λc (onC EscSrc) == [.no (.landed "levelEscape") (spent 31), missing 0, .noSlot,
+    .noSlot, .no (.landed "levelEscape") (spent 63), .no (.landed "levelEscape") (spent 63)])
+  "Esc: the row differs"
+
+/-- The escape by an ascription under each erasure.  `C` and `G` take the
+callback's domains from the ascription, and the typer rejects the fill with
+the escape.  The kernel checks the cells of `D`, `S` and `A`, and
+`#eval expect` the whole row. -/
+theorem AscEsc_erased :
+    cell .D Λc (onC AscEscSrc) = missing 0 ∧
+    cell .S Λc (onC AscEscSrc) = .noSlot ∧
+    cell .A Λc (onC AscEscSrc) = .noSlot := by
+  decide +kernel
+#eval expect (row Λc (onC AscEscSrc) == [.no (.landed "levelEscape") (spent 88), missing 0,
+    .noSlot, .noSlot, .no (.landed "levelEscape") (spent 63),
+    .no (.landed "levelEscape") (spent 63)])
+  "AscEsc: the row differs"
+
+/-- The escape at the top under each erasure.  Every domain is in a checked
+position, so `D`, `C` and `G` give one program, rejected with the
+escape.  The kernel checks the cells of `S` and `A`, and `#eval expect` the
+whole row. -/
+theorem TopEsc_erased :
+    cell .S Λc (onC TopEscSrc) = .noSlot ∧
+    cell .A Λc (onC TopEscSrc) = .noSlot := by
+  decide +kernel
+#eval expect (row Λc (onC TopEscSrc) == [.no (.landed "levelEscape") (spent 31),
+    .no (.landed "levelEscape") (spent 63), .noSlot, .noSlot,
+    .no (.landed "levelEscape") (spent 63), .no (.landed "levelEscape") (spent 63)])
+  "TopEsc: the row differs"
+
+/-- EscOk under each erasure.  `C` and `G` fill the callback's domain with
+the goal's, its `any` read, so the fill is another one at the written type. -/
+theorem EscOk_erased : row Λc (onC EscOkSrc) =
+    [.same (tyOf Λc (onC EscOkSrc)) (spent 4), missing 0, .noSlot, .noSlot,
+     .other (tyOf Λc (onC EscOkSrc)) (spent 7), .other (tyOf Λc (onC EscOkSrc)) (spent 7)] := by
+  decide +kernel
+
+/-- BX2 under each erasure. -/
+theorem BX2_erased : LambdaRow Λc (onC BX2src) (.same (tyOf Λc (onC BX2src)) (spent 34)) := by
+  decide +kernel
+
+/-- BX under each erasure. -/
+theorem BX_erased : LambdaRow Λc (onC BXsrc) (.same (tyOf Λc (onC BXsrc)) (spent 29)) := by
+  decide +kernel
+
+/-- A `let` whose bound term has an existential answer, under each erasure.
+`C` fills the body under the unpacking, so the fill is an unpacking, which
+`PTm.fills` does not relate to the written `let`.  The cell is `shape`, and
+`compileE` reports a mismatch.  `S` and `G` form `read` pure. -/
+theorem LetEx_erased : row Λc (onZ LetExSrc) =
+    [.same (tyOf Λc (onZ LetExSrc)) (spent 20), missing 0, .no .mismatch (spent 62), .noSlot,
+     .shape, .no .mismatch (spent 62)] := by
+  decide +kernel
+
+/-! ### Call arguments, callee bodies and `val` definitions
+
+A lambda passed as an argument takes the dominant formal of its callee, whole,
+so a block and a curried lambda get their inner domains too.  Under `A` every
+such program compiles at the written body but TwoF, whose formals have no
+dominant one, Inc, whose formals are incomparable, NoFn, whose callee has no
+function type, and TooBig, whose closure is too large for its formal, as when
+written.  A callee body `λx. g x` takes `g`'s formal, and a `val` definition
+its written type.  The rows of the callee bodies and of a lambda bound by a
+written `let` leave their own slots to the pairs below, since `D` erases the
+outer domain as well. -/
+
+/-- `withFile` applied to its callback, under each erasure.  `A` takes the
+callback's domain from the formal.  `C` and `G` erase the inner domain too,
+whose goal is the formal's result `⊤`, so they are a missing parameter type.
+`S` compiles at the written type with `read` pure. -/
+theorem S1call_erased : row Λc (onZ S1callSrc) =
+    [.same (tyOf Λc (onZ S1callSrc)) (spent 83), missing 54,
+     .other (tyOf Λc (onZ S1callSrc)) (spent 94), .same (tyOf Λc (onZ S1callSrc)) (spent 91),
+     missing 54, missing 63] := by
+  decide +kernel
+
+/-- K1 under each erasure.  The argument takes the formal. -/
+theorem K1_erased : row Λc (onE K1src) =
+    [.same (tyOf Λc (onE K1src)) (spent 26), missing 0, .noSlot,
+     .same (tyOf Λc (onE K1src)) (spent 33), .same (tyOf Λc (onE K1src)) (spent 33),
+     .same (tyOf Λc (onE K1src)) (spent 33)] := by
+  decide +kernel
+
+/-- A callback whose parameter captures a platform capability, under each
+erasure. -/
+theorem Kcap_erased : row Λc (onC KcapSrc) =
+    [.same (tyOf Λc (onC KcapSrc)) (spent 31), missing 0, .noSlot,
+     .same (tyOf Λc (onC KcapSrc)) (spent 41), .same (tyOf Λc (onC KcapSrc)) (spent 41),
+     .same (tyOf Λc (onC KcapSrc)) (spent 41)] := by
+  decide +kernel
+
+/-- E11 with the identity passed directly, twice, under each erasure.  Each
+argument takes its formal. -/
+theorem E11a_erased : row Λc (onE E11aSrc) =
+    [.same (tyOf Λc (onE E11aSrc)) (spent 21), missing 0, .noSlot,
+     .same (tyOf Λc (onE E11aSrc)) (spent 27), .same (tyOf Λc (onE E11aSrc)) (spent 27),
+     .same (tyOf Λc (onE E11aSrc)) (spent 27)] := by
+  decide +kernel
+
+/-- An intersection callee whose formals agree on their domain, under each
+erasure.  The dominant formal is the one with the result `⊤`. -/
+theorem X1arg_erased : row Λc (onE X1Src) =
+    [.same (tyOf Λc (onE X1Src)) (spent 31), missing 0, .noSlot,
+     .same (tyOf Λc (onE X1Src)) (spent 52), .same (tyOf Λc (onE X1Src)) (spent 52),
+     .same (tyOf Λc (onE X1Src)) (spent 52)] := by
+  decide +kernel
+
+/-- DomF under each erasure.  The second formal is above the first, so it is
+the dominant one. -/
+theorem DomF_erased : row Λc (onE DomFSrc) =
+    [.same (tyOf Λc (onE DomFSrc)) (spent 31), missing 0, .noSlot,
+     .same (tyOf Λc (onE DomFSrc)) (spent 66), .same (tyOf Λc (onE DomFSrc)) (spent 66),
+     .same (tyOf Λc (onE DomFSrc)) (spent 66)] := by
+  decide +kernel
+
+/-- Dom under each erasure.  The dominant formal is the one with the smaller
+domain. -/
+theorem Dom_erased : row Λc (onE DomSrc) =
+    [.same (tyOf Λc (onE DomSrc)) (spent 41), missing 0, .noSlot,
+     .same (tyOf Λc (onE DomSrc)) (spent 66), .same (tyOf Λc (onE DomSrc)) (spent 66),
+     .same (tyOf Λc (onE DomSrc)) (spent 66)] := by
+  decide +kernel
+
+/-- TwoF under each erasure.  Neither formal is above the other, so there is
+no dominant one, where the written program compiles. -/
+theorem TwoF_erased : row Λc (onE TwoFSrc) =
+    [.same (tyOf Λc (onE TwoFSrc)) (spent 67), missing 0, .noSlot, missing 33, missing 33,
+     missing 33] := by
+  decide +kernel
+
+/-- Inc under each erasure.  The formals are incomparable, so there is no
+dominant one. -/
+theorem Inc_erased : row Λc (onE IncSrc) =
+    [.same (tyOf Λc (onE IncSrc)) (spent 52), missing 0, .noSlot, missing 17, missing 17,
+     missing 17] := by
+  decide +kernel
+
+/-- NoFn under each erasure.  The callee has no function type. -/
+theorem NoFn_erased : row Λc (onE NoFnSrc) =
+    [.no .mismatch (spent 3), missing 0, .noSlot, missing 2, missing 2, missing 2] := by
+  decide +kernel
+
+/-- AliasArg under each erasure.  The formal is an alias of a function type,
+followed to it. -/
+theorem AliasArg_erased : row Λc (onE AliasArgSrc) =
+    [.same (tyOf Λc (onE AliasArgSrc)) (spent 9), missing 0, .noSlot,
+     .same (tyOf Λc (onE AliasArgSrc)) (spent 21), .same (tyOf Λc (onE AliasArgSrc)) (spent 21),
+     .same (tyOf Λc (onE AliasArgSrc)) (spent 21)] := by
+  decide +kernel
+
+/-- A block passed as an argument, under each erasure.  `A` erases no lambda
+directly passed.  `C` and `G` erase the block's result lambda, which takes
+the formal. -/
+theorem BlockArg_erased : row Λc (onE BlockArgSrc) =
+    [.same (tyOf Λc (onE BlockArgSrc)) (spent 7), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE BlockArgSrc)) (spent 10),
+     .same (tyOf Λc (onE BlockArgSrc)) (spent 10)] := by
+  decide +kernel
+
+/-- A curried callback, under each erasure.  `A` erases the outer domain,
+`C` and `G` both. -/
+theorem Curried_erased : row Λc (onE CurriedSrc) =
+    [.same (tyOf Λc (onE CurriedSrc)) (spent 6), missing 0, .noSlot,
+     .same (tyOf Λc (onE CurriedSrc)) (spent 10), .same (tyOf Λc (onE CurriedSrc)) (spent 10),
+     .same (tyOf Λc (onE CurriedSrc)) (spent 10)] := by
+  decide +kernel
+
+/-- BoxCallee under each erasure. -/
+theorem BoxCallee_erased : row Λc (onE BoxCalleeSrc) =
+    [.same (tyOf Λc (onE BoxCalleeSrc)) (spent 8), missing 0, .noSlot,
+     .same (tyOf Λc (onE BoxCalleeSrc)) (spent 12), .same (tyOf Λc (onE BoxCalleeSrc)) (spent 12),
+     .same (tyOf Λc (onE BoxCalleeSrc)) (spent 12)] := by
+  decide +kernel
+
+/-- BoxF under each erasure. -/
+theorem BoxF_erased : row Λc (onE BoxFSrc) =
+    [.same (tyOf Λc (onE BoxFSrc)) (spent 14), missing 0, .noSlot,
+     .same (tyOf Λc (onE BoxFSrc)) (spent 17), .same (tyOf Λc (onE BoxFSrc)) (spent 17),
+     .same (tyOf Λc (onE BoxFSrc)) (spent 17)] := by
+  decide +kernel
+
+/-- AnyAsc under each erasure.  `C` and `G` also erase the domain of `g`'s
+lambda, which reads the written `any`, so the fill is another one. -/
+theorem AnyAsc_erased : row Λc (onC AnyAscSrc) =
+    [.same (tyOf Λc (onC AnyAscSrc)) (spent 22), missing 0, .noSlot,
+     .same (tyOf Λc (onC AnyAscSrc)) (spent 26), .other (tyOf Λc (onC AnyAscSrc)) (spent 26),
+     .other (tyOf Λc (onC AnyAscSrc)) (spent 26)] := by
+  decide +kernel
+
+/-- Fits under each erasure. -/
+theorem Fits_erased : row Λc (onC FitsSrc) =
+    [.same (tyOf Λc (onC FitsSrc)) (spent 16), missing 0, .noSlot,
+     .same (tyOf Λc (onC FitsSrc)) (spent 20), .same (tyOf Λc (onC FitsSrc)) (spent 20),
+     .same (tyOf Λc (onC FitsSrc)) (spent 20)] := by
+  decide +kernel
+
+/-- TooBig under each erasure.  The closure is too large for the pure
+formal, written or not. -/
+theorem TooBig_erased : row Λc (onC TooBigSrc) =
+    [.no .mismatch (spent 20), missing 0, .noSlot, .no .mismatch (spent 36),
+     .no .mismatch (spent 36), .no .mismatch (spent 36)] := by
+  decide +kernel
+
+/-- A callee body under each erasure.  `D` erases the outer domain too. -/
+theorem Callee_erased :
+    LambdaRow Λc (onE CalleeSrc) (.same (tyOf Λc (onE CalleeSrc)) (spent 5)) := by
+  decide +kernel
+
+/-- A callee body at a formal written at `{any}`, under each erasure.  The
+fill reads `any`, so it is another one at the written type. -/
+theorem CalleeAny_erased : row Λc (onE CalleeAnySrc) =
+    [.same (tyOf Λc (onE CalleeAnySrc)) (spent 18), .other (tyOf Λc (onE CalleeAnySrc)) (spent 19),
+     .noSlot, .noSlot, .other (tyOf Λc (onE CalleeAnySrc)) (spent 18),
+     .other (tyOf Λc (onE CalleeAnySrc)) (spent 18)] := by
+  decide +kernel
+
+/-- A callee body ascribed at `⊤`, under each erasure.  `C` and `G` take
+`g`'s formal. -/
+theorem CalleeTop_erased : row Λc (onE CalleeTopSrc) =
+    [.same (tyOf Λc (onE CalleeTopSrc)) (spent 9), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE CalleeTopSrc)) (spent 10),
+     .same (tyOf Λc (onE CalleeTopSrc)) (spent 10)] := by
+  decide +kernel
+
+/-- A callee body passed as an argument, under each erasure. -/
+theorem CalleeArg_erased : row Λc (onE CalleeArgSrc) =
+    [.same (tyOf Λc (onE CalleeArgSrc)) (spent 12), missing 0, .noSlot,
+     .same (tyOf Λc (onE CalleeArgSrc)) (spent 22), .same (tyOf Λc (onE CalleeArgSrc)) (spent 22),
+     .same (tyOf Λc (onE CalleeArgSrc)) (spent 22)] := by
+  decide +kernel
+
+/-- CalleeOther under each erasure. -/
+theorem CalleeOther_erased :
+    LambdaRow Λc (onE CalleeOtherSrc) (.same (tyOf Λc (onE CalleeOtherSrc)) (spent 6)) := by
+  decide +kernel
+
+/-- CalleeInc under each erasure. -/
+theorem CalleeInc_erased :
+    LambdaRow Λc (onE CalleeIncSrc) (.same (tyOf Λc (onE CalleeIncSrc)) (spent 14)) := by
+  decide +kernel
+
+/-- LetArg under each erasure. -/
+theorem LetArg_erased :
+    LambdaRow Λc (onE LetArgSrc) (.same (tyOf Λc (onE LetArgSrc)) (spent 5)) := by
+  decide +kernel
+
+/-- Id0 under each erasure. -/
+theorem Id0_erased : LambdaRow Λc (onE Id0Src) (.same (tyOf Λc (onE Id0Src)) (spent 2)) := by
+  decide +kernel
+
+/-- A `val` definition under each erasure.  The written type is the goal. -/
+theorem Val_erased : row Λc (onE ValSrc) =
+    [.same (tyOf Λc (onE ValSrc)) (spent 2), .same (tyOf Λc (onE ValSrc)) (spent 4), .noSlot,
+     .noSlot, .same (tyOf Λc (onE ValSrc)) (spent 4), .same (tyOf Λc (onE ValSrc)) (spent 4)] := by
+  decide +kernel
+
+/-! ### Lambdas under an ascription
+
+The ascription's type is the goal of the lambda.  Two function sides meet,
+the larger domain being the one taken, and an alias is followed to its
+function type.  A goal with no function part is a missing parameter type, a
+goal that only bounds a function type from above a type mismatch.  Two sides
+with incomparable domains are a type mismatch, where the compiler forms a
+union the version does not have. -/
+
+/-- `process` ascribed at its own type, under each erasure.  The fill holds
+the goal's domain, its `any` read at the arrow's binder, where the written
+program holds `any`. -/
+theorem W2asc_erased : row Λc (onC W2ascSrc) =
+    [.same (tyOf Λc (onC W2ascSrc)) (spent 3), .other (tyOf Λc (onC W2ascSrc)) (spent 3), .noSlot,
+     .noSlot, .other (tyOf Λc (onC W2ascSrc)) (spent 3),
+     .other (tyOf Λc (onC W2ascSrc)) (spent 3)] := by
+  decide +kernel
+
+/-- Two function sides of one domain, under each erasure. -/
+theorem AndSame_erased : row Λc (onE AndSameSrc) =
+    [.same (tyOf Λc (onE AndSameSrc)) (spent 34), .same (tyOf Λc (onE AndSameSrc)) (spent 34),
+     .noSlot, .noSlot, .same (tyOf Λc (onE AndSameSrc)) (spent 34),
+     .same (tyOf Λc (onE AndSameSrc)) (spent 34)] := by
+  decide +kernel
+
+/-- X3 under each erasure.  `C` and `G` compile, where Scala rejects. -/
+theorem X3_erased : row Λc (onE X3Src) =
+    [.same (tyOf Λc (onE X3Src)) (spent 40), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE X3Src)) (spent 41), .same (tyOf Λc (onE X3Src)) (spent 41)] := by
+  decide +kernel
+
+/-- X4 under each erasure.  `S` erases the self shape of the literal in the
+lambda's body, which forms it.  `C` and `G` compile, where Scala rejects. -/
+theorem X4_erased : row Λc (onE X4Src) =
+    [.same (tyOf Λc (onE X4Src)) (spent 42), missing 0, .same (tyOf Λc (onE X4Src)) (spent 93),
+     .noSlot, .same (tyOf Λc (onE X4Src)) (spent 43), .same (tyOf Λc (onE X4Src)) (spent 93)] := by
+  decide +kernel
+
+/-- Two function sides with comparable domains, under each erasure.  The
+larger domain is taken. -/
+theorem AndTwo_erased : row Λc (onE AndTwoSrc) =
+    [.same (tyOf Λc (onE AndTwoSrc)) (spent 34), .same (tyOf Λc (onE AndTwoSrc)) (spent 38),
+     .noSlot, .noSlot, .same (tyOf Λc (onE AndTwoSrc)) (spent 38),
+     .same (tyOf Λc (onE AndTwoSrc)) (spent 38)] := by
+  decide +kernel
+
+/-- Two function sides whose results the lambda does not meet, under each
+erasure. -/
+theorem AndRes_erased : row Λc (onE AndResSrc) =
+    [.no .mismatch (spent 31), .no .mismatch (spent 35), .noSlot, .noSlot,
+     .no .mismatch (spent 35), .no .mismatch (spent 35)] := by
+  decide +kernel
+
+/-- Two function sides with incomparable domains, under each erasure.  The
+sides do not meet, a type mismatch. -/
+theorem AndInc_erased : row Λc (onE AndIncSrc) =
+    [.same (tyOf Λc (onE AndIncSrc)) (spent 56), .no .mismatch (spent 4), .noSlot, .noSlot,
+     .no .mismatch (spent 4), .no .mismatch (spent 4)] := by
+  decide +kernel
+
+/-- One function side and a field the lambda lacks, under each erasure. -/
+theorem AndOne_erased : row Λc (onE AndOneSrc) =
+    [.no .mismatch (spent 12), .no .mismatch (spent 12), .noSlot, .noSlot,
+     .no .mismatch (spent 12), .no .mismatch (spent 12)] := by
+  decide +kernel
+
+/-- AndTop under each erasure. -/
+theorem AndTop_erased : row Λc (onE AndTopSrc) =
+    [.same (tyOf Λc (onE AndTopSrc)) (spent 12), .same (tyOf Λc (onE AndTopSrc)) (spent 12),
+     .noSlot, .noSlot, .same (tyOf Λc (onE AndTopSrc)) (spent 12),
+     .same (tyOf Λc (onE AndTopSrc)) (spent 12)] := by
+  decide +kernel
+
+/-- Asc under each erasure. -/
+theorem Asc_erased : row Λc (onE AscSrc) =
+    [.same (tyOf Λc (onE AscSrc)) (spent 2), .same (tyOf Λc (onE AscSrc)) (spent 2), .noSlot,
+     .noSlot, .same (tyOf Λc (onE AscSrc)) (spent 2), .same (tyOf Λc (onE AscSrc)) (spent 2)] := by
+  decide +kernel
+
+/-- Alias under each erasure. -/
+theorem Alias_erased : row Λc (onE AliasSrc) =
+    [.same (tyOf Λc (onE AliasSrc)) (spent 11), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE AliasSrc)) (spent 12), .same (tyOf Λc (onE AliasSrc)) (spent 12)] := by
+  decide +kernel
+
+/-- Alias2 under each erasure. -/
+theorem Alias2_erased : row Λc (onE Alias2Src) =
+    [.same (tyOf Λc (onE Alias2Src)) (spent 17), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE Alias2Src)) (spent 19), .same (tyOf Λc (onE Alias2Src)) (spent 19)] := by
+  decide +kernel
+
+/-- A goal with a function upper bound only, under each erasure.  The lambda
+is not below it. -/
+theorem Upper_erased : row Λc (onE UpperSrc) =
+    [.no .mismatch (spent 7), missing 0, .noSlot, .noSlot, .no .mismatch (spent 1),
+     .no .mismatch (spent 1)] := by
+  decide +kernel
+
+/-- A goal with a function lower bound only, under each erasure.  It has no
+function part. -/
+theorem Lower_erased : row Λc (onE LowerSrc) =
+    [.same (tyOf Λc (onE LowerSrc)) (spent 11), missing 0, .noSlot, .noSlot, missing 1,
+     missing 1] := by
+  decide +kernel
+
+/-- A goal whose alias comes back to itself, under each erasure. -/
+theorem Loop_erased : row Λc (onE LoopSrc) =
+    [.no .mismatch (spent 12), missing 0, .noSlot, .noSlot, missing 3, missing 3] := by
+  decide +kernel
+
+/-- A lambda ascribed at `⊤`, under each erasure. -/
+theorem IdTop_erased : row Λc (onE IdTopSrc) =
+    [.same (tyOf Λc (onE IdTopSrc)) (spent 6), missing 0, .noSlot, .noSlot, missing 0,
+     missing 0] := by
+  decide +kernel
+
+/-- Curry under each erasure. -/
+theorem Curry_erased : row Λc (onE CurrySrc) =
+    [.same (tyOf Λc (onE CurrySrc)) (spent 3), .same (tyOf Λc (onE CurrySrc)) (spent 3), .noSlot,
+     .noSlot, .same (tyOf Λc (onE CurrySrc)) (spent 3),
+     .same (tyOf Λc (onE CurrySrc)) (spent 3)] := by
+  decide +kernel
+
+/-- SideCurry under each erasure. -/
+theorem SideCurry_erased : row Λc (onE SideCurrySrc) =
+    [.same (tyOf Λc (onE SideCurrySrc)) (spent 13), .same (tyOf Λc (onE SideCurrySrc)) (spent 14),
+     .noSlot, .noSlot, .same (tyOf Λc (onE SideCurrySrc)) (spent 14),
+     .same (tyOf Λc (onE SideCurrySrc)) (spent 14)] := by
+  decide +kernel
+
+/-- LetBody under each erasure. -/
+theorem LetBody_erased : row Λc (onE LetBodySrc) =
+    [.same (tyOf Λc (onE LetBodySrc)) (spent 3), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE LetBodySrc)) (spent 3), .same (tyOf Λc (onE LetBodySrc)) (spent 3)] := by
+  decide +kernel
+
+/-- Block under each erasure. -/
+theorem Block_erased : row Λc (onE BlockSrc) =
+    [.same (tyOf Λc (onE BlockSrc)) (spent 3), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onE BlockSrc)) (spent 3), .same (tyOf Λc (onE BlockSrc)) (spent 3)] := by
+  decide +kernel
+
+/-- Cap under each erasure. -/
+theorem Cap_erased : row Λc (onC CapSrc) =
+    [.same (tyOf Λc (onC CapSrc)) (spent 4), missing 0, .noSlot, .noSlot,
+     .same (tyOf Λc (onC CapSrc)) (spent 4), .same (tyOf Λc (onC CapSrc)) (spent 4)] := by
+  decide +kernel
+
+/-- A closure over `f` ascribed at a pure type, under each erasure.  The typer
+rejects the fill with no reason of its own.  Its reason search reaches the
+certificate builder, which reads the well-founded `Ctx.caps`.  The kernel
+checks the cells of `D`, `S` and `A`, and `#eval expect` the whole row. -/
+theorem CapPure_erased :
+    cell .D Λc (onC CapPureSrc) = missing 0 ∧
+    cell .S Λc (onC CapPureSrc) = .noSlot ∧
+    cell .A Λc (onC CapPureSrc) = .noSlot := by
+  decide +kernel
+#eval expect (row Λc (onC CapPureSrc) == [.no .mismatch (spent 14), missing 0, .noSlot, .noSlot,
+    .no .mismatch (spent 14), .no .mismatch (spent 14)])
+  "CapPure: the row differs"
+
+/-- A lambda ascribed at a type with `any` below a field of its domain,
+under each erasure.  Every cell is the typer's `anyNotOk`. -/
+theorem DeepAsc_erased : row Λc (onE DeepAscSrc) =
+    [.no (.landed "anyNotOk") (spent 0), .no (.landed "anyNotOk") (spent 0), .noSlot, .noSlot,
+     .no (.landed "anyNotOk") (spent 0), .no (.landed "anyNotOk") (spent 0)] := by
+  decide +kernel
+
+/-! ### Literals
+
+A literal without a self shape at a `μ` goal takes the goal's shape, after
+following an alias, and otherwise forms its self shape from its definitions in
+rounds.  A field reached again while it is typed is a cyclic reference, and a
+field whose types have no least one is ambiguous.  The least type of a field
+does not depend on the order of an intersection. -/
+
+/-- A field closure under a written self shape, under each erasure. -/
+theorem Fld_erased : row Λc (onC FldSrc) =
+    [.same (tyOf Λc (onC FldSrc)) (spent 5), missing 0, .same (tyOf Λc (onC FldSrc)) (spent 8),
+     .noSlot, .same (tyOf Λc (onC FldSrc)) (spent 8), .same (tyOf Λc (onC FldSrc)) (spent 8)] := by
+  decide +kernel
+
+/-- A literal whose field has no written type, under each erasure.  `S` and
+`G` give `NoShapeSrcS` of `Elab.lean`, a literal with no self shape and no
+goal, which forms the written shape. -/
+theorem FldTy_erased : row Λc (onE FldTySrc) =
+    [.same (tyOf Λc (onE FldTySrc)) (spent 3), .same (tyOf Λc (onE FldTySrc)) (spent 5),
+     .same (tyOf Λc (onE FldTySrc)) (spent 4), .noSlot, .same (tyOf Λc (onE FldTySrc)) (spent 5),
+     .same (tyOf Λc (onE FldTySrc)) (spent 4)] := by
+  decide +kernel
+
+/-- A literal ascribed at a `μ`, under each erasure.  `S` and `G` take the
+`μ` as the self shape. -/
+theorem AscObj_erased : row Λc (onE AscObjSrc) =
+    [.same (tyOf Λc (onE AscObjSrc)) (spent 3), missing 0,
+     .same (tyOf Λc (onE AscObjSrc)) (spent 3), .noSlot, .noSlot,
+     .same (tyOf Λc (onE AscObjSrc)) (spent 3)] := by
+  decide +kernel
+
+/-- A literal ascribed at a `μ` whose field is larger than the right-hand
+side's type, under each erasure. -/
+theorem AscWide_erased : row Λc (onE AscWideSrc) =
+    [.same (tyOf Λc (onE AscWideSrc)) (spent 5), missing 0,
+     .same (tyOf Λc (onE AscWideSrc)) (spent 5), .noSlot, .noSlot,
+     .same (tyOf Λc (onE AscWideSrc)) (spent 5)] := by
+  decide +kernel
+
+/-- A literal ascribed at an alias of a `μ`, under each erasure.  `S` and `G`
+follow the alias to the self shape. -/
+theorem AliasMu_erased : row Λc (onE AliasMuSrc) =
+    [.same (tyOf Λc (onE AliasMuSrc)) (spent 13), missing 0,
+     .same (tyOf Λc (onE AliasMuSrc)) (spent 14), .noSlot,
+     .same (tyOf Λc (onE AliasMuSrc)) (spent 15),
+     .same (tyOf Λc (onE AliasMuSrc)) (spent 14)] := by
+  decide +kernel
+
+/-- Nest under each erasure.  `S` and `G` erase both self shapes, so the
+inner literal has no `μ` goal and forms its shape, which `NestSrcW` writes. -/
+theorem Nest_erased : row Λc (onE NestSrc) =
+    [.same (tyOf Λc (onE NestSrc)) (spent 6), missing 0, .other (tyOf Λc (onE NestSrcW)) (spent 6),
+     .noSlot, .noSlot, .other (tyOf Λc (onE NestSrcW)) (spent 6)] := by
+  decide +kernel
+
+/-- A field that reads a later field, under each erasure. -/
+theorem Fwd_erased : row Λc (onE FwdObjSrc) =
+    [.same (tyOf Λc (onE FwdObjSrc)) (spent 12), .same (tyOf Λc (onE FwdObjSrc)) (spent 14),
+     .same (tyOf Λc (onE FwdObjSrc)) (spent 16), .noSlot,
+     .same (tyOf Λc (onE FwdObjSrc)) (spent 14), .same (tyOf Λc (onE FwdObjSrc)) (spent 16)] := by
+  decide +kernel
+
+/-- A field that holds a capability, under each erasure. -/
+theorem Cap1_erased : row Λc (onC Cap1Src) =
+    [.same (tyOf Λc (onC Cap1Src)) (spent 10), missing 0, .same (tyOf Λc (onC Cap1Src)) (spent 10),
+     .noSlot, .noSlot, .same (tyOf Λc (onC Cap1Src)) (spent 10)] := by
+  decide +kernel
+
+/-- SelfProj under each erasure.  The written self shape charges `a` at
+`{z}`, which the typer rejects.  `S` and `G` form `{z, f}` and compile.  `C`
+keeps the written shape and is rejected with it. -/
+theorem SelfProj_erased : row Λc (onC SelfProjSrc) =
+    [.no .mismatch (spent 36), missing 0, .other (tyOf Λc (onC SelfProjSrcF)) (spent 44), .noSlot,
+     .no .mismatch (spent 47), .other (tyOf Λc (onC SelfProjSrcF)) (spent 44)] := by
+  decide +kernel
+
+/-- A recursive field, under each erasure.  `S` and `G` are a cyclic
+reference at `a`. -/
+theorem Rec_erased : row Λc (onE RecObjSrc) =
+    [.same (tyOf Λc (onE RecObjSrc)) (spent 7), .same (tyOf Λc (onE RecObjSrc)) (spent 13),
+     .no (.cyclicRef (.trm 0)) (spent 0), .noSlot, .same (tyOf Λc (onE RecObjSrc)) (spent 13),
+     .no (.cyclicRef (.trm 0)) (spent 0)] := by
+  decide +kernel
+
+/-- A field that is the self, under each erasure. -/
+theorem Bare_erased : row Λc (onE BareSrc) =
+    [.same (tyOf Λc (onE BareSrc)) (spent 15), .noSlot, .same (tyOf Λc (onE BareSrc)) (spent 15),
+     .noSlot, .noSlot, .same (tyOf Λc (onE BareSrc)) (spent 15)] := by
+  decide +kernel
+
+/-- BareCap under each erasure.  `S` and `G` form `b` at the snapshot that
+knows `a`. -/
+theorem BareCap_erased : row Λc (onC BareCapSrc) =
+    [.same (tyOf Λc (onC BareCapSrc)) (spent 38), missing 0,
+     .other (tyOf Λc (onC BareCapSrcF)) (spent 40), .noSlot, .noSlot,
+     .other (tyOf Λc (onC BareCapSrcF)) (spent 40)] := by
+  decide +kernel
+
+/-- LamCap under each erasure.  `S` and `G` form the written self shape. -/
+theorem LamCap_erased : row Λc (onC LamCapSrc) =
+    [.same (tyOf Λc (onC LamCapSrc)) (spent 54), missing 0,
+     .same (tyOf Λc (onC LamCapSrc)) (spent 68), .noSlot,
+     .same (tyOf Λc (onC LamCapSrc)) (spent 76), .same (tyOf Λc (onC LamCapSrc)) (spent 68)] := by
+  decide +kernel
+
+/-- A field that reads a later field that is the self, under each erasure. -/
+theorem FwdSelf_erased : row Λc (onE FwdSelfSrc) =
+    [.same (tyOf Λc (onE FwdSelfSrc)) (spent 30), .noSlot,
+     .same (tyOf Λc (onE FwdSelfSrc)) (spent 33), .noSlot, .noSlot,
+     .same (tyOf Λc (onE FwdSelfSrc)) (spent 33)] := by
+  decide +kernel
+
+/-- A field that is the self and a later one that reads it, under each
+erasure. -/
+theorem BareProj_erased : row Λc (onE BareProjSrc) =
+    [.same (tyOf Λc (onE BareProjSrc)) (spent 30), .noSlot,
+     .same (tyOf Λc (onE BareProjSrc)) (spent 33), .noSlot, .noSlot,
+     .same (tyOf Λc (onE BareProjSrc)) (spent 33)] := by
+  decide +kernel
+
+/-- A field with two types, one below the other, under each erasure.  `S`
+and `G` take the least. -/
+theorem AmbUse_erased : row Λc (onE AmbUseSrc) =
+    [.same (tyOf Λc (onE AmbUseSrc)) (spent 18), missing 0,
+     .same (tyOf Λc (onE AmbUseSrc)) (spent 33), .noSlot, .noSlot,
+     .same (tyOf Λc (onE AmbUseSrc)) (spent 33)] := by
+  decide +kernel
+
+/-- The same two types in the other order, under each erasure. -/
+theorem AmbUse2_erased : row Λc (onE AmbUse2Src) =
+    [.same (tyOf Λc (onE AmbUse2Src)) (spent 18), missing 0,
+     .same (tyOf Λc (onE AmbUse2Src)) (spent 28), .noSlot, .noSlot,
+     .same (tyOf Λc (onE AmbUse2Src)) (spent 28)] := by
+  decide +kernel
+
+/-- OrdA under each erasure.  `S` and `G` take the least type of the field,
+the second side of `y`'s intersection. -/
+theorem OrdA_erased : row Λc (onE OrdASrc) =
+    [.same (tyOf Λc (onE OrdASrc)) (spent 18), missing 0, .same (tyOf Λc (onE OrdASrc)) (spent 33),
+     .noSlot, .noSlot, .same (tyOf Λc (onE OrdASrc)) (spent 33)] := by
+  decide +kernel
+
+/-- OrdB, the sides of `y`'s intersection swapped, under each erasure.  `S`
+and `G` take the same least type. -/
+theorem OrdB_erased : row Λc (onE OrdBSrc) =
+    [.same (tyOf Λc (onE OrdBSrc)) (spent 18), missing 0, .same (tyOf Λc (onE OrdBSrc)) (spent 28),
+     .noSlot, .noSlot, .same (tyOf Λc (onE OrdBSrc)) (spent 28)] := by
+  decide +kernel
+
+/-- A field with two incomparable types, under each erasure.  `S` and `G`
+are ambiguous at `a`. -/
+theorem Amb_erased : row Λc (onE AmbSrc) =
+    [.same (tyOf Λc (onE AmbSrc)) (spent 12), missing 0, .no (.ambiguous (.trm 0)) (spent 15),
+     .noSlot, .noSlot, .no (.ambiguous (.trm 0)) (spent 15)] := by
+  decide +kernel
+
+/-- The literal of E2 on its own, under each erasure. -/
+theorem E2obj_erased : row Λc (onE E2objSrc) =
+    [.same (tyOf Λc (onE E2objSrc)) (spent 3), .same (tyOf Λc (onE E2objSrc)) (spent 5),
+     .same (tyOf Λc (onE E2objSrc)) (spent 4), .noSlot, .same (tyOf Λc (onE E2objSrc)) (spent 5),
+     .same (tyOf Λc (onE E2objSrc)) (spent 4)] := by
+  decide +kernel
+
+/-- Two fields that read each other, under each erasure.  `S` and `G` are a
+cyclic reference at `a`. -/
+theorem Cyc_erased : row Λc (onE CycSrc) =
+    [.same (tyOf Λc (onE CycSrc)) (spent 19), .noSlot, .no (.cyclicRef (.trm 0)) (spent 0),
+     .noSlot, .noSlot, .no (.cyclicRef (.trm 0)) (spent 0)] := by
+  decide +kernel
+
+/-- A field that reads a cycle of two later fields, under each erasure.  `S`
+and `G` are a cyclic reference at `b`. -/
+theorem Cyc3_erased : row Λc (onC Cyc3Src) =
+    [.same (tyOf Λc (onC Cyc3Src)) (spent 52), .noSlot, .no (.cyclicRef (.trm 1)) (spent 0),
+     .noSlot, .noSlot, .no (.cyclicRef (.trm 1)) (spent 0)] := by
+  decide +kernel
+
+/-- A recursive field read through an alias of the self, under each erasure.
+`S` and `G` are a cyclic reference at `a`. -/
+theorem AliasRec_erased : row Λc (onE AliasRecSrc) =
+    [.same (tyOf Λc (onE AliasRecSrc)) (spent 7), .same (tyOf Λc (onE AliasRecSrc)) (spent 13),
+     .no (.cyclicRef (.trm 0)) (spent 0), .noSlot, .same (tyOf Λc (onE AliasRecSrc)) (spent 13),
+     .no (.cyclicRef (.trm 0)) (spent 0)] := by
+  decide +kernel
+
+/-- A field that is a lambda, under each erasure. -/
+theorem NoDom_erased : row Λc (onE NoDomSrc) =
+    [.same (tyOf Λc (onE NoDomSrc)) (spent 3), .same (tyOf Λc (onE NoDomSrc)) (spent 5),
+     .same (tyOf Λc (onE NoDomSrc)) (spent 4), .noSlot, .same (tyOf Λc (onE NoDomSrc)) (spent 5),
+     .same (tyOf Λc (onE NoDomSrc)) (spent 4)] := by
+  decide +kernel
+
+/-- The literal of `freshCell` on its own, written at the shape its
+definitions form, under each erasure. -/
+theorem Z1lit_erased : row Λc (onZ Z1litF) =
+    [.same (tyOf Λc (onZ Z1litF)) (spent 3), .same (tyOf Λc (onZ Z1litF)) (spent 5),
+     .same (tyOf Λc (onZ Z1litF)) (spent 4), .noSlot, .same (tyOf Λc (onZ Z1litF)) (spent 5),
+     .same (tyOf Λc (onZ Z1litF)) (spent 4)] := by
+  decide +kernel
+
+/-! ### Programs with classifiers
+
+Each program declares its classifiers, its classified platform, and for some
+a use set and a kind.  The erasures act on the body only.  CE1, CE2, CE5io,
+CE1arg and CE5argIo return their literal from a lambda ascribed at a codomain
+`μ`, which gives the self shape, so `S` elaborates to the written body.  CE3,
+CE3s, CE4 and KSelf form self shapes other than the written ones, and compile
+at the written type.  `compile` moves CE3, CE3s, CE4 and M5 to their declared
+use sets.  CE5 and CE5arg stay rejected for the kinding of the body's set at
+`except[ThreadLocal]`, and KSelfIo for the kinding of its member at
+`only[Control]`.  A domain written at `any` under a filter is filled with the
+goal's domain read under the same filter, so the fill of CE2 and CE5io under
+`D`, `C` and `G`, and of CE5argIo under `C` and `G`, is another one, at the
+written type. -/
+
+/-- `Try.apply` under each erasure, its set filtered at `only[Control]`. -/
+theorem CE1_erased : row Λk CE1src =
+    [.same (tyOf Λk CE1src) (spent 45), .same (tyOf Λk CE1src) (spent 47),
+     .same (tyOf Λk CE1src) (spent 45), .noSlot, .same (tyOf Λk CE1src) (spent 47),
+     .same (tyOf Λk CE1src) (spent 45)] := by
+  decide +kernel
+
+/-- `Future.apply` under each erasure.  Its domain writes `any` under a
+filter, so `D`, `C` and `G` fill it with the goal's domain read, another
+fill at the written type. -/
+theorem CE2_erased : row Λk CE2src =
+    [.same (tyOf Λk CE2src) (spent 56), .other (tyOf Λk CE2src) (spent 58),
+     .same (tyOf Λk CE2src) (spent 56), .noSlot, .other (tyOf Λk CE2src) (spent 58),
+     .other (tyOf Λk CE2src) (spent 56)] := by
+  decide +kernel
+
+/-- A client against a kind-bounded member, under each erasure.  With every
+domain erased, the client bound to `c` has no goal: the written answer of
+its `let` is the goal of the body, not of the bound term.  `S` and `G` form
+`run` pure and compile at the written type. -/
+theorem CE3_erased : row Λk CE3src =
+    [.same (tyOf Λk CE3src) (spent 174), missing 0, .other (tyOf Λk CE3src) (spent 204), .noSlot,
+     .same (tyOf Λk CE3src) (spent 178), .other (tyOf Λk CE3src) (spent 204)] := by
+  decide +kernel
+
+/-- CE3 over three `Control` capabilities, under each erasure. -/
+theorem CE3s_erased : row Λk CE3sSrc =
+    [.same (tyOf Λk CE3sSrc) (spent 253), missing 0, .other (tyOf Λk CE3sSrc) (spent 298), .noSlot,
+     .same (tyOf Λk CE3sSrc) (spent 259), .other (tyOf Λk CE3sSrc) (spent 298)] := by
+  decide +kernel
+
+/-- A closure read off a kind-bounded member and handed to a filtered domain,
+under each erasure. -/
+theorem CE4_erased : row Λk CE4src =
+    [.same (tyOf Λk CE4src) (spent 212), missing 0, .other (tyOf Λk CE4src) (spent 242), .noSlot,
+     .same (tyOf Λk CE4src) (spent 216), .other (tyOf Λk CE4src) (spent 242)] := by
+  decide +kernel
+
+/-- CE4 with the member bounded by an unrelated classifier, under each
+erasure. -/
+theorem CE4neg_erased : LambdaRow Λk CE4negSrc (.no .mismatch (spent 84)) := by
+  decide +kernel
+
+/-- The client of CE4 at `only[Control]`, under each erasure. -/
+theorem CE4pos_erased : LambdaRow Λk CE4posSrc (.same (tyOf Λk CE4posSrc) (spent 50)) := by
+  decide +kernel
+
+/-- A thread-local body passed to `Future.apply`, under each erasure.  The
+kinding of `{tl}` at `except[ThreadLocal]` fails, written or erased. -/
+theorem CE5_erased : row Λk CE5src =
+    [.no .mismatch (spent 40), .no .mismatch (spent 42), .no .mismatch (spent 40), .noSlot,
+     .no .mismatch (spent 42), .no .mismatch (spent 40)] := by
+  decide +kernel
+
+/-- CE5 with an input-output body, under each erasure. -/
+theorem CE5io_erased : row Λk CE5ioSrc =
+    [.same (tyOf Λk CE5ioSrc) (spent 34), .other (tyOf Λk CE5ioSrc) (spent 36),
+     .same (tyOf Λk CE5ioSrc) (spent 34), .noSlot, .other (tyOf Λk CE5ioSrc) (spent 36),
+     .other (tyOf Λk CE5ioSrc) (spent 34)] := by
+  decide +kernel
+
+/-- `Try.apply` with its body passed as a closure, under each erasure.  Every
+erasure compiles at the written body. -/
+theorem CE1arg_erased : row Λk CE1argSrc =
+    [.same (tyOf Λk CE1argSrc) (spent 19), .same (tyOf Λk CE1argSrc) (spent 24),
+     .same (tyOf Λk CE1argSrc) (spent 19), .same (tyOf Λk CE1argSrc) (spent 22),
+     .same (tyOf Λk CE1argSrc) (spent 24), .same (tyOf Λk CE1argSrc) (spent 22)] := by
+  decide +kernel
+
+/-- `Future.apply` with a closure over a thread-local function, under each
+erasure.  The kinding of the closure's set fails, written or erased. -/
+theorem CE5arg_erased : row Λk CE5argSrc =
+    [.no .mismatch (spent 85), missing 0, .no .mismatch (spent 85), .no .mismatch (spent 166),
+     .no .mismatch (spent 168), .no .mismatch (spent 166)] := by
+  decide +kernel
+
+/-- `Future.apply` with a closure over an input-output function, under each
+erasure.  `A` compiles at the written body.  `C` and `G` erase the domain
+under the ascription too, which reads `any` under the filter. -/
+theorem CE5argIo_erased : row Λk CE5argIoSrc =
+    [.same (tyOf Λk CE5argIoSrc) (spent 38), missing 0, .same (tyOf Λk CE5argIoSrc) (spent 38),
+     .same (tyOf Λk CE5argIoSrc) (spent 42), .other (tyOf Λk CE5argIoSrc) (spent 44),
+     .other (tyOf Λk CE5argIoSrc) (spent 42)] := by
+  decide +kernel
+
+/-- A literal passed to a client whose parameter bounds a capture member by a
+kind, under each erasure.  `S` and `G` form the member at its set and
+`run` pure, and the member reaches the kind bound by the kinding search. -/
+theorem KSelf_erased : row Λk KSelfSrc =
+    [.same (tyOf Λk KSelfSrc) (spent 119), missing 0, .other (tyOf Λk KSelfSrc) (spent 134),
+     .noSlot, .same (tyOf Λk KSelfSrc) (spent 121), .other (tyOf Λk KSelfSrc) (spent 134)] := by
+  decide +kernel
+
+/-- KSelf with the member at an input-output capability, under each erasure.
+The kind bound excludes it, written or erased. -/
+theorem KSelfIo_erased : row Λk KSelfIoSrc =
+    [.no .mismatch (spent 289), missing 0, .no .mismatch (spent 290), .noSlot,
+     .no .mismatch (spent 291), .no .mismatch (spent 290)] := by
+  decide +kernel
+
+/-- M5 under each erasure.  `D`, `C` and `G` take the domain from the
+ascription, and the program reaches its declared filtered set. -/
+theorem M5_erased : row Λk M5src =
+    [.same (tyOf Λk M5src) (spent 21), .same (tyOf Λk M5src) (spent 21), .noSlot, .noSlot,
+     .same (tyOf Λk M5src) (spent 21), .same (tyOf Λk M5src) (spent 21)] := by
+  decide +kernel
+
+/-- W, a restricted variable widened to its restricted set, under each
+erasure. -/
+theorem W_erased : LambdaRow Λk WSrc (.same (tyOf Λk WSrc) (spent 393)) := by
+  decide +kernel
+
+/-- W without the restriction, under each erasure. -/
+theorem Wneg_erased : LambdaRow Λk WnegSrc (.no .mismatch (spent 234)) := by
+  decide +kernel
+
+/-- A lambda ascribed at a function type whose domain bounds a capture member
+by a kind, under each erasure. -/
+theorem KDom_erased : row Λk KDomSrc =
+    [.same (tyOf Λk KDomSrc) (spent 2), .same (tyOf Λk KDomSrc) (spent 2), .noSlot, .noSlot,
+     .same (tyOf Λk KDomSrc) (spent 2), .same (tyOf Λk KDomSrc) (spent 2)] := by
+  decide +kernel
+
+/-! ### Erasures no column makes
+
+Each pair is a written program and one erased body of it: the inner domain of
+a callback written, the body of a callee or of a `let` with the outer domain
+written, the inner self shape of Nest, a field type written in place of the
+self shape, the body of a `let` whose bound term has an existential answer,
+and SideCurry with its outer domain written. -/
+
+/-- `withFile` applied to its callback with the inner domain written.  The
+callback's outer domain comes from the formal. -/
+theorem S1callGu_pair : pair Λc (onZ S1callSrc) S1callSrcGu =
+    [.same (tyOf Λc (onZ S1callSrc)) (spent 83), .same (tyOf Λc (onZ S1callSrc)) (spent 93)] := by
+  decide +kernel
+
+/-- A callee body with the outer domain written.  The body takes `g`'s
+formal. -/
+theorem Callee_pair : pair Λc (onE CalleeSrc) CalleeSrcD =
+    [.same (tyOf Λc (onE CalleeSrc)) (spent 5), .same (tyOf Λc (onE CalleeSrc)) (spent 6)] := by
+  decide +kernel
+
+/-- A callee body at a formal written at `{any}`, `g`'s domain written.  The
+fill reads `any`. -/
+theorem CalleeAny_pair : pair Λc (onE CalleeAnySrc) CalleeAnySrcD =
+    [.same (tyOf Λc (onE CalleeAnySrc)) (spent 18),
+     .other (tyOf Λc (onE CalleeAnySrc)) (spent 19)] := by
+  decide +kernel
+
+/-- A body that calls `g` on another variable is no callee body. -/
+theorem CalleeOther_pair : pair Λc (onE CalleeOtherSrc) CalleeOtherSrcD =
+    [.same (tyOf Λc (onE CalleeOtherSrc)) (spent 6), missing 0] := by
+  decide +kernel
+
+/-- A callee at incomparable domains has no dominant formal. -/
+theorem CalleeInc_pair : pair Λc (onE CalleeIncSrc) CalleeIncSrcD =
+    [.same (tyOf Λc (onE CalleeIncSrc)) (spent 14), missing 9] := by
+  decide +kernel
+
+/-- A lambda bound by a written `let` and then passed has no goal, as Scala's
+`val i = x => x`. -/
+theorem LetArg_pair : pair Λc (onE LetArgSrc) LetArgSrcD =
+    [.same (tyOf Λc (onE LetArgSrc)) (spent 5), missing 0] := by
+  decide +kernel
+
+/-- The inner self shape of Nest erased.  The field's written `μ` is the
+goal. -/
+theorem Nest_pair : pair Λc (onE NestSrc) NestSrcS =
+    [.same (tyOf Λc (onE NestSrc)) (spent 6), .same (tyOf Λc (onE NestSrc)) (spent 10)] := by
+  decide +kernel
+
+/-- Seventeen literals nested, every self shape erased.  Each field is
+elaborated once and checked once more at each enclosing literal. -/
+theorem Nest16_pair : pair Λc (onE (NestKSrc true 16)) (NestKSrc false 16) =
+    [.same (tyOf Λc (onE (NestKSrc true 16))) (spent 19),
+     .same (tyOf Λc (onE (NestKSrc true 16))) (spent 171)] := by
+  decide +kernel
+
+/-- A recursive field with its type written in place of the self shape, the
+domain erased. -/
+theorem RecW_pair : pair Λc (onE RecObjSrc) RecWSrcS =
+    [.same (tyOf Λc (onE RecObjSrc)) (spent 7), .same (tyOf Λc (onE RecObjSrc)) (spent 13)] := by
+  decide +kernel
+
+/-- A recursive field with its type written in place of the self shape, the
+domain written. -/
+theorem RecWd_pair : pair Λc (onE RecObjSrc) RecWdSrcS =
+    [.same (tyOf Λc (onE RecObjSrc)) (spent 7), .same (tyOf Λc (onE RecObjSrc)) (spent 7)] := by
+  decide +kernel
+
+/-- A field type written under the written self shape, the domain erased. -/
+theorem FldTyD_pair : pair Λc (onE FldTySrc) FldTySrcD =
+    [.same (tyOf Λc (onE FldTySrc)) (spent 3), .same (tyOf Λc (onE FldTySrc)) (spent 5)] := by
+  decide +kernel
+
+/-- A field that is a lambda, with its self shape and its domain erased: no
+goal reaches the lambda. -/
+theorem NoDomDS_pair : pair Λc (onE NoDomSrc) NoDomSrcS =
+    [.same (tyOf Λc (onE NoDomSrc)) (spent 3), missing 0] := by
+  decide +kernel
+
+/-- The body of a `let` whose bound term has an existential answer, its domain
+erased.  The fill is an unpacking, which `PTm.fills` does not relate to the
+written `let`, so `compileE` reports a mismatch where the elaborator types the
+program. -/
+theorem LetEx_pair :
+    pair Λc (onZ LetExSrc) LetExSrcD = [.same (tyOf Λc (onZ LetExSrc)) (spent 20), .shape] ∧
+    (elabProgOut Λc ((onZ LetExSrc).withSBody LetExSrcD)).1.isOk = true ∧
+    reasonAt {} Λc ((onZ LetExSrc).withSBody LetExSrcD) = some .mismatch := by
+  decide +kernel
+
+/-- SideCurry with the outer domain written and the inner one erased. -/
+theorem SideCurryW_pair : pair Λc (onE SideCurrySrc) SideCurrySrcW =
+    [.same (tyOf Λc (onE SideCurrySrc)) (spent 13),
+     .same (tyOf Λc (onE SideCurrySrc)) (spent 14)] := by
+  decide +kernel
+
+/-- The programs with no written form.  A field whose type names the class
+root and a field whose right-hand side unpacks a `fresh` result each need a
+written type, which no written form can give.  A lambda ascribed at a capture
+member bounded by a kind has no goal with a function part. -/
+theorem open_cells : openCell Λc (onE NESrcS) = .no (.needsExplicitType (.trm 0)) (spent 2) ∧
+    openCell Λc (onZ NEfreshSrcS) = .no (.needsExplicitType (.trm 0)) (spent 24) ∧
+    openCell Λk KGoalSrc = missing 0 := by
+  decide +kernel
+
+/-! ### The target checker accepts each erased program that compiles
+
+`compile_checks_get` at every distinct erased program whose cell is `same` or
+`other`, and at every pair that compiles.  The success is the premise, by
+`decide +kernel`.  A program two erasures give alike is listed once, under
+every erasure that gives it. -/
+
+/-- The target checker accepts E2 under `D` and `C`. -/
+theorem E2_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onE E2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E2 under `S` and `G`. -/
+theorem E2_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE E2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E5 under `S` and `G`. -/
+theorem E5_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE E5src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E6 under `S` and `G`. -/
+theorem E6_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE E6srcW)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E7 under `S` and `G`. -/
+theorem E7_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE E7src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts C7 under `S` and `G`. -/
+theorem C7_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onC C7src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S3 under `S` and `G`. -/
+theorem S3_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onC S3src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts C2 under `S` and `G`. -/
+theorem C2_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onC C2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts C2 under `C`. -/
+theorem C2_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onC C2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S1 under `S`. -/
+theorem S1_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onZ S1progSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S1 under `C`. -/
+theorem S1_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onZ S1progSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S1 under `G`. -/
+theorem S1_G_checks : CheckerAccepts {} Λc (Erasure.G.prog (onZ S1progSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S2 under `S`. -/
+theorem S2_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onZ S2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z1 under `D` and `C`. -/
+theorem Z1_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onZ Z1progSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z1def under `D` and `C`. -/
+theorem Z1def_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onZ Z1defSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z2 under `D` and `C`. -/
+theorem Z2_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onZ Z2src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z3 under `D` and `C`. -/
+theorem Z3_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onZ Z3src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z3 under `S`. -/
+theorem Z3_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onZ Z3src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z3 under `G`. -/
+theorem Z3_G_checks : CheckerAccepts {} Λc (Erasure.G.prog (onZ Z3src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts accounted under `S` and `G`. -/
+theorem accounted_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onC accountedSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts EscOk under `C` and `G`. -/
+theorem EscOk_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onC EscOkSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S1call under `S`. -/
+theorem S1call_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onZ S1callSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts S1call under `A`. -/
+theorem S1call_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onZ S1callSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts K1 under `A`, `C` and `G`. -/
+theorem K1_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE K1src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Kcap under `A`, `C` and `G`. -/
+theorem Kcap_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onC KcapSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E11a under `A`, `C` and `G`. -/
+theorem E11a_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE E11aSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts X1arg under `A`, `C` and `G`. -/
+theorem X1arg_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE X1Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts DomF under `A`, `C` and `G`. -/
+theorem DomF_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE DomFSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Dom under `A`, `C` and `G`. -/
+theorem Dom_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE DomSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AliasArg under `A`, `C` and `G`. -/
+theorem AliasArg_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onE AliasArgSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts BlockArg under `C` and `G`. -/
+theorem BlockArg_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE BlockArgSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Curried under `A`. -/
+theorem Curried_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onE CurriedSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Curried under `C` and `G`. -/
+theorem Curried_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE CurriedSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts BoxCallee under `A`, `C` and `G`. -/
+theorem BoxCallee_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onE BoxCalleeSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts BoxF under `A`, `C` and `G`. -/
+theorem BoxF_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onE BoxFSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AnyAsc under `A`. -/
+theorem AnyAsc_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onC AnyAscSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AnyAsc under `C` and `G`. -/
+theorem AnyAsc_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onC AnyAscSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Fits under `A`, `C` and `G`. -/
+theorem Fits_A_checks : CheckerAccepts {} Λc (Erasure.A.prog (onC FitsSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CalleeAny under `D`. -/
+theorem CalleeAny_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE CalleeAnySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CalleeAny under `C` and `G`. -/
+theorem CalleeAny_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE CalleeAnySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CalleeTop under `C` and `G`. -/
+theorem CalleeTop_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE CalleeTopSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CalleeArg under `A`, `C` and `G`. -/
+theorem CalleeArg_A_checks :
+    CheckerAccepts {} Λc (Erasure.A.prog (onE CalleeArgSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Val under `D`, `C` and `G`. -/
+theorem Val_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onE ValSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts W2asc under `D`, `C` and `G`. -/
+theorem W2asc_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onC W2ascSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AndSame under `D`, `C` and `G`. -/
+theorem AndSame_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE AndSameSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts X3 under `C` and `G`. -/
+theorem X3_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onE X3Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts X4 under `S`. -/
+theorem X4_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE X4Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts X4 under `C`. -/
+theorem X4_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onE X4Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts X4 under `G`. -/
+theorem X4_G_checks : CheckerAccepts {} Λc (Erasure.G.prog (onE X4Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AndTwo under `D`, `C` and `G`. -/
+theorem AndTwo_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE AndTwoSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AndTop under `D`, `C` and `G`. -/
+theorem AndTop_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE AndTopSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Asc under `D`, `C` and `G`. -/
+theorem Asc_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onE AscSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Alias under `C` and `G`. -/
+theorem Alias_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE AliasSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Alias2 under `C` and `G`. -/
+theorem Alias2_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE Alias2Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Curry under `D`, `C` and `G`. -/
+theorem Curry_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE CurrySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts SideCurry under `D`, `C` and `G`. -/
+theorem SideCurry_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE SideCurrySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts LetBody under `C` and `G`. -/
+theorem LetBody_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE LetBodySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Block under `C` and `G`. -/
+theorem Block_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE BlockSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Cap under `C` and `G`. -/
+theorem Cap_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onC CapSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Fld under `S` and `G`. -/
+theorem Fld_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onC FldSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Fld under `C`. -/
+theorem Fld_C_checks : CheckerAccepts {} Λc (Erasure.C.prog (onC FldSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts FldTy under `D` and `C`. -/
+theorem FldTy_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE FldTySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts FldTy under `S` and `G`. -/
+theorem FldTy_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE FldTySrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AscObj under `S` and `G`. -/
+theorem AscObj_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE AscObjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AscWide under `S` and `G`. -/
+theorem AscWide_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE AscWideSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AliasMu under `S` and `G`. -/
+theorem AliasMu_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE AliasMuSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AliasMu under `C`. -/
+theorem AliasMu_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onE AliasMuSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Nest under `S` and `G`. -/
+theorem Nest_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE NestSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Fwd under `D` and `C`. -/
+theorem Fwd_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onE FwdObjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Fwd under `S` and `G`. -/
+theorem Fwd_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE FwdObjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Cap1 under `S` and `G`. -/
+theorem Cap1_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onC Cap1Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts SelfProj under `S` and `G`. -/
+theorem SelfProj_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onC SelfProjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Rec under `D` and `C`. -/
+theorem Rec_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onE RecObjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Bare under `S` and `G`. -/
+theorem Bare_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE BareSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts BareCap under `S` and `G`. -/
+theorem BareCap_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onC BareCapSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts LamCap under `S` and `G`. -/
+theorem LamCap_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onC LamCapSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts LamCap under `C`. -/
+theorem LamCap_C_checks :
+    CheckerAccepts {} Λc (Erasure.C.prog (onC LamCapSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts FwdSelf under `S` and `G`. -/
+theorem FwdSelf_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE FwdSelfSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts BareProj under `S` and `G`. -/
+theorem BareProj_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE BareProjSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AmbUse under `S` and `G`. -/
+theorem AmbUse_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE AmbUseSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AmbUse2 under `S` and `G`. -/
+theorem AmbUse2_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE AmbUse2Src)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts OrdA under `S` and `G`. -/
+theorem OrdA_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE OrdASrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts OrdB under `S` and `G`. -/
+theorem OrdB_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onE OrdBSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E2obj under `D` and `C`. -/
+theorem E2obj_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE E2objSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts E2obj under `S` and `G`. -/
+theorem E2obj_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE E2objSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts AliasRec under `D` and `C`. -/
+theorem AliasRec_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE AliasRecSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts NoDom under `D` and `C`. -/
+theorem NoDom_D_checks :
+    CheckerAccepts {} Λc (Erasure.D.prog (onE NoDomSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts NoDom under `S` and `G`. -/
+theorem NoDom_S_checks :
+    CheckerAccepts {} Λc (Erasure.S.prog (onE NoDomSrc)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z1lit under `D` and `C`. -/
+theorem Z1lit_D_checks : CheckerAccepts {} Λc (Erasure.D.prog (onZ Z1litF)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts Z1lit under `S` and `G`. -/
+theorem Z1lit_S_checks : CheckerAccepts {} Λc (Erasure.S.prog (onZ Z1litF)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1 under `D` and `C`. -/
+theorem CE1_D_checks : CheckerAccepts {} Λk (Erasure.D.prog CE1src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1 under `S`. -/
+theorem CE1_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE1src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1 under `G`. -/
+theorem CE1_G_checks : CheckerAccepts {} Λk (Erasure.G.prog CE1src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE2 under `D` and `C`. -/
+theorem CE2_D_checks : CheckerAccepts {} Λk (Erasure.D.prog CE2src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE2 under `S`. -/
+theorem CE2_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE2src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE2 under `G`. -/
+theorem CE2_G_checks : CheckerAccepts {} Λk (Erasure.G.prog CE2src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE3 under `S` and `G`. -/
+theorem CE3_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE3src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE3 under `C`. -/
+theorem CE3_C_checks : CheckerAccepts {} Λk (Erasure.C.prog CE3src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE3s under `S` and `G`. -/
+theorem CE3s_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE3sSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE3s under `C`. -/
+theorem CE3s_C_checks : CheckerAccepts {} Λk (Erasure.C.prog CE3sSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE4 under `S` and `G`. -/
+theorem CE4_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE4src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE4 under `C`. -/
+theorem CE4_C_checks : CheckerAccepts {} Λk (Erasure.C.prog CE4src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5io under `D` and `C`. -/
+theorem CE5io_D_checks : CheckerAccepts {} Λk (Erasure.D.prog CE5ioSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5io under `S`. -/
+theorem CE5io_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE5ioSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5io under `G`. -/
+theorem CE5io_G_checks : CheckerAccepts {} Λk (Erasure.G.prog CE5ioSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1arg under `D` and `C`. -/
+theorem CE1arg_D_checks : CheckerAccepts {} Λk (Erasure.D.prog CE1argSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1arg under `S`. -/
+theorem CE1arg_S_checks : CheckerAccepts {} Λk (Erasure.S.prog CE1argSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1arg under `A`. -/
+theorem CE1arg_A_checks : CheckerAccepts {} Λk (Erasure.A.prog CE1argSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE1arg under `G`. -/
+theorem CE1arg_G_checks : CheckerAccepts {} Λk (Erasure.G.prog CE1argSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5argIo under `S`. -/
+theorem CE5argIo_S_checks :
+    CheckerAccepts {} Λk (Erasure.S.prog CE5argIoSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5argIo under `A`. -/
+theorem CE5argIo_A_checks :
+    CheckerAccepts {} Λk (Erasure.A.prog CE5argIoSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5argIo under `C`. -/
+theorem CE5argIo_C_checks :
+    CheckerAccepts {} Λk (Erasure.C.prog CE5argIoSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts CE5argIo under `G`. -/
+theorem CE5argIo_G_checks :
+    CheckerAccepts {} Λk (Erasure.G.prog CE5argIoSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts KSelf under `S` and `G`. -/
+theorem KSelf_S_checks : CheckerAccepts {} Λk (Erasure.S.prog KSelfSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts KSelf under `C`. -/
+theorem KSelf_C_checks : CheckerAccepts {} Λk (Erasure.C.prog KSelfSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts M5 under `D`, `C` and `G`. -/
+theorem M5_D_checks : CheckerAccepts {} Λk (Erasure.D.prog M5src) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts KDom under `D`, `C` and `G`. -/
+theorem KDom_D_checks : CheckerAccepts {} Λk (Erasure.D.prog KDomSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair S1callGu. -/
+theorem S1callGu_pair_checks : CheckerAccepts {} Λc (onZ S1callSrcGu) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair Callee. -/
+theorem Callee_pair_checks : CheckerAccepts {} Λc (onE CalleeSrcD) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair CalleeAny. -/
+theorem CalleeAny_pair_checks : CheckerAccepts {} Λc (onE CalleeAnySrcD) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair Nest. -/
+theorem Nest_pair_checks : CheckerAccepts {} Λc (onE NestSrcS) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair Nest16. -/
+theorem Nest16_pair_checks : CheckerAccepts {} Λc (onE (NestKSrc false 16)) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair RecW. -/
+theorem RecW_pair_checks : CheckerAccepts {} Λc (onE RecWSrcS) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair RecWd. -/
+theorem RecWd_pair_checks : CheckerAccepts {} Λc (onE RecWdSrcS) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair FldTyD. -/
+theorem FldTyD_pair_checks : CheckerAccepts {} Λc (onE FldTySrcD) (by decide +kernel) :=
+  compile_checks_get _
+
+/-- The target checker accepts the erased body of the pair SideCurryW. -/
+theorem SideCurryW_pair_checks : CheckerAccepts {} Λc (onE SideCurrySrcW) (by decide +kernel) :=
+  compile_checks_get _
+
+/-! ### Rejections with the compiler's reason
+
+Each states `RejectedWith` at a cell the kernel computes: no result at any
+budget, and the reason `compileE` reports.  A reason of inference is the
+reason at every budget from `defaultFuel` up (`RejectedAbove`).  The escapes
+fail at every budget by the elaborator's own verdict, and their reason, the
+typer's level escape on the fill, is checked by `#eval expect` at the goal the
+typer reached. -/
+
+/-- E1 with its domains erased: no goal reaches the outer lambda, as for
+every program whose outermost term is a lambda. -/
+theorem E1_D_rejected : RejectedAbove Λc (Erasure.D.prog (onE E1src)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE E1src) (Erasure.D.surface (onE E1src).body) = missing 0) rfl
+
+/-- S1 with every domain erased: the lambda bound to `op` by a `let` with no
+type has no goal. -/
+theorem S1_D_rejected :
+    RejectedAbove Λc (Erasure.D.prog (onZ S1progSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S1progSrc) (Erasure.D.surface (onZ S1progSrc).body) = missing 28) rfl
+
+/-- S2 with every domain erased. -/
+theorem S2_D_rejected : RejectedAbove Λc (Erasure.D.prog (onZ S2src)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S2src) (Erasure.D.surface (onZ S2src).body) = missing 96) rfl
+
+/-- S2 with the domains in checked positions erased: `(λy. y : ⊤)` has a
+goal with no function part. -/
+theorem S2_C_rejected : RejectedAbove Λc (Erasure.C.prog (onZ S2src)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S2src) (Erasure.C.surface (onZ S2src).body) = missing 96) rfl
+
+/-- S2 as a Scala programmer writes it, rejected at the same lambda. -/
+theorem S2_G_rejected : RejectedAbove Λc (Erasure.G.prog (onZ S2src)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S2src) (Erasure.G.surface (onZ S2src).body) = missing 143) rfl
+
+/-- exTop with every domain erased: the argument bound to `un` by a written
+`let` has no goal. -/
+theorem exTop_D_rejected :
+    RejectedAbove Λc (Erasure.D.prog (onZ exTopSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ exTopSrc) (Erasure.D.surface (onZ exTopSrc).body) = missing 14) rfl
+
+/-- `withFile` applied to its callback with both domains erased: the inner
+lambda's goal is the formal's result `⊤`. -/
+theorem S1call_C_rejected :
+    RejectedAbove Λc (Erasure.C.prog (onZ S1callSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S1callSrc) (Erasure.C.surface (onZ S1callSrc).body) = missing 54) rfl
+
+/-- The same with every self shape erased too. -/
+theorem S1call_G_rejected :
+    RejectedAbove Λc (Erasure.G.prog (onZ S1callSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onZ S1callSrc) (Erasure.G.surface (onZ S1callSrc).body) = missing 63) rfl
+
+/-- A callee whose two formals agree on the parameter and differ in results
+neither of which is below the other: no formal dominates. -/
+theorem TwoF_A_rejected :
+    RejectedAbove Λc (Erasure.A.prog (onE TwoFSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE TwoFSrc) (Erasure.A.surface (onE TwoFSrc).body) = missing 33) rfl
+
+/-- A callee whose two formals are incomparable: no formal dominates. -/
+theorem Inc_A_rejected : RejectedAbove Λc (Erasure.A.prog (onE IncSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE IncSrc) (Erasure.A.surface (onE IncSrc).body) = missing 17) rfl
+
+/-- A callee with no function type. -/
+theorem NoFn_A_rejected :
+    RejectedAbove Λc (Erasure.A.prog (onE NoFnSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE NoFnSrc) (Erasure.A.surface (onE NoFnSrc).body) = missing 2) rfl
+
+/-- A lambda bound by a `let` with no type. -/
+theorem Id0_D_rejected : RejectedAbove Λc (Erasure.D.prog (onE Id0Src)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE Id0Src) (Erasure.D.surface (onE Id0Src).body) = missing 0) rfl
+
+/-- A lambda ascribed at `⊤`, which has no function part. -/
+theorem IdTop_C_rejected :
+    RejectedAbove Λc (Erasure.C.prog (onE IdTopSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE IdTopSrc) (Erasure.C.surface (onE IdTopSrc).body) = missing 0) rfl
+
+/-- A goal that bounds a function type from below only. -/
+theorem Lower_C_rejected :
+    RejectedAbove Λc (Erasure.C.prog (onE LowerSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE LowerSrc) (Erasure.C.surface (onE LowerSrc).body) = missing 1) rfl
+
+/-- A goal whose alias comes back to itself. -/
+theorem Loop_C_rejected :
+    RejectedAbove Λc (Erasure.C.prog (onE LoopSrc)) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE LoopSrc) (Erasure.C.surface (onE LoopSrc).body) = missing 3) rfl
+
+/-- CE3 with every domain erased: the client bound by a `let` whose written
+answer is the goal of its body has no goal of its own. -/
+theorem CE3_D_rejected : RejectedAbove Λk (Erasure.D.prog CE3src) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λk CE3src (Erasure.D.surface CE3src.body) = missing 0) rfl
+
+/-- Two fields that read each other: a cyclic reference at `a`. -/
+theorem Cyc_S_rejected : RejectedAbove Λc (Erasure.S.prog (onE CycSrc)) (.cyclicRef (.trm 0)) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE CycSrc) (Erasure.S.surface (onE CycSrc).body) =
+      .no (.cyclicRef (.trm 0)) (spent 0)) rfl
+
+/-- A recursive field without a written type: a cyclic reference at `a`. -/
+theorem Rec_S_rejected : RejectedAbove Λc (Erasure.S.prog (onE RecObjSrc)) (.cyclicRef (.trm 0)) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE RecObjSrc) (Erasure.S.surface (onE RecObjSrc).body) =
+      .no (.cyclicRef (.trm 0)) (spent 0)) rfl
+
+/-- A recursive field read through an alias of the self: a cyclic reference
+at `a`. -/
+theorem AliasRec_S_rejected :
+    RejectedAbove Λc (Erasure.S.prog (onE AliasRecSrc)) (.cyclicRef (.trm 0)) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE AliasRecSrc) (Erasure.S.surface (onE AliasRecSrc).body) =
+      .no (.cyclicRef (.trm 0)) (spent 0)) rfl
+
+/-- A field that reads a cycle of two later fields: a cyclic reference at
+`b`, the member the walk from `a` reaches twice. -/
+theorem Cyc3_S_rejected : RejectedAbove Λc (Erasure.S.prog (onC Cyc3Src)) (.cyclicRef (.trm 1)) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onC Cyc3Src) (Erasure.S.surface (onC Cyc3Src).body) =
+      .no (.cyclicRef (.trm 1)) (spent 0)) rfl
+
+/-- A field whose two types are incomparable: no least one. -/
+theorem Amb_S_rejected : RejectedAbove Λc (Erasure.S.prog (onE AmbSrc)) (.ambiguous (.trm 0)) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE AmbSrc) (Erasure.S.surface (onE AmbSrc).body) =
+      .no (.ambiguous (.trm 0)) (spent 15)) rfl
+
+/-- Two function sides with incomparable domains: a type mismatch, where the
+compiler forms the union of the domains. -/
+theorem AndInc_D_rejected : RejectedWith Λc (Erasure.D.prog (onE AndIncSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onE AndIncSrc) (Erasure.D.surface (onE AndIncSrc).body) =
+      .no .mismatch (spent 4))
+
+/-- One function side and a field the lambda lacks. -/
+theorem AndOne_D_rejected : RejectedWith Λc (Erasure.D.prog (onE AndOneSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onE AndOneSrc) (Erasure.D.surface (onE AndOneSrc).body) =
+      .no .mismatch (spent 12))
+
+/-- Two function sides whose results the lambda does not meet. -/
+theorem AndRes_D_rejected : RejectedWith Λc (Erasure.D.prog (onE AndResSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onE AndResSrc) (Erasure.D.surface (onE AndResSrc).body) =
+      .no .mismatch (spent 35))
+
+/-- A goal that bounds a function type from above only. -/
+theorem Upper_C_rejected : RejectedWith Λc (Erasure.C.prog (onE UpperSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onE UpperSrc) (Erasure.C.surface (onE UpperSrc).body) = .no .mismatch (spent 1))
+
+/-- A closure over `f` at a pure formal. -/
+theorem TooBig_A_rejected : RejectedWith Λc (Erasure.A.prog (onC TooBigSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onC TooBigSrc) (Erasure.A.surface (onC TooBigSrc).body) =
+      .no .mismatch (spent 36))
+
+/-- C7 with its boxes written and its self shape erased: the formed box
+holds `{f1}` where the written unboxing names `{k1}`. -/
+theorem C7box_S_rejected : RejectedWith Λc (Erasure.S.prog (onC C7boxSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onC C7boxSrc) (Erasure.S.surface (onC C7boxSrc).body) =
+      .no .mismatch (spent 13))
+
+/-- `freshCell` with its self shape erased: the formed `read` is pure, and
+no rule relates the formed `μ` to the written one. -/
+theorem Z1_S_rejected : RejectedWith Λc (Erasure.S.prog (onZ Z1progSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ Z1progSrc) (Erasure.S.surface (onZ Z1progSrc).body) =
+      .no .mismatch (spent 62))
+
+/-- The same in a `let` with a written type. -/
+theorem Z1def_S_rejected : RejectedWith Λc (Erasure.S.prog (onZ Z1defSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ Z1defSrc) (Erasure.S.surface (onZ Z1defSrc).body) =
+      .no .mismatch (spent 112))
+
+/-- The same in `makeLogger`. -/
+theorem Z2_S_rejected : RejectedWith Λc (Erasure.S.prog (onZ Z2src)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ Z2src) (Erasure.S.surface (onZ Z2src).body) = .no .mismatch (spent 62))
+
+/-- The same in exTop. -/
+theorem exTop_S_rejected : RejectedWith Λc (Erasure.S.prog (onZ exTopSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ exTopSrc) (Erasure.S.surface (onZ exTopSrc).body) =
+      .no .mismatch (spent 62))
+
+/-- The same in the `let` whose bound term has an existential answer. -/
+theorem LetEx_S_rejected : RejectedWith Λc (Erasure.S.prog (onZ LetExSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ LetExSrc) (Erasure.S.surface (onZ LetExSrc).body) =
+      .no .mismatch (spent 62))
+
+/-- SelfProj with the field's domain erased: the written self shape charges
+`a` at `{z}`, as the written program, which the typer rejects. -/
+theorem SelfProj_C_rejected : RejectedWith Λc (Erasure.C.prog (onC SelfProjSrc)) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onC SelfProjSrc) (Erasure.C.surface (onC SelfProjSrc).body) =
+      .no .mismatch (spent 47))
+
+/-- KSelf with its member at an input-output capability and its self shape
+erased: the formed member is `{io}`, which the kind bound of the client's
+parameter excludes. -/
+theorem KSelfIo_S_rejected : RejectedWith Λk (Erasure.S.prog KSelfIoSrc) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λk KSelfIoSrc (Erasure.S.surface KSelfIoSrc.body) = .no .mismatch (spent 290))
+
+/-- CE5 with every domain erased: the kinding of `{tl}` at
+`except[ThreadLocal]` fails, as for the written program. -/
+theorem CE5_D_rejected : RejectedWith Λk (Erasure.D.prog CE5src) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λk CE5src (Erasure.D.surface CE5src.body) = .no .mismatch (spent 42))
+
+/-- `Future.apply` with a closure over a thread-local function, the closure's
+domain erased: the kinding of the closure's set fails, as for the written
+program. -/
+theorem CE5arg_A_rejected : RejectedWith Λk (Erasure.A.prog CE5argSrc) .mismatch :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λk CE5argSrc (Erasure.A.surface CE5argSrc.body) = .no .mismatch (spent 166))
+
+/-- exTop with the domains in checked positions erased: the typer rejects
+the existential answer outside every scope, as on the written program. -/
+theorem exTop_C_rejected :
+    RejectedWith Λc (Erasure.C.prog (onZ exTopSrc)) (.landed "existentialAtTop") :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onZ exTopSrc) (Erasure.C.surface (onZ exTopSrc).body) =
+      .no (.landed "existentialAtTop") (spent 21))
+
+/-- A lambda ascribed at a type with `any` below a field of its domain: the
+typer's `anyNotOk`. -/
+theorem DeepAsc_D_rejected :
+    RejectedWith Λc (Erasure.D.prog (onE DeepAscSrc)) (.landed "anyNotOk") :=
+  erasedCell_rejected (by decide +kernel :
+    erasedCell Λc (onE DeepAscSrc) (Erasure.D.surface (onE DeepAscSrc).body) =
+      .no (.landed "anyNotOk") (spent 0))
+
+/-- A lambda bound by a written `let` and then passed: the `let` is no call
+argument. -/
+theorem LetArg_pair_rejected :
+    RejectedAbove Λc ((onE LetArgSrc).withSBody LetArgSrcD) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE LetArgSrc) LetArgSrcD = missing 0) rfl
+
+/-- A body that calls `g` on another variable. -/
+theorem CalleeOther_pair_rejected :
+    RejectedAbove Λc ((onE CalleeOtherSrc).withSBody CalleeOtherSrcD) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE CalleeOtherSrc) CalleeOtherSrcD = missing 0) rfl
+
+/-- A callee body at incomparable domains. -/
+theorem CalleeInc_pair_rejected :
+    RejectedAbove Λc ((onE CalleeIncSrc).withSBody CalleeIncSrcD) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE CalleeIncSrc) CalleeIncSrcD = missing 9) rfl
+
+/-- A field that is a lambda, in a literal without a self shape and with no
+goal. -/
+theorem NoDomDS_pair_rejected :
+    RejectedAbove Λc ((onE NoDomSrc).withSBody NoDomSrcS) (.missingParamType none) :=
+  erasedCell_slot (by decide +kernel :
+    erasedCell Λc (onE NoDomSrc) NoDomSrcS = missing 0) rfl
+
+/-- A field whose type names the class root needs a written type. -/
+theorem NE_rejected : RejectedAbove Λc (onE NESrcS) (.needsExplicitType (.trm 0)) :=
+  openCell_slot (by decide +kernel :
+    openCell Λc (onE NESrcS) = .no (.needsExplicitType (.trm 0)) (spent 2)) rfl
+
+/-- A field whose right-hand side unpacks a `fresh` result needs a written
+type. -/
+theorem NEfresh_rejected : RejectedAbove Λc (onZ NEfreshSrcS) (.needsExplicitType (.trm 0)) :=
+  openCell_slot (by decide +kernel :
+    openCell Λc (onZ NEfreshSrcS) = .no (.needsExplicitType (.trm 0)) (spent 24)) rfl
+
+/-- A lambda ascribed at a capture member bounded by a kind: the goal has no
+function part. -/
+theorem KGoal_rejected : RejectedAbove Λk KGoalSrc (.missingParamType none) :=
+  openCell_slot (by decide +kernel :
+    openCell Λk KGoalSrc = missing 0) rfl
+
+/-- The escape with its callback's domains erased, under `C` and `G`, which
+give one program.  The elaborator fails with the tank unmarked, so no budget
+compiles it. -/
+theorem Esc_C_rejected (b : Budget) :
+    (compile b Λc (Erasure.C.prog (onC EscSrc))).isOk = false :=
+  elabProgOut_rejects (by decide +kernel :
+    elabProgOut Λc (Erasure.C.prog (onC EscSrc)) = (.no .mismatch, spent 63)) b
+
+/-- The escape by an ascription with its callback's domains erased, under `C`
+and `G`. -/
+theorem AscEsc_C_rejected (b : Budget) :
+    (compile b Λc (Erasure.C.prog (onC AscEscSrc))).isOk = false :=
+  elabProgOut_rejects (by decide +kernel :
+    elabProgOut Λc (Erasure.C.prog (onC AscEscSrc)) = (.no .mismatch, spent 63)) b
+
+/-- The escape at the top with its callback's domains erased, under `D`, `C`
+and `G`. -/
+theorem TopEsc_C_rejected (b : Budget) :
+    (compile b Λc (Erasure.C.prog (onC TopEscSrc))).isOk = false :=
+  elabProgOut_rejects (by decide +kernel :
+    elabProgOut Λc (Erasure.C.prog (onC TopEscSrc)) = (.no .mismatch, spent 63)) b
+
+/-- A closure over `f` ascribed at a pure type, its domain erased, under `C`
+and `G`, which give one program.  The elaborator fails with the tank
+unmarked, so no budget compiles it.  The reason, a mismatch, is checked with
+the row. -/
+theorem CapPure_C_rejected (b : Budget) :
+    (compile b Λc (Erasure.C.prog (onC CapPureSrc))).isOk = false :=
+  elabProgOut_rejects (by decide +kernel :
+    elabProgOut Λc (Erasure.C.prog (onC CapPureSrc)) = (.no .mismatch, spent 14)) b
+
+-- The reason is the typer's escape on the fill, at the goal the typer reaches
+-- on the written program, with the same certificate.
+#eval expect (escapesAt (compile {} Λc (Erasure.C.prog (onC EscSrc))) EscGoalCtx
+    [CapAtom.var .here] [CapAtom.cvar escRoot])
+  "the escape under C: not rejected at the goal in EscGoalCtx"
+
+#eval expect ((compile {} Λc (Erasure.C.prog (onC AscEscSrc))).reason?.map Reason.name ==
+    some "levelEscape")
+  "the escape by an ascription under C: not rejected with the escape"
+
+#eval expect (escapesAt (compile {} Λc (Erasure.C.prog (onC TopEscSrc))) TopGoalCtx
+    [CapAtom.var .here] topPlat)
+  "the escape at the top under C: not rejected at the goal in TopGoalCtx"
+
+end Erasures
+
+/-! ## Completeness at the direct sites
+
+`compile_complete_canonAt` at the erased programs of the tables whose empty
+slots sit at direct sites.  Each theorem says that the written program with
+its body erased compiles as the written program does, header, fill, term, use
+set, type and derivation, at every budget from some fuel on.  `canonAt`
+decides its premises, with every reading of a goal and every run of the typer
+taken at `defaultFuel`, and the kernel checks it.  The fill is the written
+body in every case.  A theorem is named after the first erasure that gives its
+program, and its docstring names every erasure that gives the same program.
+
+The erased programs that compile and are no such case are a lambda whose body
+has an empty slot at an intersection with a function side, a literal whose
+self shape the rounds form, a literal written in a field whose outer literal
+has no self shape either, and a program whose fill reads the `any` of its
+goal, which is no written program.  A program at a call argument closes the
+section.  The elaborator rejects it, though the typer accepts its fill, which
+is the written program. -/
+
+section Complete
+
+/-- The program `w` with its body replaced by `e` compiles as `w` does, at
+every budget from some fuel on. -/
+def CompilesAs (Λ : LabelTable) (w : SProg) (e : STm) : Prop :=
+  ∃ n0, ∀ b : Budget, n0 ≤ b.fuel → compile b Λ (w.withSBody e) = compile b Λ w
+
+/-! ### Call arguments
+
+The dominant formal of the callee gives the domain. -/
+
+/-- S1 with the domain of its callback erased, under `A`. -/
+theorem S1call_A_complete : CompilesAs Λc (onZ S1callSrc) (Erasure.A.surface S1callSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A lambda passed to a callee whose parameter type is written, under `A`,
+`C` and `G`. -/
+theorem K1_A_complete : CompilesAs Λc (onE K1src) (Erasure.A.surface K1src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A callback whose parameter captures a platform capability, under `A`, `C`
+and `G`. -/
+theorem Kcap_A_complete : CompilesAs Λc (onC KcapSrc) (Erasure.A.surface KcapSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- E11 with the identity passed directly, twice, under `A`, `C` and `G`. -/
+theorem E11a_A_complete : CompilesAs Λc (onE E11aSrc) (Erasure.A.surface E11aSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An intersection callee whose formals agree on their domain, under `A`,
+`C` and `G`. -/
+theorem X1arg_A_complete : CompilesAs Λc (onE X1Src) (Erasure.A.surface X1Src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An intersection callee whose second formal is above the first, under `A`,
+`C` and `G`. -/
+theorem DomF_A_complete : CompilesAs Λc (onE DomFSrc) (Erasure.A.surface DomFSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An intersection callee whose formals have comparable domains, under `A`,
+`C` and `G`. -/
+theorem Dom_A_complete : CompilesAs Λc (onE DomSrc) (Erasure.A.surface DomSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A callee whose formal is an alias of a function type, under `A`, `C` and
+`G`. -/
+theorem AliasArg_A_complete : CompilesAs Λc (onE AliasArgSrc) (Erasure.A.surface AliasArgSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A curried lambda passed as an argument, its outer domain erased, under
+`A`. -/
+theorem Curried_A_complete : CompilesAs Λc (onE CurriedSrc) (Erasure.A.surface CurriedSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with both domains erased, under `C` and `G`. -/
+theorem Curried_C_complete : CompilesAs Λc (onE CurriedSrc) (Erasure.C.surface CurriedSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A boxed callee, under `A`, `C` and `G`. -/
+theorem BoxCallee_A_complete : CompilesAs Λc (onE BoxCalleeSrc) (Erasure.A.surface BoxCalleeSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A boxed formal, under `A`, `C` and `G`. -/
+theorem BoxF_A_complete : CompilesAs Λc (onE BoxFSrc) (Erasure.A.surface BoxFSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A callee whose formal captures anything, and a closure over `f` as its
+argument, under `A`. -/
+theorem AnyAsc_A_complete : CompilesAs Λc (onC AnyAscSrc) (Erasure.A.surface AnyAscSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A closure over `f` at a formal that captures `f`, under `A`, `C` and `G`. -/
+theorem Fits_A_complete : CompilesAs Λc (onC FitsSrc) (Erasure.A.surface FitsSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A callee body as a call argument at a formal with no function part, so
+the callee of the body gives the domain, under `A`, `C` and `G`. -/
+theorem CalleeArg_A_complete : CompilesAs Λc (onE CalleeArgSrc) (Erasure.A.surface CalleeArgSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A block as a call argument whose result is a lambda, under `C` and `G`. -/
+theorem BlockArg_C_complete : CompilesAs Λc (onE BlockArgSrc) (Erasure.C.surface BlockArgSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-! ### Ascriptions and written types
+
+The written type gives the domain through its function part.  A written type
+with no function part leaves it to the callee of a body `g x`. -/
+
+/-- `let x : A = λy. y in x`, under `D`, `C` and `G`. -/
+theorem Val_D_complete : CompilesAs Λc (onE ValSrc) (Erasure.D.surface ValSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- Two function sides of one domain, under `D`, `C` and `G`. -/
+theorem AndSame_D_complete : CompilesAs Λc (onE AndSameSrc) (Erasure.D.surface AndSameSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- Two function sides with comparable domains, under `D`, `C` and `G`. -/
+theorem AndTwo_D_complete : CompilesAs Λc (onE AndTwoSrc) (Erasure.D.surface AndTwoSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A function side beside `⊤`, under `D`, `C` and `G`. -/
+theorem AndTop_D_complete : CompilesAs Λc (onE AndTopSrc) (Erasure.D.surface AndTopSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The identity ascribed `∀(x : ⊤) ⊤`, under `D`, `C` and `G`. -/
+theorem Asc_D_complete : CompilesAs Λc (onE AscSrc) (Erasure.D.surface AscSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A curried lambda ascribed a curried function type, both domains erased,
+under `D`, `C` and `G`. -/
+theorem Curry_D_complete : CompilesAs Λc (onE CurrySrc) (Erasure.D.surface CurrySrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An ascription whose second side is a selection with a function lower
+bound, under `C` and `G`. -/
+theorem X3_C_complete : CompilesAs Λc (onE X3Src) (Erasure.C.surface X3Src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A lambda ascribed at an intersection with one function side and an
+abstract side, whose body holds a literal with a written self shape, under
+`C`. -/
+theorem X4_C_complete : CompilesAs Λc (onE X4Src) (Erasure.C.surface X4Src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An alias of a function type, under `C` and `G`. -/
+theorem Alias_C_complete : CompilesAs Λc (onE AliasSrc) (Erasure.C.surface AliasSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- An alias of an alias, under `C` and `G`. -/
+theorem Alias2_C_complete : CompilesAs Λc (onE Alias2Src) (Erasure.C.surface Alias2Src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A callee body ascribed at `⊤`, which has no function part, so the callee
+gives the domain, under `C` and `G`. -/
+theorem CalleeTop_C_complete : CompilesAs Λc (onE CalleeTopSrc) (Erasure.C.surface CalleeTopSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A lambda as the body of a `let` with a written function type, under `C`
+and `G`. -/
+theorem LetBody_C_complete : CompilesAs Λc (onE LetBodySrc) (Erasure.C.surface LetBodySrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A block ascribed at a function type, under `C` and `G`. -/
+theorem Block_C_complete : CompilesAs Λc (onE BlockSrc) (Erasure.C.surface BlockSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A closure over a capability ascribed a function type that captures it,
+under `C` and `G`. -/
+theorem Cap_C_complete : CompilesAs Λc (onC CapSrc) (Erasure.C.surface CapSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-! ### Literals with a written self shape
+
+A field takes the domain of its lambda from its type in the shape. -/
+
+/-- E2: a literal whose field is a lambda, projected and applied, under `D`
+and `C`. -/
+theorem E2_D_complete : CompilesAs Λc (onE E2src) (Erasure.D.surface E2src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- C2, its domains in checked positions erased, under `C`. -/
+theorem C2_C_complete : CompilesAs Λc (onC C2src) (Erasure.C.surface C2src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- S1, its domains in checked positions erased, under `C`. -/
+theorem S1_C_complete : CompilesAs Λc (onZ S1progSrc) (Erasure.C.surface S1progSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- Z1, under `D` and `C`. -/
+theorem Z1_D_complete : CompilesAs Λc (onZ Z1progSrc) (Erasure.D.surface Z1progSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- Z1 with `freshCell` defined, under `D` and `C`. -/
+theorem Z1def_D_complete : CompilesAs Λc (onZ Z1defSrc) (Erasure.D.surface Z1defSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- Z3, under `D` and `C`. -/
+theorem Z3_D_complete : CompilesAs Λc (onZ Z3src) (Erasure.D.surface Z3src) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The literal of `freshCell` with the self shape its definitions form,
+under `D` and `C`. -/
+theorem Z1lit_D_complete : CompilesAs Λc (onZ Z1litF) (Erasure.D.surface Z1litF) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A field closure of a literal with a written self shape, under `C`. -/
+theorem Fld_C_complete : CompilesAs Λc (onC FldSrc) (Erasure.C.surface FldSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A literal with a written self shape and a field without its type, under
+`D` and `C`. -/
+theorem FldTy_D_complete : CompilesAs Λc (onE FldTySrc) (Erasure.D.surface FldTySrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A literal whose first field reads the second, under `D` and `C`. -/
+theorem Fwd_D_complete : CompilesAs Λc (onE FwdObjSrc) (Erasure.D.surface FwdObjSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A recursive field with its type written in the self shape, under `D` and
+`C`. -/
+theorem Rec_D_complete : CompilesAs Λc (onE RecObjSrc) (Erasure.D.surface RecObjSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A recursive field that reads itself through an alias of the self, under
+`D` and `C`. -/
+theorem AliasRec_D_complete : CompilesAs Λc (onE AliasRecSrc) (Erasure.D.surface AliasRecSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A closure that reads a sibling through the self, beside a field that
+holds a capability, under `C`. -/
+theorem LamCap_C_complete : CompilesAs Λc (onC LamCapSrc) (Erasure.C.surface LamCapSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The literal of E2 on its own, under `D` and `C`. -/
+theorem E2obj_D_complete : CompilesAs Λc (onE E2objSrc) (Erasure.D.surface E2objSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A field that is a lambda, under `D` and `C`. -/
+theorem NoDom_D_complete : CompilesAs Λc (onE NoDomSrc) (Erasure.D.surface NoDomSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-! ### Literals at a `μ` goal
+
+A literal without a self shape takes the body of the `μ` its goal dealiases
+to. -/
+
+/-- A literal ascribed at `μ` of its shape, under `S` and `G`. -/
+theorem AscObj_S_complete : CompilesAs Λc (onE AscObjSrc) (Erasure.S.surface AscObjSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A literal whose field is below the goal's field, under `S` and `G`. -/
+theorem AscWide_S_complete : CompilesAs Λc (onE AscWideSrc) (Erasure.S.surface AscWideSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A literal ascribed at an alias of a `μ`, under `S` and `G`. -/
+theorem AliasMu_S_complete : CompilesAs Λc (onE AliasMuSrc) (Erasure.S.surface AliasMuSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with the domain of its lambda field erased and its self shape
+written, under `C`. -/
+theorem AliasMu_C_complete : CompilesAs Λc (onE AliasMuSrc) (Erasure.C.surface AliasMuSrc) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-! ### Programs with classifiers
+
+Whole programs with classifier declarations, a classified platform, and a
+declared use set or kind.  The header stays as written, and the fill is the
+written body. -/
+
+/-- `Try.apply`, CE1, its domains erased, under `D` and `C`. -/
+theorem CE1_D_complete : CompilesAs Λk CE1src (Erasure.D.surface CE1src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- CE1 with its self shapes erased, under `S`. -/
+theorem CE1_S_complete : CompilesAs Λk CE1src (Erasure.S.surface CE1src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- CE1 with its checked domains and its self shapes erased, under `G`. -/
+theorem CE1_G_complete : CompilesAs Λk CE1src (Erasure.G.surface CE1src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- `Future.apply`, CE2, its self shapes erased, under `S`. -/
+theorem CE2_S_complete : CompilesAs Λk CE2src (Erasure.S.surface CE2src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The client of a kind-bounded member, CE3, its checked domains erased,
+under `C`. -/
+theorem CE3_C_complete : CompilesAs Λk CE3src (Erasure.C.surface CE3src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- CE3 over three platform capabilities, its checked domains erased, under
+`C`. -/
+theorem CE3s_C_complete : CompilesAs Λk CE3sSrc (Erasure.C.surface CE3sSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- CE4, its checked domains erased, under `C`. -/
+theorem CE4_C_complete : CompilesAs Λk CE4src (Erasure.C.surface CE4src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- CE5 with the body at `{io}`, its self shapes erased, under `S`. -/
+theorem CE5io_S_complete : CompilesAs Λk CE5ioSrc (Erasure.S.surface CE5ioSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- `Try.apply` with its body passed as a closure, its domains erased, under
+`D` and `C`. -/
+theorem CE1arg_D_complete : CompilesAs Λk CE1argSrc (Erasure.D.surface CE1argSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with its self shapes erased, under `S`. -/
+theorem CE1arg_S_complete : CompilesAs Λk CE1argSrc (Erasure.S.surface CE1argSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with the domain of the closure erased, under `A`. -/
+theorem CE1arg_A_complete : CompilesAs Λk CE1argSrc (Erasure.A.surface CE1argSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with its checked domains and its self shapes erased, under `G`. -/
+theorem CE1arg_G_complete : CompilesAs Λk CE1argSrc (Erasure.G.surface CE1argSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A closure that captures an input-output function passed as the body, its
+self shapes erased, under `S`. -/
+theorem CE5argIo_S_complete : CompilesAs Λk CE5argIoSrc (Erasure.S.surface CE5argIoSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The same with the domain of the closure erased, under `A`. -/
+theorem CE5argIo_A_complete : CompilesAs Λk CE5argIoSrc (Erasure.A.surface CE5argIoSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A client whose parameter bounds a capture member by a kind, its checked
+domains erased, under `C`. -/
+theorem KSelf_C_complete : CompilesAs Λk KSelfSrc (Erasure.C.surface KSelfSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A program that declares a filtered use set, under `D`, `C` and `G`. -/
+theorem M5_D_complete : CompilesAs Λk M5src (Erasure.D.surface M5src.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A lambda ascribed at a function type whose domain bounds a capture member
+by a kind, under `D`, `C` and `G`. -/
+theorem KDom_D_complete : CompilesAs Λk KDomSrc (Erasure.D.surface KDomSrc.body) :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-! ### Erasures no column makes -/
+
+/-- S1's call with the outer domain of its callback erased and the inner one
+written. -/
+theorem S1callGu_pair_complete : CompilesAs Λc (onZ S1callSrc) S1callSrcGu :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- The callee's body `λx. g x` bound by a `let`. -/
+theorem Callee_pair_complete : CompilesAs Λc (onE CalleeSrc) CalleeSrcD :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A literal nested in a field of a written self shape, its own self shape
+erased. -/
+theorem Nest_pair_complete : CompilesAs Λc (onE NestSrc) NestSrcS :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+/-- A field with a written type equal to the shape's, the domain of its
+lambda erased. -/
+theorem FldTyD_pair_complete : CompilesAs Λc (onE FldTySrc) FldTySrcD :=
+  compile_complete_canonAt (n := defaultFuel) (by decide +kernel)
+
+-- Erased programs that compile with no canonical fill: a lambda whose body
+-- has an empty slot at an intersection, two literals whose self shapes the
+-- rounds form, a literal nested seventeen deep with every self shape erased,
+-- two fills that read the `any` of a goal, and a field type written in place
+-- of the self shape.
+example : canonAt Λc (onE SideCurrySrc) (Erasure.D.surface SideCurrySrc) = false := by
+  decide +kernel
+example : canonAt Λc (onE E2src) (Erasure.S.surface E2src) = false := by decide +kernel
+example : canonAt Λc (onE X4Src) (Erasure.S.surface X4Src) = false := by decide +kernel
+example : canonAt Λc (onE (NestKSrc true 16)) (NestKSrc false 16) = false := by decide +kernel
+example : canonAt Λc (onE CalleeAnySrc) CalleeAnySrcD = false := by decide +kernel
+example : canonAt Λk CE2src (Erasure.D.surface CE2src.body) = false := by decide +kernel
+example : canonAt Λc (onE RecObjSrc) RecWSrcS = false := by decide +kernel
+
+/-! ### Where the elaborator checks at another formal
+
+A call argument.  The context has `y : {A : {a : ⊤} .. {b : ⊤}}` and
+`n : {a : ⊤}`, and the callee `f` has two function types.  Their formals are
+`∀(x : ⊤) y.A` and `∀(x : ⊤) {b : ⊤}`, and the second is dominant, since
+`y.A` is below `{b : ⊤}` through its upper bound.  Its domain `⊤` is the fill,
+so the fill is the written program.  The typer types the written program at
+the first formal: `{a : ⊤}` is below `y.A` through its lower bound.  The
+elaborator checks the filled argument at the dominant formal, which needs
+`{a : ⊤}` below `{b : ⊤}`, a middle type the program does not write, and
+rejects.  So the typer's check of the fill at the dominant formal is a premise
+of the call argument site. -/
+
+/-- A call argument whose fill the typer accepts at a formal that is not the
+dominant one. -/
+def MidSrc : STm :=
+  cls% λ(y : {A : {a : ⊤} .. {b : ⊤}}). λ(n : {a : ⊤}).
+    λ(f : (∀(h : ∀(x : ⊤) y.A) ⊤) ∧ (∀(h : ∀(x : ⊤) {b : ⊤}) ⊤)). f (λ(x : ⊤). n)
+
+/-- The same with the argument's domain erased. -/
+def MidSrcA : STm :=
+  cls% λ(y : {A : {a : ⊤} .. {b : ⊤}}). λ(n : {a : ⊤}).
+    λ(f : (∀(h : ∀(x : ⊤) y.A) ⊤) ∧ (∀(h : ∀(x : ⊤) {b : ⊤}) ⊤)). f (λx. n)
+
+-- The erased program is the written one with the argument's domain erased.
+example : Erasure.A.surface MidSrc = MidSrcA := rfl
+
+/-- The written program compiles, and the erased one is a mismatch. -/
+theorem Mid_erased : pair Λc (onE MidSrc) MidSrcA =
+    [.same (tyOf Λc (onE MidSrc)) (spent 60), .no .mismatch (spent 77)] := by decide +kernel
+
+/-- The erased program is rejected at every budget. -/
+theorem Mid_rejected : RejectedWith Λc ((onE MidSrc).withSBody MidSrcA) .mismatch :=
+  erasedCell_rejected (w := onE MidSrc) (n := defaultFuel - 77) (by decide +kernel)
+
+/-- The target checker accepts the written program. -/
+theorem Mid_checks : CheckerAccepts {} Λc (onE MidSrc) (by decide +kernel) :=
+  compile_checks_get _
+
+-- The erased program does not have the written one as its canonical fill.
+example : canonAt Λc (onE MidSrc) MidSrcA = false := by decide +kernel
+
+end Complete
 
 end ClassifiersFrontend
