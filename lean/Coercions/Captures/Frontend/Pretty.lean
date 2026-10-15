@@ -1,11 +1,14 @@
 import Coercions.Captures.Frontend.Resolve
+import Coercions.Frontend.Reason
 import Coercions.Captures.DotMNF.Machine
 
 /-!
 # The pretty printer
 
-An unparser from the four syntaxes of this library back into the paper's
-notation, so that an `#eval` of a compilation or a run is readable.  It
+An unparser from the five syntaxes of this library back into the paper's
+notation, so that an `#eval` of a compilation or a run is readable: surface
+programs, partial terms with their empty slots, annotated terms, and the
+version's syntax.  It also prints the reason a program is rejected.  It
 follows `Frontend/Pretty.lean` and adds capture sets, the capture member
 `{C^ : c₁..c₂}`, the box former `□`, the unboxing term `C ⊸ x` and the
 ascription `(t : T)`.  The syntax inductives have no `Repr` instance, so this
@@ -312,6 +315,98 @@ def ppATm (nv : NameEnv s) (t : ATm s) : String := ppATmWith [] nv t
 table. -/
 def ppADefs (nv : NameEnv s) (d : ADefs s) : String := ppADefsWith [] nv d
 
+/-! ## Partial terms
+
+The syntax `resolvePTop` returns, whose slots may be empty.  An empty domain
+prints as `λx. t`, an empty self shape as `ν(x. d)`, and a written field type
+as `{a : T = t}`.  A literal without a self shape and with a written set
+prints the set after the binder, `ν(x ^ C. d)`.  Every `let` prints as a
+`let`, whatever its tag. -/
+
+mutual
+/-- A partial term in the paper's notation, at the precedence of its
+position. -/
+def ppPTmAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (t : PTm s) : String :=
+  match t with
+  | .path (.var x) => NameEnv.nameAt nv x
+  | .lam (some T) t' =>
+      let y := freshName (NameEnv.names nv)
+      parenIf (p > 1)
+        ("λ(" ++ y ++ " : " ++ ppTyWith Λ nv T ++ "). "
+          ++ ppPTmAt Λ 0 (NameEnv.cons nv y) t')
+  | .lam none t' =>
+      let y := freshName (NameEnv.names nv)
+      parenIf (p > 1) ("λ" ++ y ++ ". " ++ ppPTmAt Λ 0 (NameEnv.cons nv y) t')
+  | .obj (some S) U d =>
+      let y := freshName (NameEnv.names nv)
+      let nv' := NameEnv.cons nv y
+      let selfPart :=
+        match U with
+        | none => ppShapeAt Λ 0 nv' S
+        | some C => ppShapeAt Λ 61 nv' S ++ " ^ " ++ ppCapWith Λ nv C
+      "ν(" ++ y ++ " : " ++ selfPart ++ ". " ++ ppPDefsWith Λ nv' d ++ ")"
+  | .obj none U d =>
+      let y := freshName (NameEnv.names nv)
+      let setPart :=
+        match U with
+        | none => ""
+        | some C => " ^ " ++ ppCapWith Λ nv C
+      "ν(" ++ y ++ setPart ++ ". " ++ ppPDefsWith Λ (NameEnv.cons nv y) d ++ ")"
+  | .app x y => NameEnv.nameAt nv x ++ " " ++ NameEnv.nameAt nv y
+  | .proj x a => NameEnv.nameAt nv x ++ "." ++ ppLabel Λ a
+  | .let _ ann t' u =>
+      let y := freshName (NameEnv.names nv)
+      let ann? :=
+        match ann with
+        | none => ""
+        | some U => " : " ++ ppTyWith Λ nv U
+      parenIf (p > 0)
+        ("let " ++ y ++ ann? ++ " = " ++ ppPTmAt Λ 1 nv t' ++ " in "
+          ++ ppPTmAt Λ 0 (NameEnv.cons nv y) u)
+  | .box x => "□ " ++ NameEnv.nameAt nv x
+  | .unbox C x => ppCapWith Λ nv C ++ " ⊸ " ++ NameEnv.nameAt nv x
+  | .asc t' T => "(" ++ ppPTmAt Λ 1 nv t' ++ " : " ++ ppTyWith Λ nv T ++ ")"
+termination_by structural t
+/-- The definitions of a partial term in the paper's notation. -/
+def ppPDefsWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : PDefs s) : String :=
+  match d with
+  | .typ A S => "{type " ++ ppLabel Λ A ++ " = " ++ ppShapeAt Λ 0 nv S ++ "}"
+  | .cap C c => "{" ++ ppLabel Λ C ++ "^ = " ++ ppCapWith Λ nv c ++ "}"
+  | .trm a none t => "{" ++ ppLabel Λ a ++ " = " ++ ppPTmAt Λ 0 nv t ++ "}"
+  | .trm a (some T) t =>
+      "{" ++ ppLabel Λ a ++ " : " ++ ppTyWith Λ nv T ++ " = " ++ ppPTmAt Λ 0 nv t ++ "}"
+  | .and d' e => ppPDefsWith Λ nv d' ++ " ∧ " ++ ppPDefsWith Λ nv e
+termination_by structural d
+end
+
+/-- A partial term in the paper's notation, with a label table. -/
+def ppPTmWith (Λ : LabelTable) (nv : NameEnv s) (t : PTm s) : String := ppPTmAt Λ 0 nv t
+
+/-- A partial term in the paper's notation, with no label table. -/
+def ppPTm (nv : NameEnv s) (t : PTm s) : String := ppPTmWith [] nv t
+
+/-! ## Reasons
+
+A rejection prints as the compiler's message where the compiler has one:
+"Missing parameter type" for `AnonymousFunctionMissingParamType`, and
+"Recursive value a needs type" for a cyclic reference.  A label prints through
+the table.  The typer of this front end has no reasons of its own, so the
+constructor that would carry one has no value to print. -/
+
+/-- A reason of the front end as a message, with a label table. -/
+def ppReasonWith (Λ : LabelTable) : Frontend.Reason.Reason Label Empty → String
+  | .missingParamType none => "Missing parameter type"
+  | .missingParamType (some l) => "Missing parameter type in " ++ ppLabel Λ l
+  | .cyclicRef l => "Recursive value " ++ ppLabel Λ l ++ " needs type"
+  | .needsExplicitType l => "Value " ++ ppLabel Λ l ++ " needs a written type"
+  | .ambiguous l => "The types of " ++ ppLabel Λ l ++ " have no least one"
+  | .landed r => nomatch r
+  | .mismatch => "Type mismatch"
+  | .limit => "Recursion limit exceeded"
+
+/-- A reason of the front end as a message, with no label table. -/
+def ppReason (r : Frontend.Reason.Reason Label Empty) : String := ppReasonWith [] r
+
 /-! ## Surface phrases
 
 The surface syntax carries its own names and labels, so these need neither a
@@ -538,6 +633,40 @@ example :
     ((resolveTop Λc πc (cap% λ(f : ⊤ ^ {k1}). ν(z : {a : ⊤} ^ {f}. {a = f}))).map
         (ppATmWith Λc πc.names))
       = some "λ(x : ⊤ ^ {k1}). ν(y : {a : ⊤} ^ {x}. {a = x})" := rfl
+
+/-- A call argument with an empty domain, resolved: the binding the resolver
+inserts at the operand prints as a `let`. -/
+example :
+    ((resolvePTop Λc .empty (cap% λ(f : ∀(x : ⊤) ⊤). f (λx. x))).map
+        (ppPTmWith Λc PlatformNames.empty.names))
+      = some "λ(x : ∀(x : ⊤) ⊤). let y = λy. y in x y" := rfl
+
+/-- An ascription over a lambda with an empty domain, resolved. -/
+example :
+    ((resolvePTop Λc .empty (cap% (λx. x : ∀(x : ⊤) ⊤))).map
+        (ppPTmWith Λc PlatformNames.empty.names))
+      = some "(λx. x : ∀(x : ⊤) ⊤)" := rfl
+
+/-- A literal without a self shape, with a written field type, resolved. -/
+example :
+    ((resolvePTop Λc .empty (cap% ν(x. {a : ⊤ = x} ∧ {b = x.a}))).map
+        (ppPTmWith Λc PlatformNames.empty.names))
+      = some "ν(x. {a : ⊤ = x} ∧ {b = x.a})" := rfl
+
+/-- A program with every slot written prints as its annotated term. -/
+example :
+    (resolvePTop Λc .empty E1src).map (ppPTmWith Λc PlatformNames.empty.names)
+      = some (ppATmWith Λc .nil E1ann) := rfl
+
+/-- The reasons, with the labels of the table. -/
+example :
+    [Frontend.Reason.Reason.missingParamType none, .cyclicRef (.trm 0), .ambiguous (.trm 1),
+        .mismatch, .limit].map (ppReasonWith Λc)
+      = ["Missing parameter type", "Recursive value a needs type",
+        "The types of b have no least one", "Type mismatch", "Recursion limit exceeded"] := rfl
+
+/-- A label outside any table prints as its sort and number. -/
+example : ppReason (.cyclicRef (.trm 0)) = "Recursive value a0 needs type" := rfl
 
 /-- A box over a capturing shape, as the operand of `∧`.  The box's operand is
 parenthesized and the box itself is not. -/

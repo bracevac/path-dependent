@@ -33,6 +33,14 @@ type that `Coercions.Frontend.Reason` shares among the front ends, at the
 labels of this version.  `formSelfF` forms the self shape of a literal that
 has none from its definitions, in rounds, as the completers of `Namer` type the
 members of a class.  The literal filled at that shape goes to the typer.
+`compile` (`Pipeline.lean`) runs the elaborator and returns the fill, the
+program with its empty slots filled, with the typer's derivation.
+`compileE` returns the reason a program is rejected as well, and
+`Pretty.lean` prints partial terms and reasons.  `Examples.lean` takes every
+program through the front end, written and with its annotations erased.
+`compile_complete_canonAt` says that a program whose erased annotations sit
+where the elaborator runs the typer's own clause compiles as the written
+program does, from some fuel on.
 
 The library imports the version and changes nothing in it.  It is not a
 default target.
