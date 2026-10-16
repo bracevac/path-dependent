@@ -5,23 +5,25 @@ Everything in this paper is mechanized in \Lean \cite{demoura2021lean}. The deve
 
 \begin{table}
 \small
-\caption{Size of the development, in lines of Lean. The source part has syntax, typing, machine, erasure, and examples. The target part has syntax, typing, the checker, the machine, the normalizer, the metatheory, and examples.}
+\caption{Size of the development, in lines of Lean. The source part has syntax, typing, machine, erasure, and examples. The published calculus has its own syntax, typing, reduction relation, and machine, and the correspondences with \DOTMNF. The target part has syntax, typing, the checker, the machine, the normalizer, the metatheory, and examples.}
 \label{tab:sizes}
 \centering
 \begin{tabular}{@{}lr@{}}
 \toprule
 component & lines \\
 \midrule
-\DOTMNF & 1{,}186 \\
-\FCdot & 10{,}699 \\
-translation and its theorems & 2{,}219 \\
+\DOTMNF & 1{,}468 \\
+published calculus and correspondences & 2{,}502 \\
+\FCdot & 10{,}985 \\
+translation and its theorems & 2{,}519 \\
+recursive subtyping example & 206 \\
 shared runtime & 101 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Axioms.}
-The theorems of Sections~\ref{sec:canonical} and~\ref{sec:translation} depend on propositional extensionality and quotient soundness only. The case splits that could have needed choice, whether an atom is a bare variable in progress, whether a state is about to move a cast frame in the backward erasure simulation, and whether an entry is the identity on a bound in the composition lemma, are decided by a derived equality on atoms and by executable tests. The tree contains no unproven assumption, no admitted lemma, and no unbounded recursion. The pigeonhole argument behind resolution is proven from scratch, because the core library has no lemma for it and the nearby list lemmas depend on choice.
+The theorems of Sections~\ref{sec:canonical} and~\ref{sec:translation} depend on propositional extensionality and quotient soundness only. The case splits that could have needed choice, whether an atom is a bare variable in progress and whether a state is about to move a cast frame in the backward erasure simulation, are decided by a derived equality on atoms and by an executable test. A copied bound is an entry of its own, so the composition lemma has no such split. The tree contains no unproven assumption, no admitted lemma, and no unbounded recursion. The pigeonhole argument behind resolution is proven from scratch, because the core library has no lemma for it and the nearby list lemmas depend on choice.
 
 \paragraph{Scoping.}
 All syntax is intrinsically scoped by signatures, which are lists of binder kinds, with de Bruijn variables and renamings shared by the source, the target, and the runtime. Every substitution performed by typing and by the machines is a renaming, with one exception: the target machine substitutes an atom for a variable, which is a renaming of roots on types and evidence and a replacement of the variable by the atom on terms. Weakening and instantiation are renamings too, which keeps the statements of the theorems free of side conditions about free variables.
@@ -30,20 +32,20 @@ All syntax is intrinsically scoped by signatures, which are lists of binder kind
 The judgments of \DOTMNF are inductive families in $\mathsf{Type}$, so a derivation is a term and the translation is a structurally recursive function on it. The checker of \FCdot returns derivations too. Its kernels are synthesizing functions whose result carries the typing derivation it found, so soundness holds by construction, and completeness is proven by induction on derivations.
 
 \paragraph{The normalizer.}
-Composition of forms and the routing of entries are mutually recursive on the sizes of their arguments, and the lookup of an entry returns the entry together with a proof that it is a subterm, which is what the termination argument uses. The normalizer proper is indexed by fuel, and the monotonicity and determinism lemmas turn the fuel into bookkeeping: every statement about a normal form is stated for some fuel and holds for every larger one.
+Composition of forms and the substitution and prefixing of entries are mutually recursive on the sizes of their arguments, and the lookup of an entry returns the entry together with a proof that it is a subterm, which is what the termination argument uses. The normalizer proper is indexed by fuel, and the monotonicity and determinism lemmas turn the fuel into bookkeeping: every statement about a normal form is stated for some fuel and holds for every larger one.
 
 \paragraph{Examples.}
-Eight programs are carried on both sides. Each is a \DOTMNF typing derivation, built as a term, and an \FCdot term or literal whose checker run is decided by the kernel of the proof assistant. The first five are the mandatory examples of the design, and for each of them the two sides erase to the same runtime term by reflexivity. They are bad bounds under a lambda, a recursive object whose member is used at its own type and applied to itself, an intersection with a shared member used at both bounds, the counterexample of Section~\ref{sec:counterexample}, and an object returned from a function and selected after a let, which exercises the renaming of a block at an application. The next two are the literals that the self-alias restriction of Section~\ref{sec:forced} used to reject, a field typed at its own literal's type member and a two-element alias cycle, each with a typing derivation on the target side as well. The eighth is the refinement of an abstract type, $\dsel{x}{A} \wedge \dfld{a}{\top}$, projected two ways, through \rn{And}$_2$ and through \rn{And}$_1$ followed by the upper bound of $A$. Both derivations translate, check, and erase to the same term, and the program is the acceptance test for self-bounds.
+Eight programs are carried on both sides. Each is a \DOTMNF typing derivation, built as a term, and an \FCdot term or literal whose checker run is decided by the kernel of the proof assistant. The first five are the mandatory examples of the design, and for each of them the two sides erase to the same runtime term by reflexivity. They are bad bounds under a lambda, a recursive object whose member is used at its own type and applied to itself, an intersection with a shared member used at both bounds, the counterexample of Section~\ref{sec:counterexample}, and an object returned from a function and selected after a let, which exercises the renaming of a block at an application. The next two are the literals that the self-alias restriction of Section~\ref{sec:forced} used to reject, a field typed at its own literal's type member and a two-element alias cycle, each with a typing derivation on the target side as well. The eighth is the refinement of an abstract type, $\dsel{x}{A} \wedge \dfld{a}{\top}$, projected two ways, through \rn{And}$_2$ and through \rn{And}$_1$ followed by the upper bound of $A$. Both derivations translate, check, and erase to the same term, and the program is the acceptance test for self-bounds. Four more programs exercise recursive types whose body is not a declaration: a function passed through a recursive type across a let, a self-dependent intersection under a recursive binder, nested recursive types that use both self binders, and a recursive type whose body is a bare selection on its own self. Each translates to a typed term with the erasure of the source, which the kernel checks, and the first also runs on the source machine.
 
 \paragraph{Notation and names.}
 The Lean sources use the notation of this paper for judgments, telescopes, normalization, and erasure, so that the statements in the files read as they do here. Table~\ref{tab:names} maps the results of the paper to the declarations that prove them.
 
 \begin{table*}
 \small
-\caption{Results of the paper and the Lean declarations that prove them. All declarations live in the namespaces \lean{FCdot} and \lean{DotMNF}.}
+\caption{Results of the paper and the Lean declarations that prove them. All declarations live in the namespaces \lean{FCdot}, \lean{DotMNF}, and \lean{WadlerFest}.}
 \label{tab:names}
 \centering
-\begin{tabular}{@{}ll@{}}
+\begin{tabular}{@{}lp{0.7\textwidth}@{}}
 \toprule
 result & declarations \\
 \midrule
@@ -61,6 +63,9 @@ Theorem~\ref{thm:trans-typed} & \lean{Sub.translate\_typed}, \lean{HasTy.transla
 Theorem~\ref{thm:trans-erase} & \lean{HasTy.translate\_erase}, \lean{coherence} \\
 Theorem~\ref{thm:dot-safety} & \lean{dot\_safety}, \lean{dot\_not\_stuck} \\
 consistency corollary & \lean{reachable\_consistent}, \lean{reachable\_realized} \\
+published rules to \DOTMNF & \lean{HasTy.eraseAnnotations\_closed} \\
+reduction and machine & \lean{Retained.answer\_iff\_machine}, \lean{Retained.stuck\_iff\_machine} \\
+Theorem~\ref{thm:wf-safety} & \lean{Retained.safety}, \lean{Retained.not\_stuck} \\
 \bottomrule
 \end{tabular}
 \end{table*}
