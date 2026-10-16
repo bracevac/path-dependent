@@ -15,7 +15,7 @@ DOT derives $\src{\mathit{Int} \sub w.A}$ through $\src{w : T}$, so
 \]
 is well typed. In the package design, $\src{w.A}$ denotes the name $\alpha$ opened from the declared type $\src{S}$ of $\src{w}$. The retyping of $\src{w}$ at $\src{T}$ is a coercion between two package types, and using it means opening the coerced package, which yields a fresh $\alpha'$ with $\src{\mathit{Int}} \le \alpha'$. Nothing relates $\alpha'$ to $\alpha$, and the application $\src{g\,n}$ has no translation. The context is unrealizable, but a total translation on derivations has to translate this derivation anyway.
 
-The conclusion was that the identity of a member must be attached to the binder, not to the type through which the binder is viewed. That is what block names do. In \FCdot the type $\src{w.A}$ is the name $\sel{w}{A}$ whatever type $w$ is viewed at, and the fact $\mathit{Int} \le \sel{w}{A}$ is an elimination at the cast atom $\ev{cast}\,w\,e_{ST}$, whose root is $w$. This program, example E4 of the development, became the acceptance test of every later design. Whether the sharing machinery of F-ing modules can be adapted to lower bounds we have not investigated.
+The conclusion was that the identity of a member must be attached to the binder, not to the type through which the binder is viewed. That is what block names do. In \FCdot the type $\src{w.A}$ is the name $\sel{w}{A}$ whatever type $w$ is viewed at, and the fact $\mathit{Int} \le \sel{w}{A}$ is an elimination at the cast atom $\ev{cast}\,w\,e_{ST}$, whose root is $w$. This program, example E4 of the development, became the acceptance test of every later design.
 
 \subsection{Morphisms that eliminate through the self}\label{sec:why-structural}
 
@@ -29,7 +29,7 @@ We proved a good part of that development before observing that the DOT translat
 
 \subsection{Well-founded resolution and the self-alias restriction}
 
-The first version of resolution followed definitions by a well-founded measure. That required that no witness of a literal be a bare name of the same block, a side condition on the literal rule called the self-alias restriction. The condition propagated into the translation, where a field declared at $\dsel{x}{A}$ inside its own literal makes the witness of $\sel{x}{a}$ the name $\sel{x}{A}$, and from there into a restriction on the source rule \rn{\{\}-I}. It rejected literals such as
+The first version of resolution followed definitions by a well-founded measure. That required that no witness of a literal be a bare name of the same block, a side condition on the literal rule called the self-alias restriction. The condition propagated into the translation, where a field declared at $\dsel{x}{T}$ inside its own literal makes the witness of $\sel{x}{v}$ the name $\sel{x}{T}$, and from there into a restriction on the source rule \rn{\{\}-I}. It rejected literals such as
 \[
 \src{\nu(x.\,\ddeftyp{T}{\mathit{Int}} \wedge \ddeftrm{v}{n})} \quad\text{typed at}\quad \src{\dmu{x}{\dtyp{T}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{v}{x.T}}} ,
 \]

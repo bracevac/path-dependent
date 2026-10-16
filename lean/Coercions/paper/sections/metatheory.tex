@@ -19,7 +19,7 @@ DOT proofs also need a narrowing lemma: a judgment under $x : T$ still holds und
 If a state is typed at $U$ and steps to a state over a possibly larger signature, the new state is typed at $U$ renamed into that signature.
 \end{theorem}
 
-Two cases are worth describing.
+Two cases need comment.
 
 \paragraph{Allocation.}
 A value $v$ reaches a let frame $\ev{let}\,u$, where $u$ is typed under a binder $x : T$ and $v$ has type $T$. The value may carry casts, $v = \ev{cast}\,(\cdots(\ev{cast}\,v_0\,e_1)\cdots)\,e_n$, where $v_0$ is a lambda or a literal of some type $T_0$. The machine stores $v_0$ and continues with $\mathit{adjust}(u, v)$, which is $u$ with $x$ replaced by $\ev{cast}\,x\,E$, where $E$ is the composite of $e_1, \ldots, e_n$. Stripping the casts of a typed value leaves a typed value $v_0 : T_0$ and a typed composite $E : T_0 \le T$. The new binder has type $T_0$, and $\ev{cast}\,x\,E$ has type $T$ under it, so atom substitution types $\mathit{adjust}(u, v)$. The new binder is transparent in the store, and the transparency lemma moves the continuation from the opaque binder to the transparent one. This is what keeps stores inert: the store only ever receives a value at its own precise type, and the casts move into the program.

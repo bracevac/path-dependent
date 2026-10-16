@@ -5,7 +5,7 @@ Nothing has been proven about \DOTMNF directly except erasure. This section tran
 
 \subsection{The store machine}
 
-The source and the target do not run in lockstep. A target run takes extra steps to move cast frames, and the two machines represent the same runtime state differently: the source stores a value with its types, the target stores the literal under its casts. What they share is the erasure. The invariant of the proof is therefore stated through erasure.
+The source and the target do not run in lockstep. A target run takes extra steps to move cast frames, and the two machines represent the same runtime state differently: the source stores a value with its types, and the target stores the literal without its casts, which move into the program. What they share is the erasure. The invariant of the proof is therefore stated through erasure.
 
 \begin{theorem}[Safety of \DOTMNF]\label{thm:dot-safety}
 If $\dtyj{\cdot}{t}{T}$ and $\mst{\cdot}{\cdot}{t} \steps \mathit{st}$, then $\mathit{st}$ is final or steps.

@@ -1,7 +1,7 @@
 \mathtgt
 \section{The Full Target: \texorpdfstring{\FCdot}{FCdot}}\label{sec:target}
 
-This section gives the whole of \FCdot. It adds four features to the fragment of Section~\ref{sec:miniature}: fields, recursive types, intersections, and self-bounds. Each subsection says what the feature adds and why. Figures~\ref{fig:target-syntax}, \ref{fig:evidence}, \ref{fig:terms}, and~\ref{fig:machine} give the complete calculus and can be read on their own.
+This section gives the whole of \FCdot. It adds four features to the fragment of Section~\ref{sec:miniature}, fields, recursive types, intersections, and self-bounds, and one more kind of template. Each subsection says what the feature adds and why. Figures~\ref{fig:target-syntax}, \ref{fig:evidence}, \ref{fig:terms}, and~\ref{fig:machine} give the complete calculus and can be read on their own.
 
 \begin{figure}
 \small
@@ -17,7 +17,7 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \text{Presence} & h & ::= & \ev{member}\,a\,e\,i \mid \ev{field}\,\ell \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q \mid \ev{leTrans}\,m\,m\,m \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
+\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \mid \ev{leTrans}\,m\,m\,m \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
 \text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit{W}{F} \mid \ev{cast}\,v\,e \\

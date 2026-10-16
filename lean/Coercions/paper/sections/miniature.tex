@@ -48,7 +48,7 @@ Evidence is a proof term for an inclusion or an equality. The fragment has
 \begin{array}{@{}lrcl@{}}
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \mid \ev{obj}\,\tel\,m \mid \ev{member}\,a\,e\,i \\
 \text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,\ell \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q \\
+\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \qquad \text{Sides} \quad q ::= \ev{none} \mid \ev{some}\,e
 \end{array}
 \]
@@ -225,7 +225,7 @@ Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}
 \end{array}
 \]
 \color{black}
-\caption{The normalizer of the fragment, over a fixed store $\sigma$. $\mathit{side}$ is $\form{id}$ on an absent side and $\mathit{hnf}$ on a present one. An entry $\form{le}\,F\,H\,G$ applied to a view $V$ gives the proposition form $\form{le}\,(F \circ M \circ G)$, where $M$ is $F'$ when $V$ has $\form{le}\,F'$ at the position of $H$ and $\form{id}$ when it has $\form{eq}$ there.}
+\caption{The normalizer of the fragment, over a fixed store $\sigma$, which the machine writes as a subscript, $\mathit{chain}_\sigma$. $\mathit{side}$ is $\form{id}$ on an absent side and $\mathit{hnf}$ on a present one. An entry $\form{le}\,F\,H\,G$ applied to a view $V$ gives the proposition form $\form{le}\,(F \circ M \circ G)$, where $M$ is $F'$ when $V$ has $\form{le}\,F'$ at the position of $H$ and $\form{id}$ when it has $\form{eq}$ there.}
 \label{fig:mini-normalizer}
 \end{figure}
 
@@ -251,7 +251,7 @@ Two function forms compose contravariantly in the domain. The first codomain evi
 \[
 \form{le}\,(F \circ F')\,H'\,(G' \circ G) ,
 \]
-an entry whose hole names a source proposition. A hole that reads an equality of the middle telescope would need an entry for that equality in the first form, and the fragment has no such entries. Its composite is undefined. No typed composition reaches that case, because the fragment has no typed object form into a telescope with an equality. Every recursive call is on a subterm, and no view is consulted. This is where templates pay off: the entries of an object form do not depend on the atom they will be applied to, so object forms compose by syntax.
+an entry whose hole names a source proposition. A hole that reads an equality of the middle telescope would need an entry for that equality in the first form. The full calculus has such entries, as Section~\ref{sec:canonical} shows, and the fragment has none. Its composite is undefined. No typed composition reaches that case, because the fragment has no typed object form into a telescope with an equality. Every recursive call is on a subterm, and no view is consulted. This is where templates pay off: the entries of an object form do not depend on the atom they will be applied to, so object forms compose by syntax.
 
 All other pairs are not composable between typed forms, and the normalizer returns the first form for them, with one exception: $\form{top} \circ \form{obj}\,\mathit{Es}$, where the second form starts at $\top$. A typed object form out of $\top$ has no entries, since $\top$ has no propositions for a hole to name, and its target is $\top$ again. The composite is $\form{top}$. This is the simplification announced at the start of the section. In the full calculus an object form can have entries that name no source proposition, and the full composition returns a different form there, with the same endpoints.
 
@@ -387,7 +387,7 @@ Every rule of the machine applies to its form of state without a condition, exce
 If a typed state steps, the new state is typed at the same type.
 \end{theorem}
 
-The cases that are not about application are the usual lemmas: weakening, substitution of an atom for a variable, and the typing of stripped casts at allocation. The application through a wrapped atom with chain $\form{pi}\,d\,c$ is the instructive case. The store holds $\lambda(z : S_0).\,t_0$ at the root, so the root has the type $\pit{S_0}{T_0}$, where $T_0$ is the type of the body. By Theorem~\ref{thm:mini-chain} the chain is a form typed from $\pit{S_0}{T_0}$ to the type $\pit{S}{T}$ of $a$, so $d : S \le S_0$, and $c : T_0 \le T$ under a parameter of type $S$. The argument $b$ has type $S$, so $\ev{cast}\,b\,d$ has type $S_0$ and can be substituted into the body, which gives a term of type $\inst{T_0}{\rt{b}}$. The cast $\inst{c}{b}$ takes that type to $\inst{T}{\rt{b}}$, which is the type of the application. With chain $\form{id}$ the two function types resolve equally, and since neither is a name they are equal, so the body can be used as it is.
+The cases that are not about application are the usual lemmas: weakening, substitution of an atom for a variable, and the typing of stripped casts at allocation. The application through a wrapped atom with chain $\form{pi}\,d\,c$ is the case worth reading. The store holds $\lambda(z : S_0).\,t_0$ at the root, so the root has the type $\pit{S_0}{T_0}$, where $T_0$ is the type of the body. By Theorem~\ref{thm:mini-chain} the chain is a form typed from $\pit{S_0}{T_0}$ to the type $\pit{S}{T}$ of $a$, so $d : S \le S_0$, and $c : T_0 \le T$ under a parameter of type $S$. The argument $b$ has type $S$, so $\ev{cast}\,b\,d$ has type $S_0$ and can be substituted into the body, which gives a term of type $\inst{T_0}{\rt{b}}$. The cast $\inst{c}{b}$ takes that type to $\inst{T}{\rt{b}}$, which is the type of the application. With chain $\form{id}$ the two function types resolve equally, and since neither is a name they are equal, so the body can be used as it is.
 
 Neither proof inverts evidence. Where the textbook proof inverts subtyping, this one normalizes evidence and reads the shape off the normal form.
 
@@ -416,7 +416,7 @@ It translates to $\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y$ with
 \]
 where $D = \trans{\dtyp{A}{\top}{\bot}}$ and $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps eliminate the two propositions of $x$'s own type. No absurdity rule is involved, and the program type checks in \FCdot without subsumption.
 
-Now suppose the lambda is applied. Its argument is an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(A = W)}$ for a closed type $W$, so the atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. A witness that mentions the self fails even earlier, since a side cannot mention the self. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
+Now suppose the lambda is applied. Its argument is an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(A = W)}$, where we take $W$ closed, so the atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
 \[
 \form{obj}\,[\,\form{le}\,F_1\,(\ev{eqSym}\,0)\,\form{id},\ \ \form{le}\,\form{id}\,(\ev{eq}\,0)\,G_2\,] \qquad \text{with } \formj{\Gamma}{F_1}{\top}{W} \text{ and } \formj{\Gamma}{G_2}{W}{\bot} .
 \]

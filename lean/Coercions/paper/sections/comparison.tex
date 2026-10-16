@@ -1,7 +1,7 @@
 \mathplain
 \section{Compared with the Direct Proof}\label{sec:comparison}
 
-The proof of Rapoport et al.\ \cite{rapoport2017simple} is the most direct of the published proofs, and it is instructive to put the two side by side. This section adapts its invariant to store notation. Only the translation route is mechanized here, so the comparison is informal.
+The proof of Rapoport et al.\ \cite{rapoport2017simple} is the most direct of the published proofs, and it helps to put the two side by side. This section adapts its invariant to store notation. Only the translation route is mechanized here, so the comparison is informal.
 
 \subsection{Two invariants}
 
@@ -13,13 +13,13 @@ The direct proof builds a ladder of typing judgments. Precise typing $\src{\Gamm
 \[
 \src{\inferrule{\Gamma \vdash_! x : \dtyp{A}{U}{U}}{\Gamma \vdash_\# U \sub x.A \qquad \Gamma \vdash_\# x.A \sub U}} .
 \]
-Invertible typing separates eliminations from introductions so that induction recovers the precise type. The central theorem says that in an inert context general typing implies tight typing, and its central case, selection replacement, says that a tight typing $\src{\Gamma \vdash_\# x : \dtyp{A}{S}{T}}$ comes from a precise $\src{\dtyp{A}{U}{U}}$ with $\src{S \sub U \sub T}$. Each of these has a counterpart in \FCdot.
+Invertible typing separates eliminations from introductions so that induction recovers the precise type. The main theorem says that in an inert context general typing implies tight typing, and its main case, selection replacement, says that a tight typing $\src{\Gamma \vdash_\# x : \dtyp{A}{S}{T}}$ comes from a precise $\src{\dtyp{A}{U}{U}}$ with $\src{S \sub U \sub T}$. Each of these has a counterpart in \FCdot.
 
 \begin{center}
 \small
 \begin{tabular}{@{}p{0.42\textwidth}p{0.5\textwidth}@{}}
 \toprule
-direct proof & \FCdot and the translation \\
+direct proof & \leavevmode\FCdot and the translation \\
 \midrule
 inert context & typed store, inert by construction: every location holds a literal at its precise type \\
 precise typing & the precise view of a stored literal \\
@@ -48,4 +48,4 @@ Both proofs need a composition theorem. In the direct proof it is about tight su
 
 \subsection{What each route costs}
 
-The direct proof proves preservation for DOT, which the translation does not. The translation proves safety only, through the target. The translation costs a second calculus, its checker, and the translation itself, and the development is larger than a direct proof of one calculus would need to be. What it buys is that the lemmas about evidence are lemmas about \FCdot, not about the derivations of one source calculus. Extending the source with paths, captures, or a new sort of member extends \FCdot with constructors and the normalizer with cases. The theorem keeps its statement, and preservation and progress keep their shape. Section~\ref{sec:conclusion} says how far that has been tested.
+The direct proof proves preservation for DOT, which the translation does not. The translation proves safety only, through the target. The translation costs a second calculus, its checker, and the translation itself, and the development is larger than a direct proof of one calculus would need to be. What it buys is that the lemmas about evidence are lemmas about \FCdot, not about the derivations of one source calculus. Extending the source with paths, captures, or a new sort of member extends \FCdot with constructors and the normalizer with cases. The theorem keeps its statement, and preservation and progress keep their shape, though they gain cases. Section~\ref{sec:conclusion} says how far that has been tested.

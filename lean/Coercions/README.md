@@ -164,4 +164,4 @@ algebra.  It has no operational semantics.
 
 Each directory has a README.
 
-**`paper/`** is the write-up of the main line (acmart, `latexmk -pdf main.tex`), with a table mapping its results to the Lean declarations.
+**`paper/`** is a tutorial report on the main line (acmart, `latexmk -pdf main.tex`) for a reader who knows System F but not DOT, with a table mapping its results to the Lean declarations.

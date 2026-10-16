@@ -28,7 +28,7 @@ Let $o$ be the literal above. The program
 \[
 \klet y = o \kin y
 \]
-can be given the type $\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}$, which hides the definition of $A$. A client of this object knows that $a$ has the type $y.A$ of the object it holds, and nothing about what $y.A$ is. The derivation is worth spelling out, because it uses most of the typing rules. The let binds $y$ at the type of the literal, $\dmu{x}{\dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}}}$. Opening the recursive type at $y$, by the rule \rn{Rec-E}, gives
+can be given the type $\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}$, which hides the definition of $A$. A client of this object knows that $a$ has the type $y.A$ of the object it holds, and nothing about what $y.A$ is. The derivation uses most of the typing rules, so we go through it. The let binds $y$ at the type of the literal, $\dmu{x}{\dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}}}$. Opening the recursive type at $y$, by the rule \rn{Rec-E}, gives
 \[
 y : \dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}} .
 \]
@@ -39,7 +39,7 @@ y : \dtyp{A}{\bot}{\top} \wedge \dfld{a}{y.A} ,
 and the rule \rn{Rec-I} closes the recursive type again by abstracting $y$ back to the self. The result is the type above, which does not mention $y$, so the let can return it.
 \end{example}
 
-There is no subtyping rule between recursive types. A recursive type is opened and closed only at a variable, by \rn{Rec-E} and \rn{Rec-I}, which is why the example needed a let. Section~\ref{sec:conclusion} returns to recursive subtyping, which some later calculi add.
+There is no subtyping rule between recursive types. A recursive type is opened and closed only at a variable, by \rn{Rec-E} and \rn{Rec-I}, which is why the example needed a let. Section~\ref{sec:related} returns to recursive subtyping, which some later calculi add.
 
 \subsection{System F inside DOT}
 
@@ -147,7 +147,7 @@ Figure~\ref{fig:source-syntax} gives the syntax and Figure~\ref{fig:source-typin
 \item \rn{All} compares codomains under the smaller domain, $x : S_2$, as in the full variant of $F_{<:}$.
 \item \rn{All-E} is dependent application: the codomain is instantiated at the argument variable.
 \item \rn{\{\}-I} types the definitions of a literal under its own self binder, at the recursive type, and requires distinct labels. The context records the definitions at that binder, written $x : \dmu{x}{T} \mathrel{:=} d$. Typing treats such a binder like any other. The translation does not, as Section~\ref{sec:translation} explains.
-\item \rn{Rec-I}, \rn{Rec-E}, and \rn{And-I} apply to variables only. This is what makes recursive types and intersections of object types work without subtyping rules of their own.
+\item \rn{Rec-I}, \rn{Rec-E}, and \rn{And-I} apply to variables only. Recursive types have no subtyping rule, and a recursive type is opened and closed only at a variable. \rn{And-I} combines two typings of one variable, which the subtyping rule \rn{And} cannot do when the two typings start from different types.
 \end{itemize}
 
 \paragraph{The machine.}
@@ -168,11 +168,7 @@ A program runs on a store machine. A state $\mst{\sigma}{K}{t}$ is a store $\sig
 \caption{The store machine of \DOTMNF. In the allocation rule the new location is the binder of the frame, and $\weak{K}$ is the continuation weakened under it.}
 \label{fig:source-machine}
 \end{figure}
-A state is final when the continuation is empty and the term is a value or a variable. A state is stuck when it is not final and has no step. On lookup in a definition list the right conjunct shadows the left. Type safety, which the rest of this report proves, says that a closed well-typed program never reaches a stuck state.
-
-\begin{theorem}[Safety of \DOTMNF]
-If $\dtyj{\cdot}{t}{T}$ and $\mst{\cdot}{\cdot}{t} \steps \mathit{st}$, then $\mathit{st}$ is final or steps.
-\end{theorem}
+A state is final when the continuation is empty and the term is a value or a variable. A state is stuck when it is not final and has no step. On lookup in a definition list the right conjunct shadows the left. Type safety, which the rest of this report proves as Theorem~\ref{thm:dot-safety}, says that a closed well-typed program never reaches a stuck state: if $\dtyj{\cdot}{t}{T}$ and $\mst{\cdot}{\cdot}{t} \steps \mathit{st}$, then $\mathit{st}$ is final or steps.
 
 The two rules that can get stuck are application and selection. Application is stuck when the receiver is bound to an object, and selection when it is bound to a lambda or to an object without the field. The proof has to show that the types rule this out.
 
