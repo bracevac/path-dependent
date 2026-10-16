@@ -86,26 +86,33 @@ for types and `CaptureSet.subCaptures` (cc/CaptureSet.scala) for capture sets.
 compiler's case order. The typer spends one fuel tank over the whole typing,
 the elaborator's included. The tank is marked when it runs dry, and the typer
 then reports a recursion limit, which is not a rejection by the rules. Up to
-that limit it is complete with respect to `Alg`. It rejects E1, E3, E4, B1, A1
-and the converse of P1cc, programs in `Examples` that scalac rejects too.
-Writing the middle type, as in E1s and E3s, compiles. The typer returns the
-`HasTy` derivation, so it is sound by construction, and it finds the least use
-set the rules allow. An unannotated `let` is typed by avoidance, as in
+that limit the checks for shapes, capture sets, subtypes and variables are
+complete with respect to `Alg`. The typer as a whole has no such theorem. It
+rejects E1, E3, E4, B1, A1 and the converse of P1cc, programs in `Examples`
+that scalac rejects too. Writing the middle type, as in E1s and E3s, compiles.
+The typer returns the `HasTy` derivation, so it is sound by construction, and
+it finds the least use set the rules allow. An unannotated `let` is typed by
+avoidance, which replaces the type of the body by one free of the binder, as in
 `TypeOps.avoid` (core/TypeOps.scala). A written `let` type binds. Missing boxes
 and unboxings are inserted as in `CaptureChecker.adaptBoxed`
 (cc/CheckCaptures.scala).
 
 ## Main theorems
 
-- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation and the use set evidence. `compile_erase`, `compile_faithful`: the translation erases to the compiled term, which has the skeleton of the resolved one.
-- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: every reachable state is final or can step, and `run` never stops at a stuck state.
-- `compile_capture_prediction`: along any run, the matched FCdot state uses no more than the translated use set, up to a renaming. `compile_effect_safety`, `compile_effect_safety_get`: a run never reads a variable rooted at a platform capability outside the use set. `S1_never_reads_fs` and `C2_never_reads_k1` in `Examples` are the instances for S1 and C2 at `k1`.
-- `shape?_complete`, `subcap?_complete`, `sub?_complete`, `var?_complete`: a goal `Alg` derives is answered at every fuel at which the run ends with the tank unmarked. The `_reject` versions say that a rejection with the tank unmarked means `Alg` derives no such goal. `Alg.sound_shape`, `Alg.sound_cap`: a goal `Alg` derives has a derivation of the calculus.
-- `synthTop?_mono`, `synthTop?_stable`, `elabTop?_mono`, `elabTop?_stable`: an answer stays the same at more fuel, and so does a rejection that ends with the tank unmarked.
-- `compile_full`, `compileE_fills`, `compileE_slot`: a program with every slot written compiles as the typer's synthesis, and the fill agrees with every written slot.
+- `compile_checks`, `compile_uses_checks`, `compile_checks_get`: for a program that compiles, the FCdot checker accepts the translated derivation and the use set evidence. `compile_erase`: the translation erases to the erasure of the compiled term.
+- `compile_faithful`, `compile_faithful_get`: for a program `e` that compiles to `⟨a, c⟩`, `a` is the fill of what `resolvePTop` makes of `e`, read off the term the elaborator answers, and it agrees with every slot `e` writes. The elaborator answers with the term, use set and type of `c`, and the elaborated term `c.tm` has the skeleton of `a`. `ATm.skel` forgets types, capture sets, boxes, unboxings and ascriptions, and inlines a `let` whose bound term has a variable as its skeleton. So the elaborated term differs from the fill only there. `compile_faithful_written`, `compile_faithful_written_get`: when `e` writes every slot, `a` is what `resolveTop` makes of `e`, and `synthTop?` answers on `a` with the term, use set and type of `c`. `C7nb_faithful` in `Examples` is an instance where the two terms differ, and `C2_S1_skel_ne` shows that two compiled programs can have different skeletons, so the test in `compile` is not trivial.
+- `compile_safe`, `compile_not_stuck`, `compile_run_progress`: every state reached from the platform's initial store is final or can step, and `run` never stops at a stuck state. `compile_safe` is `DotMNF.dot_safety_platform` at the compiled derivation.
+- `compile_capture_prediction`: along any run from the platform's initial store, the FCdot machine runs from the translated derivation to a typed state with the same erasure. Its store extends the platform's along a renaming, and it uses no more than the translated use set, renamed along that extension.
+- `compile_effect_safety`, `compile_effect_safety_get`: let `κ` be a platform capability that the use set lacks, and `x` a variable the reached state reads. The FCdot machine runs from the translated derivation to a typed state with the same erasure, and in it `κ` renamed along the store extension is not a root of `x`. Only FCdot contexts have roots. `C2_never_reads_k1` in `Examples` is the instance for C2, and `S1_never_reads_fs` the instance for the unascribed S1bare, both at `k1`. The run of C2 reads only `c`, a closed function. `C2gb_never_reads_k1` and `C2ga_never_reads_k2` are instances whose runs read variables that capture a platform capability. C2gb and C2ga are C2 with the client at `b` or at `a` called. Their runs read the client, typed at `{k2}` or `{k1}`, the object it closes over, which entered `c` through a parameter declared at `{k1, k2}`, and the object's member. Each theorem is applied to the reads at steps 14, 16 and 18. The capability it does not name is in the use set.
+- `shape?_complete`, `subcap?_complete`, `sub?_complete`, `var?_complete`: if `Alg` derives the goal and the run ends with the tank unmarked, it is answered. For `sub?` and `var?` the goal is a shape goal and a capture goal, and both must be derived. The `_reject` versions say that a rejection with the tank unmarked means `Alg` derives no such goal, or for `sub?` and `var?` not both halves. `Alg.sound_shape` and `Alg.sound_cap`: a goal `Alg` derives has a `SubShape` or `Subcap` derivation.
+- `shape?_mono`, `var?_mono`, `synthTop?_mono`, `elabTop?_mono`: an answer stays the same at more fuel. `synthTop?_stable`, `elabTop?_stable`: a closed typing or elaboration that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
+- `avoidLet_strengthen`: from an unmarked tank with at least one unit left, where the body's type strengthens past the binder, avoidance returns that type.
+- `objFix_progress`: a pass of the object fixpoint that ends on an unmarked tank and goes on adds a capture that `Alg` does not derive from the current set, or changes the definitions.
+- `compile_full`, `compileE_fills`, `compileE_slot`: a program with every slot written compiles as the typer's synthesis, the fill agrees with every written slot, and the reasons that name a slot come only from a program with an empty slot.
 - `elab_complete_direct`, `compile_complete_direct`, `compile_complete_canonAt`: where the elaborator runs the typer's own clause on the fill, a canonical fill the typer accepts is found from some fuel on, and an erased program compiles as the written one.
 - In `Examples`, for a program `X`: `X_type` and `X_checks` for each accepted one, `X_rejected` for each rejected one with `X_not_alg` where it fails at one core goal, `X_erased` for the erasure tables, `X_complete` where completeness applies, and `LPlet_limit`, `LPasc_limit`, `LPw2_limit` and `Doubled12k2_limit` at the recursion limit.
-- `resolveTm_isSome`, `tyWf?_iff`, `step?_sound`, `fcStep?_sound`: resolution is total on scoped programs, the side conditions are decided, and the machines agree with the step relations.
+- `resolveTm_isSome`: resolution is total on scoped programs whose labels are in the table and whose `any` and capture sets are placed. `tyWf?_iff`, `defsDistinct?_iff`, `tyStrengthen?_iff`: the side conditions are decided.
+- `step?_sound`, `step?_complete`: the DOT-MNF machine agrees with its step relation. `fcStep?_sound` holds at every normalisation fuel, and `fcStep?_complete` finds the step at some fuel.
 
 ## What it leaves out
 

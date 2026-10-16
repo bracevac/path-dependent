@@ -27,8 +27,10 @@ least type, a mismatch, or the recursion limit.  `compile` forgets the reason
 (`compile_eq`).
 
 `Compiled` holds the elaborated term, its use set, its type, the derivation
-about its erasure and the proof that its skeleton is that of the fill.  So the
-elaborated program is the fill up to what box inference adds.
+about its erasure and the proof that its skeleton is that of the fill.
+`ATm.skel` forgets annotations, ascriptions, boxes and unboxings, and inlines
+a `let` of a variable.  So the check says that the elaborated program has the
+skeleton of the fill.
 
 The typer types under `platformCtx`.  `platformCtx_eq` equates it with the
 calculus's `Platform.ctx`, and `compileE` moves the derivation across, so the
@@ -45,12 +47,14 @@ from the platform's initial store, at a step budget.
 * `compile_checks`.  The target checker accepts the translation of the
   derivation.
 * `compile_uses_checks`.  It accepts the use set evidence as well.
-* `compile_erase`.  The translation erases to the compiled term.
-* `compile_faithful`.  The elaborated term has the skeleton of the fill.
-* `compile_safe`.  Every state a run reaches is final or has a step.
-  `DotMNF.dot_safety` is stated at the empty context only, so this is composed
-  at the platform from `Platform.simulatedRun`, `FCdot.State.Typed.steps`,
-  `Platform.initial_typed` and `Simulated.progress`.
+* `compile_erase`.  The translation erases to the erasure of the compiled term.
+* `compile_faithful`.  `a` is the fill of what `resolvePTop` makes of the
+  program, read off the term the elaborator answers, and it agrees with every
+  slot the program writes.  The record holds what the elaborator answers, and
+  the elaborated term has the skeleton of `a`.  They differ only in types,
+  capture sets, boxes, unboxings, ascriptions and a `let` of a variable.
+* `compile_safe`.  Every state a run reaches is final or has a step.  It is
+  `DotMNF.dot_safety_platform` at the compiled derivation.
 * `compile_not_stuck`.  No reachable state is stuck.
 * `compile_run_progress`.  The state the driver `run` returns is final or the
   executable machine finds a step from it.
@@ -66,13 +70,18 @@ from the platform's initial store, at a step budget.
   the premises.
 
 The premise `h` is what a caller holds.  The content rides on the type of
-`c`.  The other premises select what a theorem speaks of: a run, a variable,
-a capability.  None is a hypothesis about the compiler.
+`c`, except in `compile_faithful` and `compile_faithful_written`, which read
+`h` to name where `a` and `c` come from.  The other premises select what a
+theorem speaks of: a run, a variable, a capability.  None is a hypothesis about
+the compiler.
 
 The theorems that relate a compilation to the elaborator and to the typer.
 
 * `compile_full`.  A program with every slot written compiles as the typer's
   synthesis on its resolution, at the same fuel (`compileLanded`).
+* `compile_faithful_written`, `compile_faithful_written_get`.  For such a
+  program, `a` is what `resolveTop` makes of it, and the record holds what
+  `synthTop?` answers on `a`.
 * `compileE_fills`.  The fill agrees with every slot the program writes.
 * `compileE_skel`.  The elaborated term has the skeleton of the partial term.
 * `compileE_slot`.  The four reasons that name an empty slot come only from a
@@ -248,7 +257,7 @@ theorem cvar_mem_translate {s : Sig} {κ : BVar s .cap} {C : CaptureSet s}
 
 /-! ## Theorems -/
 
--- `h` is read only by the proof of `compile_faithful`.
+-- `h` is read only by the proofs of `compile_faithful` and `compile_faithful_written`.
 set_option linter.unusedVariables false
 
 section
@@ -272,9 +281,46 @@ theorem compile_erase (h : compile b Λ π e = some ⟨a, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the fill up to box inference.** -/
-theorem compile_faithful (h : compile b Λ π e = some ⟨a, c⟩) : ATm.skel c.tm = ATm.skel a :=
-  c.skel
+/-- **The compiled term is the fill of the resolved program, with its
+skeleton.**  `p` is what `resolvePTop` makes of `e`.  The elaborator answers on
+`p` with the term, use set and type of the record, and `a` is the fill of `p`
+read off that term, which agrees with every slot `p` writes.  The elaborated
+term has the skeleton of `a`.  So it differs from `a` only where `ATm.skel`
+forgets: types and capture sets, boxes `□ x` and unboxings `C ⊸ x`,
+ascriptions, and a `let` whose bound term has a variable as its skeleton,
+which the skeleton inlines.  An application, a projection, a lambda, an object
+literal with its members and any other `let` stay.  `compile_faithful_written`
+says what `a` and the record are when `p` has no empty slot. -/
+theorem compile_faithful (h : compile b Λ π e = some ⟨a, c⟩) :
+    (∃ p, resolvePTop Λ π e = some p ∧ p.fills a = true ∧
+      ∃ r : Elab (platformCtx π.plat), (elabTopF b.fuel π p).1 = .ok r ∧
+        p.fillFrom r.tm = some a ∧ r.tm = c.tm ∧ r.uses = c.uses ∧ r.ty = c.ty) ∧
+      ATm.skel c.tm = ATm.skel a := by
+  unfold compile compileE at h
+  cases hp : resolvePTop Λ π e with
+  | none => rw [hp] at h; cases h
+  | some p =>
+    rw [hp] at h
+    dsimp only at h
+    cases he : (elabTopF b.fuel π p).1 with
+    | error r => rw [he] at h; cases h
+    | ok r =>
+      rw [he] at h
+      dsimp only at h
+      cases hf : p.fillFrom r.tm with
+      | none => rw [hf] at h; cases h
+      | some a' =>
+        rw [hf] at h
+        dsimp only at h
+        by_cases hfa : p.fills a' = true
+        · by_cases hk : ATm.skel r.tm = ATm.skel a'
+          · rw [if_pos hfa, dif_pos hk] at h
+            cases h
+            exact ⟨⟨p, rfl, hfa, r, he, hf, rfl, rfl, rfl⟩, hk⟩
+          · rw [if_pos hfa, dif_neg hk] at h
+            cases h
+        · rw [if_neg hfa] at h
+          cases h
 
 /-- **Safety of the compiled program.**  Every state of a run `r` from the
 platform's initial store is final or has a step.  This is
@@ -360,8 +406,9 @@ theorem compile_checks_get (h : (compile b Λ π e).isSome = true) :
 
 /-- **`compile_faithful` at a program that compiles.** -/
 theorem compile_faithful_get (h : (compile b Λ π e).isSome = true) :
-    resolveTop Λ π e = some ((compile b Λ π e).get h).1 ∧
-      (∃ r : Elab (platformCtx π.plat), synthTop? b π ((compile b Λ π e).get h).1 = some r ∧
+    (∃ p, resolvePTop Λ π e = some p ∧ p.fills ((compile b Λ π e).get h).1 = true ∧
+      ∃ r : Elab (platformCtx π.plat), (elabTopF b.fuel π p).1 = .ok r ∧
+        p.fillFrom r.tm = some ((compile b Λ π e).get h).1 ∧
         r.tm = ((compile b Λ π e).get h).2.tm ∧ r.uses = ((compile b Λ π e).get h).2.uses ∧
           r.ty = ((compile b Λ π e).get h).2.ty) ∧
       ATm.skel ((compile b Λ π e).get h).2.tm = ATm.skel ((compile b Λ π e).get h).1 :=
@@ -426,6 +473,39 @@ theorem compile_full {a : ATm π.sig} (h : resolveTop Λ π e = some a) :
           by_cases hk : ATm.skel c.tm = ATm.skel a
           · simp [hk, Except.toOption]
           · simp [hk, Except.toOption]
+
+/-- **A program with every slot written is compiled faithfully.**  When `e`
+resolves with every slot written, `a` is what `resolveTop` makes of it.
+`synthTop?` answers on `a` with the term, use set and type of the record, and
+the elaborated term has the skeleton of `a`.  This is `compile_full` read at
+the record. -/
+theorem compile_faithful_written {a : ATm π.sig} {c : Compiled π.plat a}
+    (h : compile b Λ π e = some ⟨a, c⟩) (hw : (resolveTop Λ π e).isSome = true) :
+    resolveTop Λ π e = some a ∧
+      (∃ r : Elab (platformCtx π.plat), synthTop? b π a = some r ∧
+        r.tm = c.tm ∧ r.uses = c.uses ∧ r.ty = c.ty) ∧
+      ATm.skel c.tm = ATm.skel a := by
+  obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp hw
+  rw [compile_full ha'] at h
+  unfold compileLanded at h
+  split at h
+  · cases h
+  · rename_i r hr
+    split at h
+    · rename_i hs
+      cases h
+      exact ⟨ha', ⟨r, hr, rfl, rfl, rfl⟩, hs⟩
+    · cases h
+
+/-- **`compile_faithful_written` at a program that compiles.** -/
+theorem compile_faithful_written_get (h : (compile b Λ π e).isSome = true)
+    (hw : (resolveTop Λ π e).isSome = true) :
+    resolveTop Λ π e = some ((compile b Λ π e).get h).1 ∧
+      (∃ r : Elab (platformCtx π.plat), synthTop? b π ((compile b Λ π e).get h).1 = some r ∧
+        r.tm = ((compile b Λ π e).get h).2.tm ∧ r.uses = ((compile b Λ π e).get h).2.uses ∧
+          r.ty = ((compile b Λ π e).get h).2.ty) ∧
+      ATm.skel ((compile b Λ π e).get h).2.tm = ATm.skel ((compile b Λ π e).get h).1 :=
+  compile_faithful_written (Option.some_get h).symm hw
 
 /-- **Inference fills only empty slots.**  The fill of a compiled program
 agrees with every slot its partial term writes. -/

@@ -850,7 +850,7 @@ theorem C7_faithful :
         ((compile {} Λc (onC C7src)).get C7_compiles).1.body ∧
       ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).2.tm =
         ATm.skel ((compile {} Λc (onC C7src)).get C7_compiles).1.body :=
-  ⟨by decide +kernel, (compile_faithful_get C7_compiles).2.2⟩
+  ⟨by decide +kernel, (compile_faithful_get C7_compiles).2⟩
 
 /-- C7 with its boxes written and C7 with none have the same skeleton. -/
 example : ATm.skel ((compile {} Λc (onC C7boxSrc)).get C7box_compiles).1.body =
