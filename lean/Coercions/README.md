@@ -19,7 +19,7 @@ type safety back to the source.
 **`DotMNF/`** is WadlerFest DOT in monadic normal form: objects with type and
 term members, recursive self types, unrestricted intersections, type
 selections on variables, and bad bounds admitted.  The body of a recursive
-self type is restricted to declaration shapes.  It has subtyping, term
+self type may be any type.  It has subtyping, term
 and definition typing, a store machine, and an erasure into the runtime.
 It has no safety proof of its own.  Its metatheory is renaming, the erasure
 simulation, and a correspondence with the annotated WadlerFest rules.
