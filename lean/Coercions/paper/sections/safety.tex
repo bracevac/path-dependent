@@ -1,0 +1,49 @@
+\mathsrc
+\section{Safety of DOT}\label{sec:safety}
+
+Nothing has been proven about \DOTMNF directly except erasure. This section transports the safety of \FCdot to \DOTMNF through the shared runtime, and then to the calculus as published in the WadlerFest paper, with its own rules and its own reduction semantics.
+
+\subsection{The store machine}
+
+The source and the target do not run in lockstep. A target run takes extra steps to move cast frames, and the two machines represent the same runtime state differently: the source stores a value with its types, the target stores the literal under its casts. What they share is the erasure. The invariant of the proof is therefore stated through erasure.
+
+\begin{theorem}[Safety of \DOTMNF]\label{thm:dot-safety}
+If $\dtyj{\cdot}{t}{T}$ and $\mst{\cdot}{\cdot}{t} \steps \mathit{st}$, then $\mathit{st}$ is final or steps.
+\end{theorem}
+
+\begin{proof}
+Call a source state simulated when some typed target state over the same signature has the same erasure.
+\begin{itemize}
+\item The initial state is simulated by the initial state of the translation of the derivation, since the translation is typed (Theorem~\ref{thm:trans-typed}) and erases to the source term (Theorem~\ref{thm:trans-erase}).
+\item A source step preserves the invariant. It erases to a runtime step of the common erasure. The backward erasure simulation of the target realizes that runtime step by a target run, and preservation retypes the endpoint. Signatures agree, because erasure is the identity on signatures on both sides and every allocation is matched.
+\item A simulated state is final or steps. The target's pending cast-frame steps are run first, which changes no erasure and keeps the state typed. Progress of the target then gives either a final state, which is final under erasure and hence in the source, or a step that is not a cast-frame step. That step erases to a runtime step, which the source reflects as a source step. \qedhere
+\end{itemize}
+\end{proof}
+
+The proof uses three facts about the source: its steps erase to runtime steps, runtime steps out of an erased source state come from source steps, and final states agree under erasure. Those are the whole metatheory of \DOTMNF. There is no preservation theorem for \DOTMNF, no canonical forms lemma, and no inversion lemma for its subtyping. The source calculus is never inverted.
+
+\begin{corollary}[Consistency of reachable stores]
+Along any run of the translation of a closed well-typed program, the store is typed, its context admits no closed evidence for $\top \le \bot$, and every block name of every store binder is defined by closed equality evidence.
+\end{corollary}
+
+\subsection{The published calculus}
+
+\DOTMNF differs from the calculus of the WadlerFest paper in its presentation of objects and in its semantics. The development states the published rules and the published semantics as the paper gives them and relates both to \DOTMNF.
+
+\paragraph{Annotated objects.}
+The published rules annotate an object literal with its self type, $\src{\nu(x : T)\,d}$, and type its definitions under the opened assumption $x : T$, which mentions $x$ itself. Every closed derivation of the published rules translates to a \DOTMNF derivation of the term with its annotations erased. The opened assumption of a literal's self is recovered by \rn{Rec-E} from the recursive binder that \DOTMNF uses. The proof assumes nothing about the contexts it passes through, neither inertness nor good bounds nor acyclic definitions.
+
+\paragraph{Retained-let reduction.}
+The published semantics is not a store machine but a reduction relation on terms. A value bound by a let stays in place in the term, as a binding, and reduction continues in the body under it. Application and selection look their receiver up among the enclosing bindings. A let reduces in its right-hand side, and once that is a value, in its body. A let whose right-hand side is a variable substitutes it. Nested lets reassociate, $\klet x = (\klet y = t \kin u) \kin u' \step \klet y = t \kin \klet x = u \kin u'$, and there is no priority between reassociation and reduction in the right-hand side, so the relation is not deterministic. An answer is a variable, a value, or a value-bound let around an answer.
+
+The relation and the store machine agree. A closed term reduces to an answer exactly when the machine runs to a final state whose readback is that answer, where readback plugs the term into the pending let frames and closes it with the store. A closed term reduces to a stuck term exactly when the machine gets stuck. The only invariant this needs is that the labels of every definition list are distinct, which reduction preserves.
+
+\begin{theorem}[Safety of the published calculus]\label{thm:wf-safety}
+If $t$ is typed in the empty context by the published rules and reduces to $u$ in any number of retained-let steps, then $u$ is an answer or reduces.
+\end{theorem}
+
+\begin{proof}
+The derivation of $t$ translates to a \DOTMNF derivation of the term with its annotations erased. By Theorem~\ref{thm:dot-safety} the \DOTMNF machine never gets stuck from that term, and neither does the machine of the annotated calculus, because erasing annotations maps its runs to \DOTMNF runs and reflects their steps. Every term is an answer, reduces, or is stuck. A stuck reduct $u$ would give a stuck run of the annotated machine by the operational correspondence, so $u$ is an answer or reduces.
+\end{proof}
+
+The proof uses no preservation theorem for the published calculus and no inertness argument about its contexts, and it holds for every reduction order. The published grammar also separates type labels from term labels, and the results hold for that sorted fragment as well, which reduction preserves.

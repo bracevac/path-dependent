@@ -1,7 +1,32 @@
 \mathplain
 \section{Mechanization}\label{sec:mechanization}
 
-Everything in this paper is mechanized in \Lean \cite{demoura2021lean}. The development has no library dependencies: the core language and its standard library only, no Mathlib. Table~\ref{tab:sizes} gives its size.
+Everything in this report is mechanized in \Lean \cite{demoura2021lean}, except the miniature of Section~\ref{sec:miniature}, which is a fragment of the mechanized calculus. The development has no library dependencies: the core language and its standard library only, no Mathlib. This section is a guide for a reader who wants to check a claim against the code. Table~\ref{tab:sizes} gives the size of the development, and Table~\ref{tab:names} maps each result of the report to the declarations that prove it.
+
+\subsection{Where things are}
+
+All paths are relative to \lean{lean/Coercions} in the repository. The libraries build with \lean{lake build Runtime DotMNF FCdot DotToFCdot} from the root of the repository.
+
+\paragraph{\lean{Runtime.lean}.}
+The untyped runtime that both calculi erase into: terms, values with term members only, and a store machine with the five rules of Figure~\ref{fig:source-machine}.
+
+\paragraph{\lean{DotMNF/}.}
+The source calculus. \lean{Syntax} and \lean{Typing} give Figures~\ref{fig:source-syntax} and~\ref{fig:source-typing}. The three judgments are inductive families in $\mathsf{Type}$, so a derivation is data. \lean{Machine} is the store machine, \lean{Erasure} its erasure into the runtime with the two simulation lemmas, and \lean{Structural} the renaming of derivations. \lean{Examples} has the source derivations of the examples. The subdirectory \lean{WadlerFest/} states the published calculus: its syntax with annotated objects, its typing rules, retained-let reduction, readback, the correspondence of typing with \DOTMNF in \lean{Correspondence}, and the operational correspondence with the machine in \lean{OperationalCorrespondence}.
+
+\paragraph{\lean{FCdot/}.}
+The target, in reading order. \lean{Debruijn}, \lean{Syntax}, \lean{Context}, and \lean{Typing} give Figures~\ref{fig:target-syntax} to~\ref{fig:terms}. \lean{Store} and \lean{Machine} give store typing and Figure~\ref{fig:machine}. \lean{Resolution} is the resolution of Section~\ref{sec:resolution} with its pigeonhole argument. \lean{Normalizer} defines forms, entries, views, composition, and the normalizer of Figure~\ref{fig:normalizer}, and \lean{FormTyping} the typed forms of Figure~\ref{fig:formtyped}. \lean{FormAlgebra} proves the composition and application lemmas, \lean{CanonicalForms} the theorem, and \lean{Consistency} the corollaries about stores. \lean{Preservation}, \lean{Progress}, and \lean{ErasureMetatheory} are Section~\ref{sec:metatheory}. \lean{TypingRename}, \lean{TypingSubst}, \lean{RenameLemmas}, and \lean{Transparency} are the structural lemmas. \lean{Checker} and \lean{CheckerCompleteness} are the checker. \lean{Examples} and \lean{TemplateExamples} check the target side of the examples.
+
+\paragraph{\lean{DotToFCdot/}.}
+The translation. \lean{Types}, \lean{Evidence}, and \lean{Terms} define it, following Figures~\ref{fig:trans-types} to~\ref{fig:trans-terms}, and \lean{TypesLemmas}, \lean{EvidenceTyped}, \lean{TermsTyped}, and \lean{Erasure} prove it typed and erasure preserving. \lean{Safety} is Theorem~\ref{thm:dot-safety}, \lean{Consistency} the corollary about reachable stores, and \lean{WadlerFest}, \lean{RetainedSafety}, and \lean{SortedSafety} the safety of the published calculus. \lean{RecursiveSubtyping} is the composition-template example of Section~\ref{sec:related}.
+
+\paragraph{\lean{Frontend/}.}
+A front end for the source language, which is not part of the metatheory but is the easiest way to experiment. Programs are written in the notation of this report inside a quotation, for example
+\begin{lstlisting}
+def Id0Src : STm := dot% let i = λ(x : ⊤). x in i
+\end{lstlisting}
+An elaborator fills omitted lambda domains and self types, a typer returns a \DOTMNF derivation, and the pipeline translates it, checks the result with the checker of \FCdot, and runs it. The typer is sound because it returns derivations. Its subtype checker is complete up to a recursion limit with respect to an algorithmic judgment, and the typer as a whole has no completeness theorem. \lean{Frontend/Examples.lean} takes example programs through the pipeline, both programs it accepts and programs it rejects.
+
+\subsection{Size, axioms, and representation}
 
 \begin{table}
 \small
@@ -35,14 +60,14 @@ The judgments of \DOTMNF are inductive families in $\mathsf{Type}$, so a derivat
 Composition of forms and the substitution and prefixing of entries are mutually recursive on the sizes of their arguments, and the lookup of an entry returns the entry together with a proof that it is a subterm, which is what the termination argument uses. The normalizer proper is indexed by fuel, and the monotonicity and determinism lemmas turn the fuel into bookkeeping: every statement about a normal form is stated for some fuel and holds for every larger one.
 
 \paragraph{Examples.}
-Eight programs are carried on both sides. Each is a \DOTMNF typing derivation, built as a term, and an \FCdot term or literal whose checker run is decided by the kernel of the proof assistant. The first five are the mandatory examples of the design, and for each of them the two sides erase to the same runtime term by reflexivity. They are bad bounds under a lambda, a recursive object whose member is used at its own type and applied to itself, an intersection with a shared member used at both bounds, the counterexample of Section~\ref{sec:counterexample}, and an object returned from a function and selected after a let, which exercises the renaming of a block at an application. The next two are the literals that the self-alias restriction of Section~\ref{sec:forced} used to reject, a field typed at its own literal's type member and a two-element alias cycle, each with a typing derivation on the target side as well. The eighth is the refinement of an abstract type, $\dsel{x}{A} \wedge \dfld{a}{\top}$, projected two ways, through \rn{And}$_2$ and through \rn{And}$_1$ followed by the upper bound of $A$. Both derivations translate, check, and erase to the same term, and the program is the acceptance test for self-bounds. Four more programs exercise recursive types whose body is not a declaration: a function passed through a recursive type across a let, a self-dependent intersection under a recursive binder, nested recursive types that use both self binders, and a recursive type whose body is a bare selection on its own self. Each translates to a typed term with the erasure of the source, which the kernel checks, and the first also runs on the source machine.
+Eight programs are carried on both sides. Each is a \DOTMNF typing derivation, built as a term, and an \FCdot term or literal whose checker run is decided by the kernel of the proof assistant. The first five are the mandatory examples of the design, and for each of them the two sides erase to the same runtime term by reflexivity. They are bad bounds under a lambda, a recursive object whose member is used at its own type and applied to itself, an intersection with a shared member used at both bounds, the counterexample of Section~\ref{sec:counterexample}, and an object returned from a function and selected after a let, which exercises the renaming of a block at an application. The next two are the literals that the self-alias restriction of Section~\ref{sec:history} used to reject, a field typed at its own literal's type member and a two-element alias cycle, each with a typing derivation on the target side as well. The eighth is the refinement of an abstract type, $\dsel{x}{A} \wedge \dfld{a}{\top}$, projected two ways, through \rn{And}$_2$ and through \rn{And}$_1$ followed by the upper bound of $A$. Both derivations translate, check, and erase to the same term, and the program is the acceptance test for self-bounds. Four more programs exercise recursive types whose body is not a declaration: a function passed through a recursive type across a let, a self-dependent intersection under a recursive binder, nested recursive types that use both self binders, and a recursive type whose body is a bare selection on its own self. Each translates to a typed term with the erasure of the source, which the kernel checks, and the first also runs on the source machine.
 
 \paragraph{Notation and names.}
-The Lean sources use the notation of this paper for judgments, telescopes, normalization, and erasure, so that the statements in the files read as they do here. Table~\ref{tab:names} maps the results of the paper to the declarations that prove them.
+The Lean sources use the notation of this report for judgments, telescopes, normalization, and erasure, so that the statements in the files read as they do here. Table~\ref{tab:names} maps the results of the report to the declarations that prove them.
 
-\begin{table*}
+\begin{table}
 \small
-\caption{Results of the paper and the Lean declarations that prove them. All declarations live in the namespaces \lean{FCdot}, \lean{DotMNF}, and \lean{WadlerFest}.}
+\caption{Results of the report and the Lean declarations that prove them. All declarations live in the namespaces \lean{FCdot}, \lean{DotMNF}, and \lean{WadlerFest}.}
 \label{tab:names}
 \centering
 \begin{tabular}{@{}lp{0.7\textwidth}@{}}
@@ -68,4 +93,4 @@ reduction and machine & \lean{Retained.answer\_iff\_machine}, \lean{Retained.stu
 Theorem~\ref{thm:wf-safety} & \lean{Retained.safety}, \lean{Retained.not\_stuck} \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}

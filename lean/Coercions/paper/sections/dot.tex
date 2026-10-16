@@ -1,0 +1,193 @@
+\mathsrc
+\section{DOT for a System F Reader}\label{sec:dot}
+
+This section introduces the source calculus: the WadlerFest presentation of DOT by Amin et al.\ \cite{amin2016essence}, in the let-normal form that the calculus already has. We call it \DOTMNF. The section assumes System F and its extension with subtyping, $F_{<:}$, as in Pierce's textbook \cite{pierce2002tapl}, and nothing about Scala.
+
+\subsection{Objects with type members}
+
+A DOT object is a literal $\dnew{x}{d}$, where $x$ is a name for the object itself, its self, and $d$ is a list of definitions joined by $\wedge$. A definition is a type member $\ddeftyp{A}{T}$ or a term member $\ddeftrm{a}{t}$. By convention type members are written in upper case and term members in lower case, but the two share one name space of labels. The object
+\[
+\dnew{x}{\ddeftyp{A}{\mathit{Int}} \wedge \ddeftrm{a}{n}}
+\]
+has a type member $A$ defined as $\mathit{Int}$ and a term member $a$ holding a value $n$ of type $\mathit{Int}$. Here and below $\mathit{Int}$ and $n$ stand for any closed type and any value of it, since the calculus has no base types.
+
+The types of objects are built from declarations. A type member declaration $\dtyp{A}{S}{T}$ says that the object has a type member $A$ that lies between the lower bound $S$ and the upper bound $T$. A field declaration $\dfld{a}{T}$ says that it has a term member $a$ of type $T$. Declarations are combined by intersection, $S \wedge T$, and an object type that refers to the object itself is a recursive type $\dmu{x}{T}$, where $x$ is the self in $T$. The literal above has the type
+\[
+\dmu{x}{\dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}}} .
+\]
+A type member defined as $T$ is declared with the exact bounds $T..T$.
+
+The new type former is selection. If $x$ is a variable with a type member $A$, then $x.A$ is a type. What is known about $x.A$ is what the type of $x$ says about $A$, and nothing else. Two rules of subtyping express this. If $x : \dtyp{A}{S}{T}$, then
+\[
+S \sub x.A \qquad\text{and}\qquad x.A \sub T .
+\]
+The first is called \rn{<:-Sel} and the second \rn{Sel-<:}. Viewed through a type with exact bounds, $x.A$ is an alias for its definition. Viewed through a type with wider bounds, it is an abstract type.
+
+\begin{example}[Hiding a representation]\label{ex:hide}
+Let $o$ be the literal above. The program
+\[
+\klet y = o \kin y
+\]
+can be given the type $\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}$, which hides the definition of $A$. A client of this object knows that $a$ has the type $y.A$ of the object it holds, and nothing about what $y.A$ is. The derivation is worth spelling out, because it uses most of the typing rules. The let binds $y$ at the type of the literal, $\dmu{x}{\dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}}}$. Opening the recursive type at $y$, by the rule \rn{Rec-E}, gives
+\[
+y : \dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}} .
+\]
+From the left half, $\mathit{Int} \sub y.A$ by \rn{<:-Sel}. Hence $\dfld{a}{\mathit{Int}} \sub \dfld{a}{y.A}$, since fields are covariant. The left half is also a subtype of $\dtyp{A}{\bot}{\top}$, since declarations are contravariant in the lower bound and covariant in the upper. The rule \rn{And-I} puts the two halves together,
+\[
+y : \dtyp{A}{\bot}{\top} \wedge \dfld{a}{y.A} ,
+\]
+and the rule \rn{Rec-I} closes the recursive type again by abstracting $y$ back to the self. The result is the type above, which does not mention $y$, so the let can return it.
+\end{example}
+
+There is no subtyping rule between recursive types. A recursive type is opened and closed only at a variable, by \rn{Rec-E} and \rn{Rec-I}, which is why the example needed a let. Section~\ref{sec:conclusion} returns to recursive subtyping, which some later calculi add.
+
+\subsection{System F inside DOT}
+
+A type parameter is a type member of a parameter. The type $\forall \alpha.\,T$ of System F becomes
+\[
+\dall{x}{\dtyp{A}{\bot}{\top}}{T[\alpha := x.A]} ,
+\]
+a dependent function type whose codomain mentions the type member of its parameter. The polymorphic identity becomes
+\[
+\mathit{id} = \lambda(x : \dtyp{A}{\bot}{\top}).\ \lambda(y : x.A).\,y
+\]
+of type $\dall{x}{\dtyp{A}{\bot}{\top}}{\dall{y}{x.A}{x.A}}$. Type application passes an object that defines the member:
+\[
+\klet t = \dnew{z}{\ddeftyp{A}{\mathit{Int}}} \kin \klet g = \mathit{id}\ t \kin g\ n ,
+\]
+where $\mathit{id}$ and $n$ are variables bound earlier. The argument $t$ has the type $\dmu{z}{\dtyp{A}{\mathit{Int}}{\mathit{Int}}}$, which opens to $\dtyp{A}{\mathit{Int}}{\mathit{Int}}$ and is a subtype of the parameter type $\dtyp{A}{\bot}{\top}$. The application $\mathit{id}\ t$ instantiates the codomain at the argument, by the rule \rn{All-E}, so $g : \dall{y}{t.A}{t.A}$. The argument $n$ has type $\mathit{Int}$, which is a subtype of $t.A$, because $t$ has the exact bounds $\mathit{Int}..\mathit{Int}$. The result has type $t.A$, which is a subtype of $\mathit{Int}$ for the same reason. That last step matters, because the let that binds $t$ cannot return a type that mentions $t$. The rule \rn{Let} requires the type of the body to make sense without the bound variable, so the program as a whole is typed at $\mathit{Int}$.
+
+Bounded quantification $\forall \alpha <: S.\,T$ of $F_{<:}$ becomes a parameter of type $\dtyp{A}{\bot}{S}$. DOT also has lower bounds, $\dtyp{A}{S}{\top}$, and both at once, $\dtyp{A}{S}{T}$. An existential type $\exists \alpha.\,T$ is a recursive object type that declares $A$ abstractly and uses $x.A$ in its fields, as in Example~\ref{ex:hide}. Opening an existential is selecting from a variable.
+
+\subsection{Why terms are in let-normal form}
+
+In DOT, types mention variables. If $f\ u$ were allowed for an arbitrary term $u$, the rule \rn{All-E} would have to instantiate the codomain of $f$ at $u$, and types would mention arbitrary terms. DOT avoids this by taking only variables as arguments, $x\,y$, and as receivers of a selection, $x.a$. Every intermediate result is named by a let. This is the A-normal form of compilers \cite{flanagan1993essence}, and it costs nothing in expressiveness: a direct-style term is a let-insertion away. We call the calculus \DOTMNF, for monadic normal form, because the right-hand side of a let is an arbitrary term.
+
+\subsection{The calculus}
+
+\begin{figure}
+\small
+\color{srccol}
+\[
+\begin{array}{@{}lrcl@{}}
+\text{Types} & S,T & ::= & \top \mid \bot \mid \dtyp{A}{S}{T} \mid \dfld{a}{T} \mid x.A \mid \dmu{x}{T} \mid \dall{x}{S}{T} \mid S \wedge T \\
+\text{Terms} & t,u & ::= & x \mid v \mid x\,y \mid x.a \mid \klet x = t \kin u \\
+\text{Values} & v & ::= & \dnew{x}{d} \mid \lambda(x : T).\,t \\
+\text{Definitions} & d & ::= & \ddeftyp{A}{T} \mid \ddeftrm{a}{t} \mid d \wedge d \\
+\text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : \dmu{x}{T} \mathrel{:=} d
+\end{array}
+\]
+\color{black}
+\caption{Syntax of \DOTMNF.}
+\label{fig:source-syntax}
+\end{figure}
+
+\begin{figure}
+\small
+\color{srccol}
+\begin{mathpar}
+\inferrule[Top]{ }{\subj{\Gamma}{T}{\top}}
+\and
+\inferrule[Bot]{ }{\subj{\Gamma}{\bot}{T}}
+\and
+\inferrule[Refl]{ }{\subj{\Gamma}{T}{T}}
+\and
+\inferrule[Trans]{\subj{\Gamma}{S}{M} \\ \subj{\Gamma}{M}{T}}{\subj{\Gamma}{S}{T}}
+\and
+\inferrule[And$_1$]{ }{\subj{\Gamma}{S \wedge T}{S}}
+\and
+\inferrule[And$_2$]{ }{\subj{\Gamma}{S \wedge T}{T}}
+\and
+\inferrule[And]{\subj{\Gamma}{S}{T} \\ \subj{\Gamma}{S}{U}}{\subj{\Gamma}{S}{T \wedge U}}
+\and
+\inferrule[Fld]{\subj{\Gamma}{T}{U}}{\subj{\Gamma}{\dfld{a}{T}}{\dfld{a}{U}}}
+\and
+\inferrule[Typ]{\subj{\Gamma}{S_2}{S_1} \\ \subj{\Gamma}{T_1}{T_2}}{\subj{\Gamma}{\dtyp{A}{S_1}{T_1}}{\dtyp{A}{S_2}{T_2}}}
+\and
+\inferrule[Sel-<:]{\dtyj{\Gamma}{x}{\dtyp{A}{S}{T}}}{\subj{\Gamma}{x.A}{T}}
+\and
+\inferrule[<:-Sel]{\dtyj{\Gamma}{x}{\dtyp{A}{S}{T}}}{\subj{\Gamma}{S}{x.A}}
+\and
+\inferrule[All]{\subj{\Gamma}{S_2}{S_1} \\ \subj{\Gamma, x : S_2}{T_1}{T_2}}{\subj{\Gamma}{\dall{x}{S_1}{T_1}}{\dall{x}{S_2}{T_2}}}
+\\
+\inferrule[Var]{ }{\dtyj{\Gamma}{x}{\Gamma(x)}}
+\and
+\inferrule[All-I]{\dtyj{\Gamma, x : S}{t}{T}}{\dtyj{\Gamma}{\lambda(x : S).\,t}{\dall{x}{S}{T}}}
+\and
+\inferrule[All-E]{\dtyj{\Gamma}{x}{\dall{z}{S}{T}} \\ \dtyj{\Gamma}{y}{S}}{\dtyj{\Gamma}{x\,y}{\inst{T}{y}}}
+\and
+\inferrule[\{\}-I]{\dtyj{\Gamma, x : \dmu{x}{T} \mathrel{:=} d}{d}{T} \\ \Distinct\,d}{\dtyj{\Gamma}{\dnew{x}{d}}{\dmu{x}{T}}}
+\and
+\inferrule[\{\}-E]{\dtyj{\Gamma}{x}{\dfld{a}{T}}}{\dtyj{\Gamma}{x.a}{T}}
+\and
+\inferrule[Let]{\dtyj{\Gamma}{t}{T} \\ \dtyj{\Gamma, x : T}{u}{\weak{U}}}{\dtyj{\Gamma}{\klet x = t \kin u}{U}}
+\and
+\inferrule[Rec-I]{\dtyj{\Gamma}{x}{\inst{T}{x}}}{\dtyj{\Gamma}{x}{\dmu{x}{T}}}
+\and
+\inferrule[Rec-E]{\dtyj{\Gamma}{x}{\dmu{x}{T}}}{\dtyj{\Gamma}{x}{\inst{T}{x}}}
+\and
+\inferrule[And-I]{\dtyj{\Gamma}{x}{T} \\ \dtyj{\Gamma}{x}{U}}{\dtyj{\Gamma}{x}{T \wedge U}}
+\and
+\inferrule[Sub]{\dtyj{\Gamma}{t}{T} \\ \subj{\Gamma}{T}{U}}{\dtyj{\Gamma}{t}{U}}
+\\
+\inferrule[Def-Typ]{ }{\dtyj{\Gamma}{\ddeftyp{A}{T}}{\dtyp{A}{T}{T}}}
+\and
+\inferrule[Def-Trm]{\dtyj{\Gamma}{t}{T}}{\dtyj{\Gamma}{\ddeftrm{a}{t}}{\dfld{a}{T}}}
+\and
+\inferrule[Def-And]{\dtyj{\Gamma}{d_1}{T_1} \\ \dtyj{\Gamma}{d_2}{T_2}}{\dtyj{\Gamma}{d_1 \wedge d_2}{T_1 \wedge T_2}}
+\end{mathpar}
+\color{black}
+\caption{Subtyping, typing, and definition typing of \DOTMNF. $\weak{U}$ is $U$ weakened under the new binder, so the premise of \rn{Let} says that the type of the body does not mention $x$. $\inst{T}{y}$ instantiates the binder of $T$ by $y$.}
+\label{fig:source-typing}
+\end{figure}
+
+Figure~\ref{fig:source-syntax} gives the syntax and Figure~\ref{fig:source-typing} the typing rules. Subtyping, typing, and definition typing are mutually inductive, because the selection rules have typing premises and a variable may be typed through subsumption. A few points deserve comment.
+\begin{itemize}
+\item The subtyping rules fall into three groups. \rn{Top}, \rn{Bot}, \rn{Refl}, \rn{Trans}, and the three rules for intersections make subtyping a preorder with a top, a bottom, and meets. \rn{Fld}, \rn{Typ}, and \rn{All} are the structural rules of the type formers. The two selection rules connect a type $x.A$ to the bounds that the type of $x$ declares.
+\item \rn{All} compares codomains under the smaller domain, $x : S_2$, as in the full variant of $F_{<:}$.
+\item \rn{All-E} is dependent application: the codomain is instantiated at the argument variable.
+\item \rn{\{\}-I} types the definitions of a literal under its own self binder, at the recursive type, and requires distinct labels. The context records the definitions at that binder, written $x : \dmu{x}{T} \mathrel{:=} d$. Typing treats such a binder like any other. The translation does not, as Section~\ref{sec:translation} explains.
+\item \rn{Rec-I}, \rn{Rec-E}, and \rn{And-I} apply to variables only. This is what makes recursive types and intersections of object types work without subtyping rules of their own.
+\end{itemize}
+
+\paragraph{The machine.}
+A program runs on a store machine. A state $\mst{\sigma}{K}{t}$ is a store $\sigma$ of values, a continuation $K$ of let frames, and the term $t$ that runs. Figure~\ref{fig:source-machine} gives the steps. A let pushes a frame. A value that reaches a frame is allocated in the store, and the body continues with the new location. A variable that reaches a frame is substituted into the body. Application and selection look their receiver up in the store. The machine never consults a type.
+\begin{figure}
+\small
+\color{srccol}
+\[
+\begin{array}{@{}lcll@{}}
+\mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright (x.\,u)}{t} \\
+\mst{\sigma}{K \triangleright (x.\,u)}{v} &\step& \mst{\sigma, v}{\weak{K}}{u} \\
+\mst{\sigma}{K \triangleright (x.\,u)}{y} &\step& \mst{\sigma}{K}{\inst{u}{y}} \\
+\mst{\sigma}{K}{x\,y} &\step& \mst{\sigma}{K}{\inst{t}{y}} & \text{if } \sigma(x) = \lambda(z : S).\,t \\
+\mst{\sigma}{K}{x.a} &\step& \mst{\sigma}{K}{\inst{t}{x}} & \text{if } \sigma(x) = \dnew{z}{d} \text{ and } d \ni \ddeftrm{a}{t}
+\end{array}
+\]
+\color{black}
+\caption{The store machine of \DOTMNF. In the allocation rule the new location is the binder of the frame, and $\weak{K}$ is the continuation weakened under it.}
+\label{fig:source-machine}
+\end{figure}
+A state is final when the continuation is empty and the term is a value or a variable. A state is stuck when it is not final and has no step. On lookup in a definition list the right conjunct shadows the left. Type safety, which the rest of this report proves, says that a closed well-typed program never reaches a stuck state.
+
+\begin{theorem}[Safety of \DOTMNF]
+If $\dtyj{\cdot}{t}{T}$ and $\mst{\cdot}{\cdot}{t} \steps \mathit{st}$, then $\mathit{st}$ is final or steps.
+\end{theorem}
+
+The two rules that can get stuck are application and selection. Application is stuck when the receiver is bound to an object, and selection when it is bound to a lambda or to an object without the field. The proof has to show that the types rule this out.
+
+\subsection{Representation choices}\label{sec:source-details}
+
+The development makes three choices that differ from the WadlerFest paper. None of them changes what is provable, and Section~\ref{sec:safety} relates the published presentation to this one.
+
+\paragraph{Intrinsic scoping.}
+All syntax is scoped by its signature, the list of binders it may mention, with de Bruijn variables. Every judgment is indexed by a signature, and allocation extends the signature by one binder. We write $\weak{T}$ for weakening under a new binder and $\inst{T}{y}$ for instantiating the innermost binder by the variable $y$. Every substitution that typing or the machine performs is a renaming, because terms are in let-normal form and only variables are substituted.
+
+\paragraph{Literals without annotations.}
+The published rules annotate a literal with its self type, $\src{\nu(x : T)\,d}$, and type the definitions under the opened assumption $x : T$, in which $x$ occurs. With intrinsic scoping a context entry lives before its own binder and cannot mention it. \DOTMNF therefore binds the self at the recursive type $\dmu{x}{T}$ and recovers the opened assumption by \rn{Rec-E}. The literal carries no annotation, because the translation is directed by derivations and the definition typing determines the declared type.
+
+\paragraph{Restrictions.}
+The labels of a definition list must be distinct, which \rn{\{\}-I} checks. Nothing else is restricted. A recursive type may have any body, including a selection, a function type, $\bot$, or an intersection with such an operand, as in $\dmu{x}{x.A \wedge \dfld{a}{T}}$. The bounds of a declaration are arbitrary types, and \rn{Typ} relates $\dtyp{A}{S}{T}$ to other declarations whether or not $S \sub T$. Earlier versions of the development restricted the bodies of recursive types and the operands of intersections to declarations, and Section~\ref{sec:history} says what lifting those restrictions took.
+
+\paragraph{Erasure.}
+Both the source and the target erase into one untyped runtime: a store machine with the same five rules, whose object literals keep their term members only. Erasure drops types and type members and is the identity on signatures. Every source step erases to exactly one runtime step, and every runtime step out of an erased state is the erasure of a source step. These two facts, \lean{erase\_step} and \lean{erase\_reflect}, and the agreement of final states under erasure, \lean{final\_erase} and \lean{final\_reflect}, are the only metatheory that \DOTMNF has. Section~\ref{sec:safety} uses them to transport safety from the target.

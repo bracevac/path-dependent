@@ -1,11 +1,6 @@
-\documentclass[sigplan,review,10pt]{acmart}
-%% Draft settings.  Remove `review` for a camera-ready version.
+\documentclass[acmsmall,nonacm,screen]{acmart}
 \settopmatter{printfolios=true,printccs=false,printacmref=false}
 \setcopyright{none}
-\acmConference[Draft]{Draft}{2026}{}
-\acmYear{2026}
-\acmDOI{}
-\acmISBN{}
 
 \usepackage{mathpartir}
 \usepackage{stmaryrd}
@@ -14,13 +9,17 @@
 \usepackage{listings}
 \usepackage{microtype}
 \input{macros}
+\emergencystretch=3em
+\raggedbottom
 
 \lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
-  frame=none,xleftmargin=1em}
+  frame=none,xleftmargin=1em,
+  literate={λ}{{$\lambda$}}1 {⊤}{{$\top$}}1}
 
 \begin{document}
 
 \title{Explicit Evidence for Dependent Object Types}
+\subtitle{A Tutorial Report on Type Safety by Translation}
 
 \author{Oliver Bra\v{c}evac}
 \renewcommand{\shortauthors}{Bra\v{c}evac}
@@ -32,12 +31,20 @@
 
 \maketitle
 
+\setcounter{tocdepth}{1}
+\tableofcontents
+
 \input{sections/intro}
-\input{sections/overview}
-\input{sections/source}
+\input{sections/dot}
+\input{sections/problem}
+\input{sections/miniature}
 \input{sections/target}
 \input{sections/canonical}
+\input{sections/metatheory}
 \input{sections/translation}
+\input{sections/safety}
+\input{sections/comparison}
+\input{sections/history}
 \input{sections/mechanization}
 \input{sections/related}
 \input{sections/conclusion}
