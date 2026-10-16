@@ -10,7 +10,7 @@ annotations and let result types are also unrestricted.
 | `Typing` | contexts (`cons`, `consSelf`); `Sub`, `HasTy`, `DefsTy` (Type-valued); unrestricted intersections and recursive bodies; object definitions may contain same-block aliases |
 | `Structural` | renaming of all three judgments under lookup preservation; weakening under ordinary and object self binders |
 | `Machine` | store, continuations, `Step`, `Steps`, `Final`, `Stuck` |
-| `Erasure` | erasure to `Runtime`; `erase_step`, `erase_reflect`, `final_erase`, `final_reflect` |
+| `Erasure` | erasure to `Runtime`, with `erase_step` and `erase_reflect`. The final-state theorems `final_erase` and `final_reflect` are in namespace `DotMNF` but declared in `../DotToFCdot/Safety.lean` |
 | `Examples` | E1 to E12 as `HasTy` derivations; E9 executes a function folded through a recursive type; E10 to E12 exercise self-dependent intersections, nested recursion, and a bare self selection |
 
 ## Correspondence with WadlerFest DOT
@@ -21,8 +21,8 @@ scoped presentation of the annotated calculus in
 Object values retain their self annotation. Ordinary contexts admit the
 opened self type, and definition typing enforces distinct labels.
 
-`WadlerFest.HasTy.eraseAnnotations_closed` proves that every closed program
-typed by these rules has a DOT-MNF derivation at the same type after removing
+`WadlerFest.HasTy.eraseAnnotations_closed` constructs, for every closed program
+typed by these rules, a DOT-MNF derivation at the same type after removing
 object annotations. The general theorem interprets each source context
 assumption by a variable-typing derivation. At an object self binder, one
 recursive elimination derives the opened body from DOT-MNF's recursive self
@@ -89,7 +89,7 @@ over public terms, so reduction stays within the sorted syntax.
 
 The public examples construct and type a self-dependent object, check its
 projection step, and reject labels used in the wrong category. The internal
-syntax still uses a shared `Label` representation to reuse the existing
+syntax uses a shared `Label` representation to reuse the existing
 proofs. Scoping is intrinsic; a conversion from named syntax modulo
 alpha-equivalence is not formalized.
 

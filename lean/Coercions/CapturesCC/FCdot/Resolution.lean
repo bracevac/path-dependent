@@ -1769,10 +1769,11 @@ def Ctx.roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) : CaptureSet s :=
 theorem Ctx.caps_subset_roots (Γ : Ctx s) (n : Nat) (C : CaptureSet s) :
     (Γ.caps n C).Subset (Γ.roots n C) := Γ.subset_expand _
 
-/-- Nothing outside a scope sees the change.  On a root-free context whose
-resolution does not mention `⊤ᶜ`, `roots` is `caps`, so every statement about
-roots on the platform prefix and on a store context means today what it meant
-before. -/
+/-- On a root-free context whose resolution does not mention `⊤ᶜ`, `roots` is
+`caps`.  A statement about roots on the platform prefix or on a store context,
+for a set whose resolution avoids `⊤ᶜ`, is then a statement about `caps`.  The
+second premise is needed: on a root-free context `roots` of `[⊤ᶜ]` differs
+from `caps` of `[⊤ᶜ]`. -/
 theorem Ctx.roots_eq_caps_of_rootFree {Γ : Ctx s} {n : Nat} {C : CaptureSet s}
     (h : Γ.root? = none) (hC : CapAtom.top ∉ Γ.caps n C) :
     Γ.roots n C = Γ.caps n C := by

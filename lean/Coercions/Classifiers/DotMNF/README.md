@@ -63,9 +63,10 @@ parameter, the body closure, is filtered to `except[ThreadLocal]`, over a platfo
 `ThreadLocal`, a `Control` and an `IO` capability (`E2PlatIO`).  `Control` is a subclass of
 `ThreadLocal` here, so the filter excludes both, and the `IO` capability gives a legal body
 something to capture.  `E3` is a capture-polymorphic client whose capture member is bounded by
-`only[Control]` instead of an explicit set.  `E3_stable_clsOf` and the declarations after it show
-that a third `Control` capability added to the platform leaves the example standing, which a set
-bound could not state without being rewritten.  The run-time facts of the three examples are stated
+`only[Control]` instead of an explicit set.  `E3_stable_clsOf` and the declarations after it check
+that a third `Control` capability added to the platform keeps the declared classifiers, the kinding
+of the platform set (`E3_kind3`) and the retyping of a third literal at the kind bound.  The client is
+not typed again over the extended platform.  The run-time facts of the three examples are stated
 on the target side, in `../FCdot/Examples.lean`.
 
 Four `example`s at the end of `Syntax.lean` check the treatment of filtered notations: a filtered

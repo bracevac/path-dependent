@@ -141,8 +141,8 @@ map.  That is not a matter of taste.  K6x of `FCdot/Examples.lean` exhibits a
 context where such a rule derives a kinding whose canonical form is true, and
 `Ctx.Ren.instC` carries that context to one where the same canonical form is
 false, so the kinding family would lose `KindCo.HasType.renameR`.  The price
-is that the family is not complete at a `star` binder, and K6x decides both
-halves of the gap.  A `star` binder is Capless(K)'s capture variable at the
+is that the family is not complete at a `star` binder, and K6x
+exhibits the gap.  A `star` binder is Capless(K)'s capture variable at the
 kind bound `⊤`, and `kproj` is its rule. -/
 inductive KindCo.HasType : Ctx s → KindCo s → CaptureSet s → Cls.Kind → Prop where
   /-- k-empty (`Subcapt.lean:55`). -/

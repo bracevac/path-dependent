@@ -35,7 +35,7 @@ binder, and an answer may be an existential `∃ᶜ[C₀] T`, which is how a `fr
 | `CanonicalForms` | `cap_canon`, `atom_canon`, `closed_box_inversion`, `preservation'` |
 | `ErasureMetatheory` | forward simulation `erase_step`, backward simulation `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
-| `Consistency` | shapes of closed inclusions, `lvl_safety`, `no_inner_escape`, `reachable_consistent` |
+| `Consistency` | shapes of closed inclusions, `lvl_canon`, `lvl_safety` and `no_inner_escape` (trivial over a store), `reachable_consistent` |
 | `Prediction` | `step_uses`, `capture_prediction`, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
 | `Examples` | the examples below, decided in the kernel where they are decidable |
 
@@ -61,13 +61,15 @@ spell it `C` (`Ctx.consC`, `Proposition.leC`), while notation keeps it.
 
 A body opens three binders in this order: the body root, then the arrow's capture binder, then the
 parameter.  So the parameter and the arrow binder sit at the level of the body root.  This order
-matters.  With the parameter bound before the root, the `withFile` escape would type (`X5_fires`).
+matters.  With the parameter bound before the root, the level rule puts the parameter below `⊤ᶜ`
+(`X5_fires`).  For the actual order `X4_no_level` shows that step underivable.
 The machine enters a body by one substitution (`Subst.enter`), which sends the body root to `⊤ᶜ`.
 That is sound because a running program is the outermost scope and a store binds no root.
 
 `Ctx.roots` resolves a capture set and then expands each root into the capabilities at or outside
-its level.  On a context with no root it agrees with plain resolution
-(`Ctx.roots_eq_caps_of_rootFree`), so the prediction theorems mean what they meant in the base.
+its level.  On a context with no root, and for a set whose resolution does not mention `⊤ᶜ`, it
+agrees with plain resolution (`Ctx.roots_eq_caps_of_rootFree`).  So the prediction theorems mean
+what they meant in the base for use sets that do not mention `⊤ᶜ`.
 
 A `fresh` result is packed: `ELeCo.pack` widens a plain answer to `∃ᶜ[C₀] T` with a witness set
 below the bound.  `letex` unpacks it and opens a rigid capture binder, so two unpackings open two
@@ -78,20 +80,28 @@ capture set of the caller.  A pack erases to what it wraps.
 
 - `checkTm_iff`, `checkTmE_iff`, `checkELe_iff`: the checker decides typing.
 - `cap_canon`: over a typed store, capture evidence implies inclusion of resolved roots.
-- `atom_canon`: a typed atom has a typed view, and its root is below its type's capture set.
+- `atom_canon`: over a typed store, a typed atom has a typed view, and its root is below its
+  type's capture set.
 - `preservation'`, `progress`, `not_stuck`: type safety.
 - `erase_step`, `erase_reflect'`: the machine and the runtime simulate each other.
-- `level_inversion`: member-free capture evidence never lowers a level.  No store is needed.
-- `lvl_safety`, `no_inner_escape`: over a typed store, evidence into a root stays at its level.
-- `no_ex_le_ty`: an existential answer is never included in a plain type.
+- `level_inversion`: for member-free capture evidence, if the resolution of the upper set is
+  confined to `r` at every depth, so is the resolution of the lower set.  No store is needed.
+- `no_ex_le_ty`: no evidence includes an existential answer in a plain type.
 - `pack_canon`: an atom at an existential answer is a pack, read with no normalization.
-- `capture_prediction`, `effect_safety`: use sets only shrink, and an unnamed capability is never read.
+- `capture_prediction`: from a typed state, the roots of the use set only shrink along a run.
+- `effect_safety`: from a typed state and a typed store, a capability that is not a root of the
+  use set is not the root of the variable a later state reads, up to the renaming of the store
+  extension.
 - `reachable_consistent`: every store reachable from a typed state is typed and consistent.
 
 Member-free evidence uses neither `member` nor `eqToLe`, the two rules that read a capture bound.
 Bad capture bounds can be assumed under a lambda (example C3), so only member-free evidence can be
-inverted without a store.  `lvl_safety` and `no_inner_escape` are vacuous over a store context,
-because it has no root other than `⊤ᶜ`.  `level_inversion` carries the content.
+inverted without a store.
+
+`lvl_canon`, `lvl_safety` and `no_inner_escape` carry no content over a typed store, and are not
+listed as results.  A store context has no root other than `⊤ᶜ`.  So the conclusions of
+`lvl_canon` and `lvl_safety` hold for every capture set, and the hypotheses of `no_inner_escape`
+cannot hold together.  `level_inversion` carries the content.
 
 Statements of the base that changed form:
 
@@ -103,15 +113,23 @@ Statements of the base that changed form:
 
 ## Examples
 
-- `X4_no_escape`: the `withFile` escape is rejected, since no member-free evidence puts the
-  callback's parameter below the outer root.  `X4_no_level` shows the level premise fails.
-- `X5_fires`: with the rejected binder order the same escape types.
-- `X1_inner_absorbs_outer`, `X2_outer_not_inner`: a root absorbs outer capabilities and not inner ones.
-- `two_calls_incomparable`: two calls of `freshCell` open binders that no evidence relates
-  (`Y1_freshCell`, `Y1Store_typed` exhibits a typed store for it).
+- `X4_no_escape`: no member-free evidence puts the `withFile` callback's parameter below the
+  universal root.  `X4_no_level` shows the level premise fails.  Neither states that a program is
+  ill typed.
+- `X5_fires`: with the other binder order, one `level` derivation puts the parameter below `⊤ᶜ`.
+  It is the step that `X4_no_level` shows underivable for the actual order.
+- `X1_inner_absorbs_outer`, `X2_outer_not_inner`: `level` derivations that go outward, and failed
+  premises of `level` for the inward direction.  They do not rule out other evidence.
+- `two_calls_incomparable`: for `freshCell` called twice at a caller with no scope root, no
+  evidence puts the first binder below the second or the first cell below the second.
+  `Y1_freshCell` and `Y1Store_typed` give the typed value and a typed store.  The reverse
+  direction is not stated.
 - `Y2_makeLogger`: a `fresh` result packed at the parameter itself.
-- `Y4_isolation`, `Y4_no_escape`: the `withFile` escape with a `fresh` result, refused by
-  `no_ex_le_ty` and by the level check.
-- `W2_translated`, `W2_erase`: a parameter `any` stays one arrow after translation.
-- `W5_no_escape`: `source_lvl_safety` at the callback of the source's `withFile`.
-- `C1_typed`, `C6_safe`: use sets and effect safety on a closure over a console capability.
+- `Y4_isolation`: `no_ex_le_ty` stated at the callback context `X4Ctx`.  `Y4_no_escape`: the
+  statement of `X4_no_escape` again.  Neither mentions a `fresh` result or a `letex`.
+- `W2_translated`, `W2_erase`: the translation of the `W2` term is typed at the translated type
+  and erases to the source term.  The translated type is one arrow (`Shape.translate_all`).
+- `W5_no_escape`: no member-free source subcapturing puts the callback's parameter below the
+  platform capability, as an instance of `source_lvl_safety` over the body context of `W2`.
+- `C1_typed`: a closure over a console capability is typed.  `C6_safe`: `effect_safety` for the
+  second C6 program, given a run to a state that reads `x` and a typed final store.

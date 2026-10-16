@@ -10,19 +10,27 @@ acceptance tests of gDOT (Giarrusso et al., ICFP 2020).
 
 ## What is proved
 
-- `HasTy.translate_typed`: every source typing derivation translates to a typed FCdot term.
-- `PathTy.translatePath_typed`: every path typing translates to path evidence at the same path.
+- `HasTy.translate_typed`: every source typing derivation in a well-formed context (`Ctx.Wf`), in
+  particular every closed one, translates to a typed FCdot term.
+- `PathTy.translatePath_typed`: every path typing in a well-formed context translates to path
+  evidence at the same path.
 - `HasTy.translate_erase`: the image erases to the source term, so behaviour is unchanged.
 - `dot_safety`: a closed well-typed source program never gets stuck.
-- `reachable_consistent`: every store a translated program reaches is typed, with no closed `⊤ ≤ ⊥`.
-- `Store.Typed.pathView`: over a typed store, every typed path has a typed view of its object.
-- `acceptance_fig2`: the compiler fragment of gDOT's Fig. 2 translates to a term the checker accepts.
-- `acceptance_gdot3_any`: no closed object literal has gDOT's bad-bounds type `μ(x. {A : ⊤..⊥})`.
+- `reachable_consistent`: every store a closed translated program reaches is typed, with no closed
+  `⊤ ≤ ⊥`.
+- `Store.Typed.pathView`: over a typed store, every typed path has a view of its object, typed at
+  every object type that the path's type resolves to.
+- `acceptance_fig2`: a copy of gDOT's Fig. 2 with four changes (listed in `DotMNF/Examples.lean`),
+  typed at `⊤`, translates to a term the checker accepts.
+- `acceptance_gdot3_any`: in the empty context, no object literal has gDOT's bad-bounds type
+  `μ(x. {A : ⊤..⊥})`.
 
 ## What it leaves out
 
 - A `val` field must hold an object literal. A field holding a variable or a lambda is a plain
-  field and cannot start a longer path.
+  field, and its declared type has no stable member. So `Fld-E` cannot step through it from the
+  receiver. A binder assumed at the singleton of such a field can still make it a path, through the
+  singleton rules.
 - No replacement of a path by its alias: `p.type <: q.type` is not derivable, nor `p.A <: q.A`
   at an abstract member.
 - A variable of singleton type cannot be used at a non-singleton type of its alias.

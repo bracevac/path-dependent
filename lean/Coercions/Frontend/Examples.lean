@@ -54,8 +54,7 @@ For a program at the recursion limit, `Ek_limit`: no type, tank marked.
 * At the recursion limit: LP, a check through `∀` bodies that reaches the same
   goal under one more binder at every level.  PF, Pierce's divergence of
   bounded quantification written with type members.  The doubled alias chain of
-  twelve links, whose goal is false at every fuel and needs more than
-  `defaultFuel` to say so.
+  twelve links, whose search ends at the recursion limit at `defaultFuel`.
 
 The alias chains of 16 and 32 links are core goals, checked in `Sub.lean`.
 
@@ -650,8 +649,7 @@ theorem PF_limit : typeAt PFsrc = (none, ⟨defaultFuel - 32734, true⟩) := by 
 
 /-- The doubled alias chain of twelve links: `x0 : {A : ⊥..⊤}`, each `xk` at
 two copies of `{A : x(k-1).A..x(k-1).A}`, and `y : x12.A` ascribed
-`{a : ⊤}`.  The goal is false at every fuel.  Every link offers two members,
-so the work doubles per link. -/
+`{a : ⊤}`.  Every link offers two members, so the work doubles per link. -/
 def Doubled12src : STm :=
   dot% λ(x0 : {A : ⊥ .. ⊤}).
        λ(x1 : {A : x0.A .. x0.A} ∧ {A : x0.A .. x0.A}).

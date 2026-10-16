@@ -6,8 +6,9 @@ namespace CapturesCC
 # Member-free capture evidence never lowers a level
 
 `level_inversion` is the half of `lvl_canon` that needs no typed store.  Over a typed
-store the context is root free, so `lvl_safety` and `no_inner_escape` hold
-vacuously; what has content in a rooted context is this inversion, and it is
+store the context is root free, so the conclusion of `lvl_safety` holds for every
+set and the hypotheses of `no_inner_escape` are inconsistent.  What has content in
+a rooted context is this inversion, and it is
 true exactly because `member` and `eqToLe` are excluded.  Bad capture bounds
 enter capture evidence only through those two rules, which is example C3 of
 `FCdot/Examples.lean`, so member-free evidence is the largest fragment on

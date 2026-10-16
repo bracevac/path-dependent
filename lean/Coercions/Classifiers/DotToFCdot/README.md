@@ -44,17 +44,19 @@ Typedness holds for well-formed contexts, `Ctx.Wf`.  A platform context is well 
 
 ## Main theorems
 
+The `translate_typed` and `translate_uses` theorems assume `Ctx.Wf` of the source context.
+
 - `CapKind.translate_typed`: a source kinding derivation translates to typed target kinding evidence.
 - `Subcap.translate_typed`, `Sub.translate_typed`, `ESub.translate_typed`: the same for subcapturing, subtyping and answer inclusion.
 - `HasTy.translate_typed`: a typed source term translates to a typed target term.
 - `HasTy.translate_uses`: the translated term's use set is below the translated declared use set.
 - `HasTy.translate_erase`, `coherence`: the translation erases to the source term, whatever the derivation.
 - `dot_safety`, `dot_not_stuck`: a closed typed source program never gets stuck.
-- `reachable_consistent`, `reachable_realized`: every store a translated program reaches is typed, proves no `⊤ ≤ ⊥`, and defines every block name.
+- `reachable_consistent`, `reachable_realized`: every store a translated closed program reaches is typed, proves no `⊤ ≤ ⊥`, and defines every block name.
 - `source_lvl_safety`: member-free source subcapturing never lowers a level.
 - `dot_capture_prediction`, `dot_effect_safety`: capture prediction and effect safety for source programs over a platform.
-- `dot_classified_prediction`: if the declared use set of a source program is kinded at `φ`, the use set of every reached state is kinded at `φ`.
-- `dot_classified_effect_safety`: such a program never reads a capability whose classifier `φ` excludes.
+- `dot_classified_prediction`: if the declared use set of a source program typed over a platform is kinded at `φ`, the use set of the target state matched to every reached source state is kinded at `φ`.
+- `dot_classified_effect_safety`: along a run of such a program from the platform's initial state, every root of a variable the matched target state reads has a classifier `φ` admits.
 - `dot_classified_prediction'`, `dot_classified_effect_safety'`: the same, with a source derivation `CapKind P.ctx U φ` as the hypothesis.
 
 Base statements that changed form:
@@ -64,6 +66,8 @@ Base statements that changed form:
 
 The examples of this directory live in `../FCdot/Examples.lean`, which imports it.  There,
 `E1_effect_safety` and `E2_effect_safety` instantiate `dot_classified_effect_safety'`, and
-`E3_prediction` and `E3_prediction'` instantiate the two prediction theorems.
+`E3_prediction` and `E3_prediction'` instantiate the two prediction theorems.  In E1 and E2 the
+variable that is read holds a closure with the empty capture set, so the conclusion of the two
+effect safety instances holds there for want of a root, as `../FCdot/README.md` says.
 
 Every theorem depends on `propext` and `Quot.sound` at most.

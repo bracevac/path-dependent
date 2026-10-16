@@ -4,24 +4,39 @@ Scala 3 capture checking, modelled the DOT way.  A type carries a capture set, w
 which bounds the capabilities a value of that type can reach.  A capture parameter is a capture
 member of an object, `{C : c₁..c₂}`, just as DOT models a type parameter as a type member.  This
 development adds capture sets to the source DOT-MNF and to the target FCdot, translates one into
-the other, and shows that the target's capture discipline holds for source programs: a program
-reads only the capabilities its declared use set names.
+the other, and shows the target's capture discipline.  For a source program over a platform prefix,
+whenever a source run reaches a state that reads a variable `x`, some target state with the same
+erasure and a typed store does not root `x` at a platform capability that the declared use set
+omits.
 
 The tree is a copy of the vanilla development (`../DotMNF`, `../FCdot`, `../DotToFCdot`,
-`../Runtime.lean`) at the commit recorded in `BASE`.  It keeps every theorem of that base,
-restated with capture sets, and weakens none of them.  Everything lives in namespace `Captures`.
+`../Runtime.lean`) at the commit recorded in `BASE`.  It keeps the theorems of that base,
+restated with capture sets.  Two are weaker or narrower: `FCdot.closed_le_shapes` gains a disjunct,
+and the body of a recursive type is restricted (below).  Everything lives in namespace `Captures`.
 
 ## What is proved
 
 - `FCdot.preservation'`, `FCdot.progress`: FCdot with captures is type safe.
-- `FCdot.capture_prediction`: along any run, the capabilities a state's use set reaches only shrink.
-- `FCdot.effect_safety`: a run whose use set does not reach a capability never reads it.
-- `FCdot.returned_capture_bound`: a final answer captures no more than its type says.
-- `DotMNF.HasTy.translate_typed`, `DotMNF.HasTy.translate_uses`: the translation preserves types and use sets.
+- `FCdot.capture_prediction`: along any run from a typed state, the roots of a state's use set stay
+  within the roots of the first state's use set, up to the store extension.
+- `FCdot.effect_safety`: from a typed state whose use set has no root `κ`, a run never reaches a
+  state that reads a variable rooted at `κ`.  It says something at a rigid capture binder.  A stored
+  box has the empty annotation, so reading a box is not flagged and the unboxing is charged to the
+  use set through `capture_prediction`.
+- `FCdot.returned_capture_bound`: over a typed store, the annotation of a returned value and the
+  root of a returned atom are bounded by the capture set of the answer's type.
+- `DotMNF.HasTy.translate_typed`, `DotMNF.HasTy.translate_uses`: for well-formed contexts
+  (`Ctx.Wf`), the translation preserves types and use sets.
 - `DotMNF.HasTy.translate_erase`: a translated program erases to the source program.
-- `DotMNF.dot_safety`: a well-typed source program never gets stuck.
-- `DotMNF.dot_effect_safety`: a source program whose declared use set omits a platform capability never reads it.
-- `DotMNF.Ty.noAny_expand`: reading `any` by its position leaves no `any` behind.
+- `DotMNF.dot_safety`: a source program well-typed in the empty context never gets stuck.  A program
+  that uses a platform capability is not in the empty context.  `compile_safe` in `Frontend/Pipeline.lean`
+  covers the compiled ones.
+- `DotMNF.dot_effect_safety`: let a program be typed over a platform prefix, with a declared use set
+  that omits `κ`, and let a source run reach a state that reads `x`.  Then some target state with
+  the same erasure and a typed store, extending the translated platform store, does not root `x`
+  at the image of `κ` in that store.  The conclusion does not name the target run.
+- `DotMNF.Ty.noAny_expand`: expanding a type at a set with no `any` leaves no `any`.  The conclusion
+  does not need the premise `AnyOk`.  No theorem states what `AnyOk` secures.
 
 ## What it leaves out
 
@@ -29,7 +44,8 @@ restated with capture sets, and weakens none of them.  Everything lives in names
   program writes an explicit capture member instead, because the implicit form would allocate an
   object at every call and break erasure to the source term.
 - Reach capabilities: `any` in a type-member bound, under a box, or in the lower bound of a capture
-  member.  `AnyOk` rejects these positions before typing, so nothing is translated wrongly.
+  member.  The front end rejects these positions before typing (`Frontend/Resolve.lean`).  `HasTy`
+  does not mention `AnyOk`, the translation drops `any`, and no theorem depends on the check.
 - Scopes, levels and fresh capabilities, the Scala 3 compiler's model, which is `../CapturesCC/`.
 - The body of a recursive type `μ(x. S)` must be a declaration.  The vanilla development lifted this
   restriction after the copy was taken.

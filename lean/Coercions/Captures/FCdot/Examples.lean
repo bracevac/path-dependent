@@ -1289,8 +1289,9 @@ theorem C6_no_kappa2 :
   revert hn
   decide +kernel
 
-/-- **C6, effect safety**: no state reachable from the second program reads a
-root whose root is `κ₂`. -/
+/-- **C6, effect safety**: at every state reachable from the second program
+that reads `x`, with a typed store, `x` is not rooted at the image of `κ₂` in
+that store.  This is `effect_safety` at the start state `C6st0'`. -/
 theorem C6_safe {s' : Sig} {st' : State s'} {Γ' : Ctx s'} {x : BVar s' .var}
     (run : C6st0' ⟶* st') (hin : st'.inspects = some x) (hΓ' : ⊢ st'.σ : Γ') :
     ∃ ρ : Rename ([],c,c,x,x,x,x) s', Store.Ext C6Store st'.σ ρ ∧
@@ -1489,9 +1490,11 @@ def C7clientBad : Tm ([],c,c,x) :=
     []
     (.union (.trans (.capvar (.var .here)) (.elem [] [])) (.refl []))
 
-/-- **C7, rejected.**  The client does not type with use set `{}`: the
-element's own set `{κ₁}` is not below the empty set, and there is no rule
-that would put it there over a platform prefix. -/
+/-- **C7, rejected.**  The checker rejects this term with this evidence, the
+element's own set `{κ₁}` against the empty set, and `checkTm_iff` rules out
+any typing of the term at `C7clientTy`.  The general fact that no evidence puts a
+platform capability below `{}` is `no_cap_star_le_nil`, which needs a typed
+store and does not apply to `C7Ctx`. -/
 theorem C7_rejected : checkTm C7Ctx C7clientBad C7clientTy = false := by decide +kernel
 
 /-- **C7, translated.** -/

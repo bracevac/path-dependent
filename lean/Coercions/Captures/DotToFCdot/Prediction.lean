@@ -9,10 +9,13 @@ namespace Captures
 
 The source has no use-set metatheory of its own, as it has no safety of its
 own: both are borrowed from the target through the translation.  What the
-target proves is `FCdot.capture_prediction` -- along a run the store only
-grows and the roots of the use set only shrink -- and `FCdot.effect_safety`
--- a run of a state whose use set has no root `κ` never reads a root with
-root `κ`.  This file carries both across the simulation.
+target proves is `FCdot.capture_prediction`, which says that along a run the
+store only grows and the roots of the use set only shrink, and
+`FCdot.effect_safety`, which says that from a typed state whose use set has no
+root `κ`, a run never reaches a state that reads a root with root `κ`.  This
+file carries both across the simulation.  The conclusions are existential.  They
+give a target state with the same erasure and a typed store, and they do not name
+the target run.
 
 The transport has three parts.
 
@@ -36,7 +39,7 @@ The transport has three parts.
   (`DotMNF.Tm.inspects_erase`, `FCdot.Tm.inspects_erase`), and a target term
   that is not a head cast is determined by its erasure at `inspects`
   (`FCdot.Tm.inspects_reflect`), so the root the source state reads is the
-  root the matched target state reads.
+  root some target state of the same erasure reads.
 
 `dot_effect_safety` reads its hypothesis `¬ (cvar κ ∈ ⟦U⟧)` as the roots
 condition the target asks for: over a platform prefix every atom is a
@@ -215,10 +218,12 @@ theorem Platform.simulatedRun {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s
 /-! ## The two theorems -/
 
 /-- **Capture prediction for DOT-MNF.**  Along any run of a closed program
-typed over a platform prefix, the matched target state's use set stays below
-the translation of the source's declared use set, transported along the
-store extension the run performs.  All the content is the target's
-`FCdot.capture_prediction`; the new part is the transport along the
+typed over a platform prefix, some target state with the same erasure has a
+typed store extending the translated platform store, and its use set stays
+below the translation of the source's declared use set, renamed along the
+extension.  Only the store of that state is required to be typed, and the
+conclusion does not name the target run.  The content is the target's
+`FCdot.capture_prediction`.  The new part is the transport along the
 simulation. -/
 theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t T) {s : Sig} {st : State s}
@@ -239,11 +244,14 @@ theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet 
     exact FCdot.cap_canon P.targetStore_typed (d.translate_uses P.ctx_wf)
   exact (hpred Γ' hσ').trans (hE.capLe P.targetStore_typed hσ' hbase)
 
-/-- **Effect safety for DOT-MNF.**  A closed program typed over a platform
-prefix whose declared use set does not name the platform capability `κ` never
-reads, along any run, a root whose root is `κ`.  The hypothesis is the roots
-condition the target asks for: over a platform prefix every atom is a capture
-variable and every binder is rigid, so a root of a set is a member of it. -/
+/-- **Effect safety for DOT-MNF.**  Let a closed program be typed over a
+platform prefix with a declared use set that does not name the platform
+capability `κ`, and let a source run reach a state that reads `x`.  Then some
+target state with the same erasure has a typed store extending the translated
+platform store, and `x` is not rooted at the image of `κ` in that store.  The conclusion
+does not name the target run.  The hypothesis is the roots condition the target
+asks for: over a platform prefix every atom is a capture variable and every
+binder is rigid, so a root of a set is a member of it. -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}
     {T : Ty s₀} (d : HasTy U P.ctx t T) {κ : BVar s₀ .cap}
     (hκ : ¬ (FCdot.CapAtom.cvar κ ∈ U.translate))

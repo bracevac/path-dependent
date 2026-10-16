@@ -299,7 +299,10 @@ theorem Store.Typed.confined (hσ : ⊢ σ : Γ) (C : CaptureSet s)
 the target is at or outside `r`, so is every resolution of the source.  A
 corollary of item 6 over a typed store, not an induction on the evidence: as
 an induction on `f` alone the `capvar` case is false, since bad capture
-bounds are derivable under a lambda (example `C3`). -/
+bounds are derivable under a lambda (example `C3`).  Over a typed store the
+context has no root binder (`Store.Typed.rootFree`), so every atom is at the
+outermost level and the conclusion holds for every set.  This theorem holds
+trivially.  `level_inversion` carries the content. -/
 theorem lvl_canon (hσ : ⊢ σ : Γ) {f : CapCo s} {C₁ C₂ : CaptureSet s} {r : CapAtom s}
     (h : Γ ⊢ᶜ f : C₁ ⊑ C₂) (n : Nat)
     (h₂ : ∀ m, Γ.Confined (Γ.roots m C₂) r) : Γ.Confined (Γ.roots n C₁) r := by
@@ -325,7 +328,9 @@ theorem rigid_target (hσ : ⊢ σ : Γ) {κ : BVar s .cap} {f : CapCo s} {C : C
   exact hm
 
 /-- What closed evidence puts below a scope root resolves to capabilities at
-or outside that root. -/
+or outside that root.  Over a typed store the only root is `⊤ᶜ` and the conclusion
+holds for every set, so this theorem holds trivially.  `level_inversion` carries
+the content. -/
 theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : CaptureSet s}
     (hr : Γ.IsRoot r) (h : Γ ⊢ᶜ f : C ⊑ [r]) (n : Nat) :
     Γ.Confined (Γ.roots n C) r :=
@@ -340,7 +345,9 @@ theorem lvl_safety (hσ : ⊢ σ : Γ) {r : CapAtom s} {f : CapCo s} {C : Captur
 scope below that scope's root.  The conclusion
 is about what `C` resolves to and not about its syntactic atoms: a pure inner
 binder is below every set by `capvar` and `elem`, so the syntactic reading is
-false and the resolved reading is what holds. -/
+false and the resolved reading is what holds.  Over a typed store every atom is
+at the outermost level, so the premise `hout` never holds and this theorem
+holds trivially.  `level_inversion` carries the content. -/
 theorem no_inner_escape (hσ : ⊢ σ : Γ) {r : CapAtom s} {κ : BVar s .cap}
     (hr : Γ.IsRoot r) (hκ : (Γ.lookupCap κ).opaque = true)
     (hout : ¬ Γ.LvlLe (.cvar κ) r) : ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [r] := by

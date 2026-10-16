@@ -724,7 +724,8 @@ theorem Shape.noAny_expand {s : Sig} :
       rw [Shape.expand, Shape.noAny_box, Ty.expand_of_noAny T h]
       exact h
 
-/-- Expanding an `AnyOk` type by a set with no `any` leaves no `any`. -/
+/-- Expanding a type by a set with no `any` leaves no `any`.  The premise
+`AnyOk` is not needed for the conclusion, and no theorem states what `AnyOk` secures. -/
 theorem Ty.noAny_expand {s : Sig} :
     ∀ (T : Ty s) (D : CaptureSet s), T.AnyOk → D.NoAny → Ty.NoAny (T.expand D)
   | .capt C S, D, h, hD => by

@@ -1948,9 +1948,9 @@ The nested context `κ₁ ⊑ᶜ ∗, κ_S ⊚, κ₂ ⊑ᶜ ∗`: a rigid capab
 outermost level, then a scope root, then a rigid capability introduced inside
 that scope.
 
-The scope root `κ_S` absorbs what is outside it, `κ₁` and `⊤ᶜ` alike, and the
-universal root does not absorb what is inside it, neither `κ_S` itself nor
-`κ₂`. -/
+The level rule lets the scope root `κ_S` absorb what is outside it, `κ₁` and
+`⊤ᶜ` alike.  Its premise fails for the universal root over what is inside the
+scope, over `κ_S` itself and over `κ₂`. -/
 
 /-- The context of X2 and X3: rigid, root, rigid. -/
 def X2Ctx : Ctx ([],c,c,c) :=
@@ -1977,10 +1977,12 @@ example : X2Ctx.root? = some X2κS := by decide
 
 example : X2Ctx.lvl X2κ₂ = some X2κS := by decide
 
-/-- **X2, outer does not absorb inner.**  Four parts.  What is outside the
-scope is below the scope's root, the universal root included, and what is
-inside the scope is not below the universal root, the scope's own root
-included. -/
+/-- **X2, outer does not absorb inner.**  Four parts.  The first two are
+`level` derivations that go outward: what is outside the scope is put below
+the scope's root, the universal root included.  The last two say that the
+premise of `level` fails going inward: what is inside the scope, the scope's
+own root included, is not `LvlLe` the universal root.  This refutes the
+`level` rule only.  It does not rule out evidence by other rules. -/
 theorem X2_outer_not_inner :
     (X2Ctx ⊢ᶜ .level (.cvar X2κ₁) (.cvar X2κS) :
       [CapAtom.cvar X2κ₁] ⊑ [CapAtom.cvar X2κS]) ∧
@@ -2043,8 +2045,9 @@ so the parameter and the arrow binder are at one level and that level is
 the body root.  Everything below reads off that one fact.
 
 `C2_typed` is the regression test that the new binders are inert where
-nothing names them.  `X4` rejects the `withFile` escape, and `X5` shows
-that the rejection is the binder order and not an accident.  `S2_level`
+nothing names them.  `X4` shows that no member-free evidence puts the
+`withFile` callback's parameter below the universal root, and `X5` shows that
+the binder order is what makes this so.  `S2_level`
 and `C5a_level` are the two acceptance tests, the caller's side and the
 callee's side, of the level step that puts a concrete assigned set below a
 scope root. -/
@@ -2123,7 +2126,7 @@ inert here: no witness, no field and no type names either. -/
 theorem C2_typed : C2LitCtx ⊢ᵥ C2lit C2κ₁ : C2LitTy C2κ₁ :=
   checkValue_sound (by decide +kernel)
 
-/-! ### X4, the `withFile` escape, rejected
+/-! ### X4, the `withFile` escape: no member-free evidence
 
 The program is `withFile[() => File^]("test.txt"): f => () => f`, the
 standard Scala 3 capture-checking example of an escaping capability.
@@ -2139,7 +2142,7 @@ the level rule is false there, at `⊤ᶜ` and at an older root alike.
 at all puts `{f}` below `{⊤ᶜ}`, because the binder set of `f` resolves to
 the arrow binder `κ_f`, whose level is the body root.  If the escape were
 allowed, calling the returned closure as `escaped().read()` would be a use
-after close. -/
+after close.  Neither theorem states that the program is ill typed. -/
 
 /-- `File ^ {κ_f}`, the domain of `withFile`'s callback: the file, captured
 at the arrow's own capture binder. -/
@@ -2210,9 +2213,10 @@ theorem X4_no_escape :
 
 Under the rejected order `κ_f, f, κ_b`, with the parameter bound before the
 body root, the level of `f` is the nearest root older than `f`, which at the
-top level is the outermost one.  So the level rule fires and the escape
-types.  This is why the body root is bound first in `Ctx.body`, and it is
-a checked fact here rather than a claim. -/
+top level is the outermost one.  So the level rule fires on `f` at `⊤ᶜ`,
+which is the step X4 shows underivable.  `X5_fires` states that one step and
+does not type the whole program.  This is why the body root is bound first in
+`Ctx.body`, and it is a checked fact here rather than a claim. -/
 
 /-- The rejected order: `κ_f ⊑ᶜ ∗, f : File ^ {κ_f}, κ_b ⊚`. -/
 def X5Ctx : Ctx ([],c,x,c) :=
@@ -2225,8 +2229,8 @@ def X5f : BVar ([],c,x,c) .var := .there .here
 example : X5Ctx.lvl X5f = none := by decide
 
 /-- **X5, the counterfactual fires.**  Under the rejected binder order the
-level rule puts the parameter below the universal root, which is the escape
-X4 rejects. -/
+level rule puts the parameter below the universal root, which is the step X4
+shows underivable for the actual order. -/
 theorem X5_fires : X5Ctx ⊢ᶜ .level (.var X5f) ⊤ᶜ : [CapAtom.var X5f] ⊑ [⊤ᶜ] :=
   .level (by decide) (by decide)
 
@@ -2320,10 +2324,11 @@ theorem S2_level : S2aCtx ⊢ S2aTm : S2aTy := checkTm_sound (by decide +kernel)
 The five examples Y1 to Y5.  They use the answer sort `ETy`, the
 syntactic pack, the answer-cast coercion `ELeCo` and the `letex` former.
 
-Y1 is `freshCell` and two calls whose opened binders are incomparable.  Y2 is
+Y1 is `freshCell` and two calls, with no evidence from the first opened binder
+to the second.  Y2 is
 `makeLogger`, packed at the parameter.  Y3 is C5b, whose caller charges its
-use to the instantiated bound and never learns the witness.  Y4 is the
-`withFile` escape, rejected by isolation and by the level check.  Y5 is the
+use to the instantiated bound and never learns the witness.  Y4 restates
+`no_ex_le_ty` at the callback context and `X4_no_escape`.  Y5 is the
 `fresh` half of C5a and S2.
 
 Two of the theorems are negative, and both go through `cap_canon`, which
@@ -2506,7 +2511,7 @@ theorem Y1_caller : Y1CCtx ⊢ Y1caller : Ty.pure tArrow :=
   checkTm_sound (by decide +kernel)
 
 
-/-! ### Two calls are incomparable -/
+/-! ### Two calls: no evidence from the first to the second -/
 
 /-- The context the `letex` rules build for the body: both opened capture
 binders are rigid and both cells are opaque. -/
@@ -2571,6 +2576,12 @@ theorem Y1_caps_x₂ (n : Nat) :
   show Y1BodyCtx.caps n [CapAtom.cvar Y1κ₂'] = _
   exact Y1_caps_κ₂' n
 
+/-- **Y1, two calls.**  At a caller with no scope root, the context a store
+can type, two calls of `freshCell` open two binders.  No capture evidence puts
+the first binder below the second, and none puts the first cell below the
+second.  The reverse direction is not stated.  At a caller that is a lambda
+body, with a body root, no store types the context and the argument does not
+apply. -/
 theorem two_calls_incomparable :
     (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.cvar Y1κ₁'] ⊑ [CapAtom.cvar Y1κ₂']) ∧
     (¬ ∃ f, Y1BodyCtxO ⊢ᶜ f : [CapAtom.var Y1x₁] ⊑ [CapAtom.var Y1x₂]) := by
@@ -2813,7 +2824,7 @@ theorem c5b_no_witness :
   exact absurd hm (by decide)
 
 
-/-! ## Y4: the `withFile` escape, rejected twice over -/
+/-! ## Y4: isolation at the callback context -/
 
 /-- **Y4, a third widening step.**  A plain codomain is widened
 to an existential under `ShapeCo.pi`, which is what `ELeCo.pack` being a
@@ -2833,17 +2844,17 @@ theorem Y4_pack_under_pi : Y1Ctx ⊢ Y4packUnderPi :
   checkLe_sound (by decide +kernel)
 
 /-- **Y4, isolation.**  No coercion takes an existential answer back to a
-plain one, so the existentially bound capability cannot flow into an outer
-`any`.  This is `no_ex_le_ty`, half of the isolation result above. -/
+plain one.  This is `no_ex_le_ty` stated at the context `X4Ctx`, which plays
+no part in the proof.  No `withFile` program and no `fresh` result appear in
+the statement. -/
 theorem Y4_isolation {C₀ : CaptureSet (Sig.body [])} {T : Ty ((Sig.body []),c)}
     {T' : Ty (Sig.body [])} :
     ¬ ∃ g, X4Ctx ⊢ᵉ g : (∃ᶜ[C₀] T) ≤ .ty T' := by
   rintro ⟨g, hg⟩
   exact no_ex_le_ty hg
 
-/-- **Y4, the level check after a `letex`.**  The same fact as before: even
-if the caller unpacks, the unpacked binder's level is the caller's and the
-level rule runs only inward. -/
+/-- **Y4, no member-free evidence.**  This is `X4_no_escape` again.  The
+statement has no `letex` and no unpacked binder. -/
 theorem Y4_no_escape :
     ¬ ∃ g : CapCo (Sig.body []),
         (X4Ctx ⊢ᶜ g : [CapAtom.var X4f] ⊑ [⊤ᶜ]) ∧ g.MemberFree :=
@@ -2993,17 +3004,17 @@ theorem W2BodyCtxWf : DotMNF.Ctx.Wf DotMNF.Examples.W2BodyCtx :=
 /-- The calling context of W2 is well formed. -/
 theorem W2CallCtxWf : DotMNF.Ctx.Wf DotMNF.Examples.W2CallCtx := .cons (.cons platWf)
 
-/-- **W2 translated.**  A parameter `any` stays one arrow in the target: the
-arrow binds the capture parameter, so no member encoding and no extra
-application appear in the translated term. -/
+/-- **W2 translated.**  The translation of the `W2` term is typed at the
+translation of `W2Ty`.  The translated shape is one arrow, by
+`Shape.translate_all`: the arrow binds the capture parameter, so no member
+encoding and no extra application appear in the translated term. -/
 theorem W2_translated : DotMNF.Examples.platCtx.translate ⊢
     (DotMNF.Examples.W2_typed (Γ := DotMNF.Examples.platCtx)).translate :
     (DotMNF.Examples.W2Ty : DotMNF.Ty ([],c,c)).translate :=
   DotMNF.Examples.W2_typed.translate_typed platWf
 
-/-- **W2 erased.**  The source program and its translation run the same
-runtime term, which is the erasure equality a member encoding would have
-lost. -/
+/-- **W2 erased.**  The erasure of the translation equals the erasure of the
+source term.  This is `HasTy.translate_erase` at one derivation. -/
 theorem W2_erase :
     Tm.erase (DotMNF.Examples.W2_typed (Γ := DotMNF.Examples.platCtx)).translate
       = DotMNF.Tm.erase (DotMNF.Examples.W2Tm : DotMNF.Tm ([],c,c)) :=
@@ -3085,11 +3096,11 @@ theorem W5_no_escape :
 
 /-! ## Two calls of `freshCell`, on the source side
 
-**The second half of W4: two calls are incomparable.**
+**The second half of W4: two calls.**
 `DotMNF.Examples.Z_two_calls_no_level` says
 that the level order relates neither of the two opened binders to the other.
-The full incomparability is a canonical-forms fact: no capture evidence at
-all relates them.  It is `two_calls_incomparable` above, redone over a
+The stronger statement is a canonical-forms fact: no capture evidence puts
+the first binder below the second.  It is `two_calls_incomparable` above, redone over a
 translated source context, and it needs what that theorem needed, a typed
 store, a refinement into the transparent context the store types, the
 resolution of the two opened binders, and `cap_canon`.
@@ -3334,7 +3345,7 @@ theorem Z_caps_x2 (n : Nat) :
   show ZBodyCtx.caps n [CapAtom.cvar DotMNF.Examples.Zk2'] = _
   exact Z_caps_k2 n
 
-/-- **Two calls are incomparable on the source side.**  Over the
+/-- **Two calls, on the source side.**  Over the
 translation of the source's own two-call context, no capture evidence puts
 the binder the first call opened below the binder the second call opened,
 and none puts the first cell below the second.  The argument is the

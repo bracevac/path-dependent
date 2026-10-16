@@ -36,8 +36,10 @@ snglInv   : PathTy Γ p (.sngl q) → PathTy Γ q .top
 snglSel   : PathTy Γ p (.sngl q) → PathTy Γ p (.vfld a T) → PathTy Γ (.sel p a) (.sngl (.sel q a))
 ```
 
-A path extends only through a stable field (`sel`). A field computed by a term, such as
-`{a = x.a}`, never becomes a path prefix.
+A path extends from a receiver only through a stable field (`sel`). A field computed by a term,
+such as `{a = x.a}`, is declared without a stable member, so `sel` cannot step through it from the
+receiver. A variable assumed at the singleton `(x.a).type` can still make `x.a` a path, through
+`snglInv`.
 Term typing keeps the base's rules for a variable. It reads path typing in two places only:
 `HasTy.sngl` types a variable at a singleton, and `HasTy.projP` projects a field from a receiver
 typed as a path. `Sub.selUpper` and `Sub.selLower` take a path typing premise.
@@ -74,8 +76,9 @@ Base statements whose form changed: `Tm.path` takes a variable, not a path. `Sub
 ## Examples
 
 E1 to E8 keep their names, statements and derivations. X1 is the example of Sec. 2.2 of the pDOT
-paper, a selection `x.c.A` through a stable field, which WadlerFest DOT cannot write. X2 shows
-that a field computed by a projection is not a path (`X2_noVfld`, `X2_noSubDecl`). X3 is the
+paper, a selection `x.c.A` through a stable field, which WadlerFest DOT cannot write. X2 is the
+literal `{a = x.a}`. Its declared type has no stable member at `a` (`X2_noVfld`), and `Typ-Abs`
+adds none (`X2_noSubDecl`). X3 is the
 two-hop program `let y = x.a in y.b`. X4 is the `types` literal of gDOT's Fig. 2, with exact
 members (`X4_exact`) and their abstract reading (`X4_abs`).
 

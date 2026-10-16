@@ -240,7 +240,8 @@ theorem Platform.simulatedRun {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s
 /-! ## The two theorems -/
 
 /-- **Capture prediction for DOT-MNF.**  Along any run of a closed program
-typed over a platform prefix, the matched target state's use set stays below
+typed over a platform prefix at a plain answer, the matched target state's
+use set stays below
 the translation of the source's declared use set, transported along the
 store extension the run performs.  All the content is the target's
 `FCdot.capture_prediction`; the new part is the transport along the
@@ -265,8 +266,10 @@ theorem dot_capture_prediction {s₀ : Sig} (P : Platform s₀) {U : CaptureSet 
   exact (hpred Γ' hσ').trans (hE.capLe P.targetStore_typed hσ' hbase)
 
 /-- **Effect safety for DOT-MNF.**  A closed program typed over a platform
-prefix whose declared use set does not name the platform capability `κ` never
-reads, along any run, a root whose root is `κ`.  The hypothesis is the roots
+prefix at a plain answer, whose declared use set does not name the platform
+capability `κ`, has a matched target state that never reads, along any run, a
+root whose root is `κ`.  The source machine has no use sets, so the conclusion
+is about the target state.  The hypothesis is the roots
 condition the target asks for: over a platform prefix every atom is a capture
 variable and every binder is rigid, so a root of a set is a member of it. -/
 theorem dot_effect_safety {s₀ : Sig} (P : Platform s₀) {U : CaptureSet s₀} {t : Tm s₀}

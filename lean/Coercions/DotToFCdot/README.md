@@ -46,9 +46,10 @@ tel B        =  [ ⊑ ⟦B⟧↑ ]            B a selection, a function type, �
 
 Intersections are unrestricted: an operand that is not an object shape
 contributes the single *self-bound* proposition `⊑ ⟦B⟧` of FCdot (plan §13
-item 9).  `Ty.isObj` is the shape test that decides between the two: it
-holds exactly when `⟦T⟧ = μ (tel T)`, and fails exactly when `tel T` is the
-one-bound telescope above. Neither test restricts the source language.
+item 9).  `Ty.isObj` is the shape test that decides between the two.  If it
+holds then `⟦T⟧ = μ (tel T)` (`Ty.translate_isObj`).  If it fails then `tel T`
+is the one-bound telescope above (`Ty.tel_of_not_isObj`).  The converses are
+not stated as lemmas.  Neither test restricts the source language.
 In particular, recursive bodies may be functions, selections, arbitrary
 intersections, or nested recursive types.
 
@@ -90,11 +91,11 @@ Typedness holds for well-formed contexts, `Ctx.Wf`: a literal's self binder
 members) with distinct labels, which is what `{}-I` produces.  The initial
 context is empty, so `dot_safety` has no side condition.
 
-The self-alias restriction is gone: `{}-I` no longer restricts which members'
-witnesses may be a bare selection on the object's own self.  FCdot's
-alias-tolerant resolution (`FCdot.Ctx.resolve`) follows same-block aliases —
-a field typed `x.A` inside its own literal makes `x∙a` an alias of `x∙A`,
-which now resolves like any other alias — and a cyclic alias resolves to `⊤`.
+`{}-I` places no restriction on which members' witnesses may be a bare selection
+on the object's own self.  FCdot's alias-tolerant resolution (`FCdot.Ctx.resolve`)
+follows same-block aliases.  A field typed `x.A` inside its own literal makes
+`x∙a` an alias of `x∙A`, which resolves like any other alias.  A cyclic alias
+resolves to `⊤`.
 
 Fields of an intersection are translated with the right conjunct outermost,
 matching DOT-MNF's shadowing and its erasure.

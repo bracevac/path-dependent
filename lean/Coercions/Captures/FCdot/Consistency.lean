@@ -239,7 +239,8 @@ theorem Store.Typed.no_cap_escape (hσ : ⊢ σ : Γ) {κ : BVar s .cap}
   rintro ⟨f, hf⟩
   exact hD (cap_canon hσ hf _ (Ctx.Root_cvar_rigid (Or.inr hκ)))
 
-/-- In particular the platform's capability never sinks to the empty set. -/
+/-- In particular, over a typed store, the platform's capability never sinks
+to the empty set. -/
 theorem Store.Typed.no_cap_star_le_nil (hσ : ⊢ σ : Γ) {κ : BVar s .cap}
     (hκ : Γ.lookupCap κ = .star) :
     ¬ ∃ f : CapCo s, Γ ⊢ᶜ f : [CapAtom.cvar κ] ⊑ [] :=

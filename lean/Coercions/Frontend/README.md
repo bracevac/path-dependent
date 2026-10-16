@@ -26,8 +26,8 @@ writes it as the inner `let u : x.A = z` and compiles.
 `compile b Λ e` resolves and types the term `e`. The table `Λ` maps the names
 of type and field members to labels. The budget `b` holds the fuel of the
 search, `defaultFuel = 2 ^ 15` by default. The result is `none` if `e` is out
-of scope, uses a name missing from `Λ`, or does not type, and it carries no
-reason. Otherwise it is the annotated term with its type and its
+of scope, uses a name missing from `Λ`, is rejected by the typer, or ends at
+the recursion limit, and it carries no reason. Otherwise it is the annotated term with its type and its
 `DotMNF.HasTy` derivation. `compileAndRun b m Λ e` also runs the DOT-MNF
 machine for at most `m` steps.
 
@@ -61,8 +61,9 @@ The typer follows the subtype checker of the Scala 3 compiler. That is
 at commit 4dae25087d. The search spends fuel from one tank for the whole
 typing. When the tank runs short it is marked, and the typer reports a
 recursion limit. That is never a rejection by the rules. Up to the limit the
-typer is complete with respect to `Alg`, the inductive judgment that says
-which subtyping goals the algorithm should decide. It takes no middle type from
+subtyping algorithm, `sub?` and `var?`, is complete with respect to `Alg`, the
+inductive judgment that says which subtyping goals the algorithm should decide.
+The typer as a whole has no such theorem. It takes no middle type from
 the context, so it rejects what scalac rejects (E1, E3, E4). The programmer
 writes the domain of a lambda, the self type of an object literal, and
 optionally the type of a `let`. A written `let` type binds. Without one, the
@@ -72,21 +73,23 @@ definition is structural, so Lean's kernel runs the typer in `decide +kernel`.
 
 ## Main theorems
 
-- `compile_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation.
-- `compile_erase`: the translation erases to the source term.
-- `compile_safe`, `compile_not_stuck`: every state reachable from a compiled program is final or can step, so none is stuck.
+- `compile_checks`, `compile_checks_get`: for a program that compiles, the FCdot checker accepts the translated derivation.
+- `compile_erase`: the translation erases to the erasure of the resolved term, which has the `let`s the resolver inserted.
+- `compile_safe`, `compile_not_stuck`: every state reachable from a compiled program, from the empty store, is final or can step, so none is stuck.
 - `compile_run_progress`: after any number of steps, the driver is at a final state or at one that can still step.
-- `sub?_complete`, `var?_complete`: if `Alg` derives a goal and the tank ends unmarked, the algorithm finds a derivation.
+- `sub?_complete`, `var?_complete`: if `Alg` derives a goal and the run of `sub?` or `var?` ends with the tank unmarked, the algorithm finds a derivation.
 - `sub?_reject`, `var?_reject`: a rejection with the tank unmarked means `Alg` derives no such goal.
 - `Alg.sound`: a subtyping goal `Alg` derives has a `DotMNF.Sub` derivation.
-- `synthTop?_mono`, `synthTop?_stable`: a typing keeps its answer at more fuel.
-- `avoidLet_strengthen`: a body type that does not mention the binder comes back unchanged.
+- `synthTop?_mono`: a closed typing keeps its answer at more fuel. `synthTop?_stable`: a closed typing that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
+- `avoidLet_strengthen`: from an unmarked tank with fuel left, a body type that does not mention the binder is returned as that type outside the binder.
 - In `Examples`: `Ek_checks` for each accepted program, `Ek_rejected` for each rejected one, and `LP_limit`, `PF_limit`, `Doubled12_limit` for programs that end at the recursion limit.
 
-Resolution is total on scoped programs (`resolveTm_isSome`). The side
-conditions are decided (`defsDistinct?_iff`, `tyStrengthen?_iff`). The machines
-agree with the step relations (`step?_sound`, `step?_complete`, `fcStep?_sound`,
-`fcStep?_complete`).
+Resolution is total on scoped programs whose member names are in the label
+table (`resolveTm_isSome`). The side conditions are decided
+(`defsDistinct?_iff`, `tyStrengthen?_iff`). The DOT-MNF machine agrees with its
+step relation (`step?_sound`, `step?_complete`). The FCdot machine `fcStep?` is
+sound at every normalisation fuel (`fcStep?_sound`) and complete at some fuel
+(`fcStep?_complete`).
 
 ## What it leaves out
 

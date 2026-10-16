@@ -3,7 +3,8 @@
 The target calculus, extended with capture sets.  A type is a shape with a capture set beside it,
 `S ^ C`, and the shapes are the vanilla types plus the box `□ T`.  Inclusion evidence pairs a shape
 coercion with a capture coercion, and both erase.  Every term has a use set, the capabilities it may
-read, and the module `Prediction` proves that a run never reads more than that set allows.
+read, and the module `Prediction` proves that along a run the roots of the use set do not grow
+and that a state reads only roots its use set covers.
 
 Contexts and stores gain capture binders, each with a bound (`CapBound`: a scope root,
 a rigid platform capability, an upper bound, or an instance).  An object type can state what its
@@ -32,7 +33,7 @@ unboxing a term, so the capability an atom denotes is always the capability of i
 | `FormAlgebra` | composition and application of typed forms, fuel monotonicity |
 | `CanonicalForms` | canonical forms for shape, capture and type evidence and for atoms, `closed_box_inversion`, `preservation'`, `erase_reflect'` |
 | `Progress` | `progress`, `not_stuck` |
-| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, a platform capability never sinks to `{}`, `reachable_consistent` |
+| `Consistency` | shapes of closed inclusions, no closed `⊤ ≤ ⊥`, over a typed store a platform capability never sinks to `{}`, `reachable_consistent` |
 | `Prediction` | `step_uses`, `capture_prediction`, `inspects_covered`, `effect_safety`, `returned_capture_bound` |
 | `Examples` | the vanilla E1 to E8 at pure types, the capture examples, and the target side of the source examples |
 
@@ -69,23 +70,32 @@ carries no capture set.  `checkTm_iff`, `has_canon`, `preservation'`, `progress`
 
 - `shape_canon` is the vanilla `le_canon`.  The new `le_canon` reads a type inclusion at its shapes.
 - `atom_canon` gains a conjunct: over a typed store, an atom's root is below the capture set of its type.
-- `closed_le_shapes` gains a disjunct: the target of the inclusion resolves to a box.
+- `closed_le_shapes` gains a disjunct: the target of the inclusion resolves to a box.  The conclusion
+  is weaker than the base theorem.
 
 New:
 
 - `cap_canon`: over a typed store, capture inclusion evidence means `CapLe`.
-- `capeq_canon`: capture equality evidence means the two sets have the same roots.
-- `closed_box_inversion`: an atom of box type is rooted at a stored box.
-- `Store.Typed.no_cap_star_le_nil`: no evidence puts a platform capability below the empty set.
-- `step_uses`: one step embeds the old store in the new one, and the roots of the use set do not grow.
-- `capture_prediction`: the same along a run.
+- `capeq_canon`: over a typed store, capture equality evidence means the two sets have the same roots.
+- `closed_box_inversion`: over a typed store, an atom of box type is rooted at a stored box.
+- `Store.Typed.no_cap_star_le_nil`: over a typed store, no evidence puts a platform capability
+  (a star binder) below the empty set.
+- `step_uses`: one step of a typed state embeds the old store in the new one, and the roots of the
+  use set do not grow.
+- `capture_prediction`: the same along a run from a typed state.
 - `inspects_covered`: the root a state reads is covered by its use set.
-- `effect_safety`: a run whose use set has no root `κ` never reads a variable that reaches `κ`.
+- `effect_safety`: from a typed state whose use set has no root `κ`, a run never reaches a state
+  that reads a variable rooted at the image of `κ` in the end store.  It says something at a rigid
+  or star binder `κ`.  For a bounded or instantiated `κ` it holds for a trivial reason.  A stored box
+  has the empty annotation, so reading a box is not flagged.  The unboxing of a capability is
+  charged to the use set through `capture_prediction`, not to this theorem.
 - `returned_capture_bound`: a returned value or atom is bounded by the capture set of the answer's type.
 
 The checker decides the examples in the kernel.  `C1_typed` accepts the closure
 `λ^{log}(u). let _ = log u in λ^{console}(v). console v`.  `C6_rejected` refuses the variant whose
-inner lambda claims no capability, and `C6_safe` instantiates the prediction on a run.
+inner lambda claims no capability, and `C6_covered` instantiates the prediction on a run.
+`C6_safe` applies `effect_safety` to the second program: no state reached from it, with a typed
+store, reads a variable rooted at the image of `κ₂` in that store.  `C6_rejected` and `C7_rejected` are checker verdicts on one term each, with fixed evidence.
 `C7_rejected` refuses a client that unboxes a capability its use set does not name.
 
 Axioms: `propext` and `Quot.sound` at most.  No `sorry`, `axiom` or `native_decide`.

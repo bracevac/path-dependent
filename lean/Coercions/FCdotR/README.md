@@ -32,25 +32,33 @@ They are the target's counterpart of `T_Vary`.
 - `Oopsla16.oopsla16_safety`, `Oopsla16.oopsla16_not_stuck` (`SourceSafety`): a closed `Oopsla16`
   program typed over the empty store never gets stuck on `Oopsla16`'s own machine.  The proof
   elaborates the program into FCdotR, simulates the source run on FCdotR's machine, and uses
-  FCdotR's safety.  `oopsla16_safety_honest` starts from an honest store instead.
-- `safety'`, `preservation'`, `progress'` (`MethodInversion`): FCdotR is type safe.  Preservation
-  holds up to evidence: the reduct has the skeleton of a typed state, because the machine drops the
-  casts of an atom it substitutes.
+  FCdotR's safety.  `oopsla16_safety_honest` starts from an honest store instead.  It also asks
+  that the object each location was typed from calls methods on variables only and annotates every
+  method (`DmsFrag`).  The empty store meets both conditions.
+- `safety'`, `preservation'`, `progress'` (`MethodInversion`): FCdotR is type safe.  `safety'`
+  takes a closed term typed over the empty store and any machine run from it.  `preservation'` and
+  `progress'` take a typed state (`StateTy`) over an honest machine store.  Preservation holds up to
+  evidence: the reduct has the skeleton of a typed state, because the machine drops the casts of an
+  atom it substitutes.
 - `consistency_honest` (`Inversion`): over an honest store no closed coercion proves `⊤ ≤ ⊥`.
 - `elabSpecGen` (`ElaborationFull`): every `Oopsla16` typing elaborates to a typed FCdotR term
   related to the source term, over a store whose methods are annotated.  `elabSpec` is the case of
   the empty store.  `elabHasType_erase` (`ElaborationErasure`): over an annotated store, when every
   call has variable operands and every method is annotated, the elaborated term erases to the
   source term itself.
-- `checkTm_iff` and its siblings (`CheckerCompleteness`): an executable checker decides every
-  FCdotR judgment.  `CheckerExamples` runs it in the kernel, on the reference's examples `ex1`,
-  `ex2` and `paper_lst` among others.
+- `checkTm_iff` and its siblings (`CheckerCompleteness`): an executable checker decides the typing
+  of evidence, observations, atoms, terms and definition lists.  It does not decide continuation
+  typing, state typing or honesty.  `CheckerExamples` runs it in the kernel, on the reference's
+  examples `ex1`, `ex2` and `paper_lst` among others.
 - `Store.Honest.varConcAny_admissible`, `Store.Honest.vcLocAny_admissible` (`Admissibility`): over
   an honest store the location rules give a location no type the source does not give it.
-- `Counterparts` states for this line the corollaries the main line proves.  Stores stay consistent
-  along runs (`reachable_consistent`).  Every reachable source configuration is related to a typed
-  target state (`Oopsla16.reachable_related`).  Two elaborations of one source term reach the same
-  answers (`Corr.coherent`).  Source subtyping is consistent over every store
+- `Counterparts` states for this line the corollaries the main line proves.  Along a machine run
+  from a closed FCdotR term typed over the empty store, the store stays honest and consistent
+  (`reachable_consistent`).  Every configuration reachable from a closed `Oopsla16` program typed
+  over the empty store is related to a typed target state (`Oopsla16.reachable_related`).  If one
+  of two target terms that correspond (`Corr`) to one closed source term reaches an answer, the
+  other reaches an answer with the same root (`Corr.coherent`).  Two elaborations of a term are
+  such terms.  Source subtyping derives no `⊤ <: ⊥` over any store
   (`Oopsla16.stp_consistent`).
 
 ## Where it departs from the source
@@ -61,8 +69,8 @@ They are the target's counterpart of `T_Vary`.
   only for the location rules over honest stores.
 - **The location rules are not `T_Vary`.**  They do not type method bodies again and take a stored
   method's annotations on trust.  Cost: over a store that is not honest they type more than the
-  source.  Over `{def 0(y:⊤):⊥ = y}` they type `l.0(l)` at `⊥` (`Coverage.UncheckedBody`).  Machine
-  stores are always honest, so safety is not affected.
+  source.  Over `{def 0(y:⊤):⊥ = y}` they type `l.0(l)` at `⊥` (`Coverage.UncheckedBody`).  Every
+  store a closed typed program reaches is honest, so safety is not affected.
 - **Elaborating `T_Vary` needs annotated stored methods**, so `ElabSpecGen` assumes
   `Store.Annotated G`.  The empty store is annotated, so the headline theorems carry no such
   hypothesis.  Cost: no safety theorem here covers a run that starts from a store holding a method
@@ -73,7 +81,8 @@ They are the target's counterpart of `T_Vary`.
 - **Erasure and coherence are weaker.**  `let` erases to an object encoding, so the elaborated term
   erases to the source term only when calls have variable operands.  Elsewhere a simulation
   relation (`Correspondence.Corr`) ties the two.  Two elaborations of one term may differ after
-  erasure, so coherence says they compute the same answers, not that they erase alike.
+  erasure, so coherence says that if one reaches an answer the other reaches an answer with the same
+  root, not that they erase alike.
 
 ## Building
 
@@ -104,7 +113,7 @@ every constant of both libraries depends on `propext` and `Quot.sound` at most.
 | `Admissibility` | over an honest store the location rules derive nothing the source cannot |
 | `Elaboration`, `ElaborationErasure` | elaboration of source derivations, and erasure back to the source term |
 | `Preservation`, `Progress` | preservation and progress, given canonical forms for methods |
-| `MethodInversion` | canonical forms for methods, and `safety'` with no hypothesis |
+| `MethodInversion` | canonical forms for methods, and `safety'` for a closed term typed over the empty store |
 | `Correspondence` | the relation between source configurations and machine states, the forward simulation, the transport of safety |
 | `ElaborationFull` | elaboration of every source typing over an annotated store |
 | `Simulation` | the backward simulation, and the correspondence of answers and stuck states |

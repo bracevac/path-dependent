@@ -9,7 +9,9 @@ namespace Paths
 Every store reachable by running the translation of a closed well-typed
 DOT-MNF program is typed, and therefore consistent: its context has no
 closed evidence for `⊤ ≤ ⊥`, and every block name of a store binder is
-defined by the stored literal's witness.  Bad bounds remain expressible
+defined by the stored literal's witness.  The witness of a label that the
+literal does not declare is `⊤`, so that last part holds in every typed store
+and says nothing about the run.  Bad bounds remain expressible
 under a lambda (E1, E4); they never reach the store.
 -/
 
@@ -32,7 +34,10 @@ theorem reachable_consistent {t : Tm []} {T : Ty []} (d : HasTy .nil t T)
   exact ⟨Γ, hσ, hcons⟩
 
 /-- `reachable_realized`: along any run of the translated program, every
-block name of every store binder is defined, by closed equality evidence. -/
+block name of every store binder is defined, by closed equality evidence.  This
+holds in every typed store, since a label that the literal does not declare
+reads `⊤`.  It is the third conjunct of `FCdot.reachable_consistent`, and says
+nothing about the run. -/
 theorem reachable_realized {t : Tm []} {T : Ty []} (d : HasTy .nil t T)
     {s : Sig} {st : FCdot.State s}
     (run : FCdot.Steps (⟨.nil, .nil, d.translate⟩ : FCdot.State []) st) :

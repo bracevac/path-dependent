@@ -1296,9 +1296,10 @@ theorem S1_anyOk : (S1TyAny k1).AnyOk := by decide
 universal root. -/
 theorem S1_expand : (S1TyAny k1).expand platSet = S1Ty k1 S1Read := rfl
 
-/-- **S1, the two readings.**  The compiler's reading is not the alternative
-reading above: the result is the platform set and no longer the arrow's own
-set with its binders. -/
+/-- **S1, the two readings.**  The compiler's reading differs from the
+alternative reading above.  Its result is the platform set, where the
+alternative's is the arrow's own set with its binders.  The theorem is an
+inequality of two types and types no term. -/
 theorem S1_readings : S1Ty k1 S1Read ≠ S1TyA3b k1 := by decide
 
 /-- The expanded type holds no `any`. -/
@@ -2070,9 +2071,10 @@ def W1_outer_param_absorbed :
     Subcap W1Ctx2 [CapAtom.var W1outParam] [CapAtom.cvar W1inRoot] :=
   .level (by decide) (by decide)
 
-/-- **W1, outer does not absorb inner.**  The inner body root is not below
-the outer one, and neither is a binder of the inner body.  This is the
-failure of `{any₃} <: {any₂}`. -/
+/-- **W1, outer does not absorb inner.**  The inner body root is not `LvlLe`
+the outer one, and neither is a binder of the inner body.  This is the failure
+of the premise of `Subcap.level` for `{any₃} <: {any₂}`.  It refutes the level
+rule only and does not rule out a `Subcap` derivation by other rules. -/
 theorem W1_outer_not_inner :
     ¬ W1Ctx2.LvlLe (.cvar W1inRoot) (.cvar W1outRoot) ∧
     ¬ W1Ctx2.LvlLe (.var W1inParam) (.cvar W1outRoot) :=
@@ -2195,8 +2197,8 @@ def W3_typed {s : Sig} {Γ : Ctx s} : HasTyP [] Γ (Z2Tm : Tm s) Z2Ty := Z2_type
 `scoped-capabilities.md:421-439`.  `Z1TyF` holds no `any`, so the new
 reading leaves it where it stood, at every reading set: a type with no
 notation in it is inert under `expand`.  The result `fresh` is the
-existential introduced above, and two calls open two binders that are
-incomparable. -/
+existential introduced above, and two calls open two binders that the level
+rule does not relate. -/
 
 theorem W4_anyOk : (Z1TyF k1).AnyOk := by decide
 
@@ -2259,9 +2261,10 @@ def W5_level_own : Subcap W5Ctx [CapAtom.var W5f] [CapAtom.cvar W5kb] :=
 The source's own X5.  Under the rejected order `κ_f, f, κ_b`, with the
 parameter bound before the body root, the level of `f` is the innermost root
 older than `f`, and over the platform prefix there is none, so `f` is at the
-outermost level and every root absorbs it.  The level rule fires and the
-escape types.  That is why `Ctx.body` binds the body root first, and it is a
-checked fact and not a claim. -/
+outermost level and every root absorbs it.  The level rule fires on `f`,
+which is the step W5 shows underivable.  `W6_fires` states that one step and
+does not type the whole program.  That is why `Ctx.body` binds the body root
+first, and it is a checked fact and not a claim. -/
 
 /-- The rejected order: `κ_f, f : File ^ {κ_f}, κ_b ⊚`. -/
 def W6Ctx : Ctx ([],c,c,c,x,c) :=
@@ -2278,8 +2281,8 @@ it. -/
 theorem W6_lvl : W6Ctx.lvl W6f = none := by decide
 
 /-- **W6, the counterfactual fires.**  Under the rejected binder order the
-level rule puts the parameter below the body root, which is the escape W5
-rejects. -/
+level rule puts the parameter below the body root, which is the step W5
+shows underivable for the actual order. -/
 def W6_fires : Subcap W6Ctx [CapAtom.var W6f] [CapAtom.cvar W6kb] :=
   .level (by decide) (by decide)
 
@@ -2312,8 +2315,8 @@ a root, and the context opens no root at all, so the level rule has no
 instance with either of them on its right.  That is `Z_two_calls_no_level`,
 and it is what the source's own rules decide.
 
-The full incomparability, that no evidence at all relates the two opened
-binders, is a canonical-forms fact and not a level fact.  It goes through
+The stronger statement, that no evidence at all puts the first opened binder
+below the second, is a canonical-forms fact and not a level fact.  It goes through
 `cap_canon`, which reads a typed store and a refinement into the transparent
 context the store types, and the source inherits that machinery through
 `Ctx.translate`.  It is `FCdot.Examples.Z_two_calls_incomparable`, over the

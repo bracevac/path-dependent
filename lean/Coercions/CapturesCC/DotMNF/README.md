@@ -60,20 +60,23 @@ Statements of the base that changed form:
 
 - `HasTy` is indexed by an answer.  A base statement about `HasTy U Γ t T` reads `HasTyP U Γ t T`.
 - `Shape.all` binds a capture binder for its domain, and a lambda body sits under a body root.
-- `S1_typed` has the platform set as its use set, where the base had `{fs}`.  The result `any` of
-  a top-level `withFile` now reads as the platform set.
+- `S1_typed` has the platform set as its use set, where the base had `{fs}`, because the result
+  `any` of a top-level `withFile` reads as the platform set.
 
 ## Examples
 
-- `W1_inner_absorbs_outer`, `W1_outer_not_inner`: nested lambdas, where an inner root absorbs the
-  outer one and not the reverse.
+- `W1_inner_absorbs_outer`, `W1_outer_not_inner`: nested lambdas, where the level rule lets an
+  inner root absorb the outer one and not the reverse.  The second theorem refutes the premise of
+  the level rule only.
 - `W2_typed`, `W2_call`, `W2_deep_rejected`: a parameter `any` as a capture binder, instantiated at
   the argument, and refused deeper in the domain.
 - `W5_no_level`, `W5_level_own`: the `withFile` callback's parameter is not at the level of the
   outer scope, only at its own body root.
-- `W6_fires`: under the rejected binder order the escape would type.
-- `S1_typed`, `S2_typed`, `S1_readings`: `withFile` with an explicit capture parameter, and an
-  iterator class with a capture member, each typed at its expanded type.
+- `W6_fires`: under the other binder order, one level derivation puts the parameter below the
+  body root.
+- `S1_typed`, `S2_typed`: `withFile` with an explicit capture parameter, and an iterator class
+  with a capture member, each typed at its expanded type.
+- `S1_readings`: the compiler's reading of the result `any` differs from the arrow's own set.
 - `Z1_typed`, `Z1_caller`: `freshCell` with a `fresh` result, and a caller that unpacks it.
 - `Z2_typed`, `Z3_typed`: `makeLogger`, packed at its parameter, and an iterator with a `fresh` result.
 - `S3_typed`, `C2_typed`, `C7_typed`: a boxed type in a type member, explicit capture

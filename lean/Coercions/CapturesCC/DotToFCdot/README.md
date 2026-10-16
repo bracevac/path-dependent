@@ -11,7 +11,7 @@ effect safety and level safety are all borrowed from the target.
 |---|---|
 | `Types` | `CaptureSet.translate`, `Shape.translate`, `Ty.translate`, `ETy.translate`, the telescopes `Shape.tel` and `Shape.telSelf`, the shape test `Shape.isObj`, literal witnesses, `Ctx.translate` |
 | `TypesLemmas` | renaming commutes with the translation, and `Ctx.translate` commutes with roots and levels (`Ctx.translate_lvl`, `Ctx.translate_root?`) |
-| `TypesSubst` | the type translation commutes with substitution (`Ty.translate_subst`), which the application case needs |
+| `TypesSubst` | the type translation commutes with agreeing substitutions (`Ty.translate_subst`), which the application case needs |
 | `Evidence` | `Subcap.translate`, `SubShape.translate`, `Sub.translate`, `ESub.translate`, `HasTy.translateAtom`, `litCo`, the source predicate `Subcap.MemberFree` |
 | `EvidenceTyped` | typedness of the evidence translation, the well-formedness `Ctx.Wf`, and `source_lvl_safety` |
 | `Terms` | `HasTy.translate` and `HasTy.translateUses`, the use-set evidence read in the target |
@@ -53,20 +53,25 @@ Both are well formed, so neither theorem has a side condition.
 
 ## Main theorems
 
-- `Subcap.translate_typed`, `Sub.translate_typed`, `ESub.translate_typed`: evidence translates to
-  typed evidence.
-- `HasTy.translate_typed`, `HasTy.translate_uses`: a term translates to a typed term whose use set
-  is below the translated source use set.
+- `Subcap.translate_typed`, `Sub.translate_typed`, `ESub.translate_typed`: over a well-formed
+  context, evidence translates to typed evidence.
+- `HasTy.translate_typed`, `HasTy.translate_uses`: over a well-formed context, a term translates to
+  a typed term whose use set is below the translated source use set.
 - `HasTy.translate_erase`, `coherence`: the translation erases to the source term, whatever
   derivation it starts from.
-- `dot_safety`, `dot_not_stuck`: a closed well-typed source program never gets stuck.
-- `reachable_consistent`, `reachable_realized`: every store a translated program reaches is typed
-  and consistent.
-- `dot_capture_prediction`: along a run of a program over the platform prefix, the matched target
-  state's use set stays below the program's declared use set.
-- `dot_effect_safety`: a program whose use set does not name a platform capability never reads it.
-- `source_lvl_safety`: source subcapturing that reads no capture bound never lowers a level.  It
-  is `level_inversion` applied to a translated derivation.
+- `dot_safety`, `dot_not_stuck`: a closed well-typed source program at a plain answer never gets
+  stuck.  A closed program at an existential answer is not covered.
+- `reachable_consistent`, `reachable_realized`: for a closed program at a plain answer, every
+  store its translation reaches is typed and consistent.
+- `dot_capture_prediction`: along a run of a program at a plain answer over the platform prefix,
+  the matched target state's use set stays below the translation of the program's declared use
+  set.
+- `dot_effect_safety`: for a program at a plain answer whose use set does not name a platform
+  capability, the matched target state never reads a variable whose root is that capability.
+- `source_lvl_safety`: over a well-formed context, for source subcapturing that reads no capture
+  bound, if the resolution of the translated upper set is confined to `r` at every depth, so is the
+  resolution of the translated lower set.  It is `level_inversion` applied to a translated
+  derivation.
 
 `Subcap.MemberFree` excludes `inst`, `selLower` and `selUpper`, exactly the source rules whose
 translation uses `eqToLe` or `member`.  So `Subcap.translate_memberFree` is a walk over the rules.
@@ -74,10 +79,12 @@ translation uses `eqToLe` or `member`.  So `Subcap.translate_memberFree` is a wa
 Statements of the base that changed form:
 
 - `HasTy.translate`, `HasTy.translate_typed` and `coherence` are stated at an answer.  At a plain
-  answer they are the base statements.
+  answer they are the base statements.  The machine theorems above are stated at a plain answer
+  only.
 - `Platform.root_iff` asks that the set does not mention `⊤ᶜ`, which every translated set
   satisfies.
 
-The examples of the translation live in `../FCdot/Examples.lean`.  `W2_translated` and
-`W2_erase` show that a parameter `any` stays one arrow and one lambda in the target, so a call
-needs no extra application.  `W5_no_escape` is `source_lvl_safety` at the `withFile` callback.
+The examples of the translation live in `../FCdot/Examples.lean`.  `W2_translated` types the
+translation of the `W2` term at the translated type, and `W2_erase` equates its erasure with the
+source term.  The translated type is one arrow (`Shape.translate_all`).  `W5_no_escape` is
+`source_lvl_safety` at the `withFile` callback.

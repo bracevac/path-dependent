@@ -96,7 +96,7 @@ theorem compile_checks (h : compile b Λ e = some ⟨a, c⟩) :
     Paths.FCdot.checkTm .nil c.deriv.translate c.ty.translate = true :=
   Paths.FCdot.checkTm_complete (translate_ctx_nil ▸ HasTy.translate_typed c.deriv .nil)
 
-/-- **The translation erases to the source term.** -/
+/-- **The translation erases to the erasure of the resolved term.** -/
 theorem compile_erase (h : compile b Λ e = some ⟨a, c⟩) :
     Paths.FCdot.Tm.erase c.deriv.translate = Tm.erase a.erase :=
   HasTy.translate_erase c.deriv

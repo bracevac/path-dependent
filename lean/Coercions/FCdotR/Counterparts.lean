@@ -6,7 +6,9 @@ import Coercions.FCdotR.SourceSafety
 The WadlerFest line (`DotToFCdot`, `FCdot`) proves a fixed list of results.
 Most of them already have a counterpart elsewhere in this line.  This module
 adds the remaining counterparts, each following directly from what exists.
-None of them takes a hypothesis.
+None of them takes an unproved proposition.  Where a statement says "No hypothesis" below,
+that is what it means.  A theorem still takes the typing of its program and a run, and
+`Corr.coherent` takes two `Corr` facts and a run.
 
 ## What is here
 
@@ -20,8 +22,8 @@ None of them takes a hypothesis.
   `DotMNF.reachable_realized`).  `reachable_realized`: along the same runs,
   a location stores the type member `a = TX` exactly when its recorded type
   has the member `{a : TX..TX}`.
-* **Every reachable source configuration is related to a typed target
-  state.**  `Oopsla16.reachable_simulated` and `Oopsla16.reachable_related`.
+* **Every configuration reachable from a closed source program typed over the
+  empty store is related to a typed target state.**  `Oopsla16.reachable_simulated` and `Oopsla16.reachable_related`.
   The second one also says that the target state is reached by running the
   elaboration, at the same allocation index, and that its store is
   consistent.

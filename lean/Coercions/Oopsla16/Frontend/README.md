@@ -63,7 +63,8 @@ with member lookup as in `Types.findMember`. The whole typing draws on one fuel
 tank. A goal that finds the tank short marks it, and the run ends at the
 recursion limit, which is not a rejection by the rules. A run that ends with the
 tank unmarked did not reach it. `Alg` states the rules of the algorithm without
-fuel. The typer is complete with respect to `Alg` up to the recursion limit. It
+fuel. Up to the recursion limit the subtyping algorithm, `sub?` and `var?`, is
+complete with respect to `Alg`. The typer as a whole has no such theorem. It
 rejects what scalac rejects: a call on a receiver at a union or at `⊥`. It
 returns the `HasType` derivation, so it is sound by construction. A call tries
 every method type the lookup finds. When the argument is not a variable,
@@ -73,16 +74,16 @@ with such a method needs its self type written.
 
 ## Main theorems
 
-- `compile_safe`, `compile_not_stuck`, `compile_target_safe`: no state a source or target run reaches is stuck.
-- `compile_checks`, `compile_checks_get`: the FCdotR checker accepts the translation.
-- `compile_corr`, `compile_adequate`: the translation matches the program up to annotations and `let`, and reaches a final state exactly when the program reaches an answer.
+- `compile_safe`, `compile_not_stuck`, `compile_target_safe`: no state a source or target run reaches from the empty store is stuck.
+- `compile_checks`, `compile_checks_get`: for a program that compiles, the FCdotR checker accepts the translation.
+- `compile_corr`, `compile_adequate`: the translation matches the resolved program up to annotations and `let`, and reaches a final state exactly when the program reaches an answer.
 - `compile_run_progress`, `compile_fcRun_progress`, `compile_drivers_agree`: each driver stops at an answer or at a state that steps, and the two terminate together.
-- `compile_frag_erase`, `compile_frag_checks`: on the fragment `FCdotR.TmFrag` a simpler translation erases to the program, and the checker accepts it.
+- `compile_frag_erase`, `compile_frag_checks`: when `c.frag` records a proof that the resolved program lies in the fragment `FCdotR.TmFrag`, a simpler translation erases to the resolved program, and the checker accepts it. Both hold for every fragment proof, since the theorems do not use the test `c.frag`.
 - `sub?_complete`, `var?_complete`, `sub?_reject`, `var?_reject`: a goal `Alg` derives is answered at every fuel at which the run ends with the tank unmarked. So a rejection with the tank unmarked means `Alg` derives no such goal.
 - `Alg.sound`: a subtyping goal `Alg` derives has an `Oopsla16.Stp` derivation.
-- `sub?_mono`, `var?_mono`, `synthTop?_mono`, `synthTop?_stable`: an answer, or a rejection with the tank unmarked, stays the same at more fuel.
-- `avoidArg_weaken`: avoidance returns a result type free of the parameter unchanged.
-- `resolveTm_isSome`, `labelsOfProgram_positioned`: resolution succeeds on scoped programs that fit the label table.
+- `sub?_mono`, `var?_mono`, `synthTop?_mono`: an answer stays the same at more fuel. `synthTop?_stable`: a closed typing that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
+- `avoidArg_weaken`: from an unmarked tank with fuel left, avoidance returns a result type free of the parameter unchanged.
+- `resolveTm_isSome`, `labelsOfProgram_positioned`: resolution succeeds on scoped programs whose member names are in the label table and whose members sit at the table's positions, and a table built by `labelsOfProgram` positions its program.
 - `strengthen2?_iff`, `frag?_complete`: the test that a type is free of a binder has a specification, and the fragment test finds every term of the fragment.
 - `step?_sound`, `step?_complete`, `fcStep?_sound`, `fcStep?_complete`: the machines agree with the step relations.
 - In `Examples`: `_type` and `_checks` for each accepted program, `_rejected` for each rejected one, `P2_not_alg`, and `LP_limit` at the recursion limit.

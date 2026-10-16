@@ -44,9 +44,9 @@ open FCdot (Kind Sig BVar Rename Label)
 
 /-- The types whose translation is the object type of their own telescope,
 `⟦T⟧ = μ (tel T)` (`Ty.translate_isObj`).  For the others `tel T` is the
-single self-bound `[⊑ ⟦T⟧↑]` (`Ty.tel_of_not_isObj`), and the two differ.
-An intersection always passes, whatever its operands, while a `μ` passes
-exactly when its body is declaration-shaped. -/
+single self-bound `[⊑ ⟦T⟧↑]` (`Ty.tel_of_not_isObj`).  The converses of the
+two lemmas are not stated.  An intersection always passes, whatever its
+operands, while a `μ` passes exactly when its body is declaration-shaped. -/
 def Ty.isObj : Ty s → Bool
   | .bot => false
   | .sel _ _ => false

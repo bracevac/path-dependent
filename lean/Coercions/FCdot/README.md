@@ -20,8 +20,8 @@ erasure safe.
 | `Machine` | continuations `Γ ⊢ₖ K : T ⇒ U`, states, the step relation `st ⟶ st'` |
 | `Erasure` | erasure `⌊·⌋` into the shared runtime |
 | `RenameLemmas`, `TypingRename`, `Transparency`, `TypingSubst` | renaming and substitution, and their action on typing |
-| `Preservation` | inversion lemmas, `preservation` (modulo the `FormsTyped` obligation) |
-| `ErasureMetatheory` | forward simulation `erase_step`, backward simulation `erase_reflect` (modulo canonical forms), final states |
+| `Preservation` | inversion lemmas, `preservation` (modulo the `FormsTyped` obligation, which `Store.Typed.formsTyped` discharges for every typed store) |
+| `ErasureMetatheory` | forward simulation `erase_step`, backward simulation `erase_reflect` (for a typed store and a typed term, modulo canonical forms for function atoms), final states |
 | `Checker`, `CheckerCompleteness` | the decision procedure and `checkTm_iff` and friends |
 | `Resolution` | `Γ.resolve`: following transparent definitions, and why a fixed fuel suffices |
 | `FormTyping` | typedness of forms `Γ ⊨ F : S ≤ T`, `Γ ⊨[r] F : S ≤ T`, entries, and views `Γ ⊨[r, σ] V : Tel` |
@@ -146,5 +146,5 @@ translation from `DotMNF` lives in `lean/Coercions/DotToFCdot/`.
 
 The [recursive-subtyping experiment](../DotToFCdot/RecursiveSubtyping.md)
 uses finite template composition to derive a recursive field coercion from
-two facts about self. General recursive subtyping still requires a source
+two facts about self. General recursive subtyping requires a source
 derivation-to-template translation theorem.
