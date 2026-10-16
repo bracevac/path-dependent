@@ -27,8 +27,8 @@ the fill.  `Compiled` holds the elaborated term, its use set, its type, the
 derivation about its erasure and a proof that its skeleton is the skeleton of
 the fill.  `ATm.skel` forgets annotations, capture sets, boxes, unboxings,
 ascriptions and capture binders, inlines a `let` of a variable, and does not
-tell `let` from `letex`.  So the check says the elaborated program is the fill
-up to what the typer adds.  `compileE` keeps the result when the fill agrees
+tell `let` from `letex`.  So the check says that the elaborated program has
+the skeleton of the fill.  `compileE` keeps the result when the fill agrees
 with every slot the program writes (`PTm.fills`) and the skeletons agree.
 
 Otherwise `compileE` returns the reason the program is rejected: a missing
@@ -68,8 +68,11 @@ Except for the `certify?` theorems and the `_get` variants,
 * `compile_checks`: the target checker accepts the translation of the
   derivation.
 * `compile_uses_checks`: the target checker accepts the use set evidence.
-* `compile_erase`: the translation erases to the compiled term.
-* `compile_faithful`: the elaborated term has the skeleton of the fill.
+* `compile_erase`: the translation erases to the erasure of the compiled term.
+* `compile_faithful`: `a` is the fill of what `resolvePTop` makes of `e`, it
+  agrees with every slot `e` writes, the elaborator's first candidate holds the
+  record's term, use set and type, and the elaborated term has the skeleton of
+  `a`.
 * `compile_safe`: every state a run of the compiled term reaches is final or
   has a step.  It is `DotMNF.dot_safety_platform`, the form of `dot_safety`
   over a platform prefix.
@@ -95,14 +98,17 @@ Except for the `certify?` theorems and the `_get` variants,
   decided test.  For a concrete program the kernel reduces the compile, so the
   premises close by `decide +kernel`.
 
-The premise `h` is what a caller holds.  The content is in the type of `c`.
-The other premises select what a theorem speaks of.  None is a hypothesis
-about the compiler.
+The premise `h` is what a caller holds.  The content is in the type of `c`,
+except in `compile_faithful` and `compile_faithful_written`, which read `h` to
+name where `a` and `c` come from.  The other premises select what a theorem
+speaks of.  None is a hypothesis about the compiler.
 
 The theorems that relate a compilation to the elaborator and to the typer:
 
 * `compile_full`: a program with every slot written compiles as the typer's
   verdict on its resolution, at the same fuel (`compileLanded`).
+* `compile_faithful_written`: for such a program, `a` is what `resolveTop`
+  makes of it, and the record holds what `synthTop?` answers on `a`.
 * `compileE_fills`: the fill agrees with every slot the program writes.
 * `compileE_skel`: the elaborated term has the skeleton of the partial term.
 * `compileE_slot`: the four reasons that name an empty slot come only from a
@@ -601,34 +607,54 @@ theorem compile_erase (h : compile b Λ π e = .ok ⟨a, c⟩) :
     FCdot.Tm.erase c.deriv.translate = Tm.erase c.tm.erase :=
   DotMNF.HasTy.translate_erase c.deriv
 
-/-- **The compiled term is the program's resolution up to its skeleton.**  The
-term `a` of the pair `compile` returns is the resolution of `e` over the
-platform, and the elaborated term has the skeleton of `a`.  So the two differ
-only where `ATm.skel` forgets: annotations, capture sets, capture binders,
-boxes, unboxings and their sets, ascriptions, a `let` of a variable, which it
-inlines, and the difference between `let` and `letex`.  The first half reads
-`h` through `compile`.  The second is the field `Compiled.skel`, which
-`compile` fills only when the skeletons agree. -/
+/-- **The compiled term is the fill of the resolved program, with its
+skeleton.**  `p` is what `resolvePTop` makes of `e`, and `a` agrees with every
+slot `p` writes.  The elaborator's first candidate on `p` has `a` as its fill,
+and its term, use set and plain answer are the record's.  The elaborated term
+has the skeleton of `a`.  So the two differ only where `ATm.skel` forgets:
+annotations, capture sets, capture binders, boxes, unboxings and their sets,
+ascriptions, a `let` of a variable, which it inlines, and the difference
+between `let` and `letex`.  `compile_faithful_written` says what `a` and the
+record are when `p` has no empty slot. -/
 theorem compile_faithful (h : compile b Λ π e = .ok ⟨a, c⟩) :
-    resolveTop Λ π e = some a ∧ ATm.skel c.tm = ATm.skel a := by
+    (∃ p, resolvePTop Λ π e = some p ∧ p.fills a = true ∧
+      ∃ r : ECand π.plat.ctx, (elabTopF b.fuel π p).1 = .ok r ∧ r.fill = a ∧
+        r.e.tm = c.tm ∧ r.e.uses = c.use ∧ r.e.ans = .ty c.ty) ∧
+      ATm.skel c.tm = ATm.skel a := by
+  have hE : compileE b Λ π e = .ok ⟨a, c⟩ := by
+    unfold compile at h
+    revert h
+    cases compileE b Λ π e with
+    | ok x => intro h; cases h; rfl
+    | error r => intro h; cases r <;> cases h
   refine ⟨?_, c.skel⟩
-  unfold compile at h
-  cases hr : resolveTop Λ π e with
-  | none => rw [hr] at h; cases h
-  | some a' =>
-      rw [hr] at h
-      simp only at h
-      cases hs : synthTop? b π a' with
-      | ok r =>
-          rw [hs] at h
-          simp only [Verdict.bind] at h
-          split at h
-          · split at h
-            · cases h; rfl
-            · cases h
-          · cases h
-      | rejected _ => rw [hs] at h; cases h
-      | unknown => rw [hs] at h; cases h
+  unfold compileE at hE
+  cases hp : resolvePTop Λ π e with
+  | none => rw [hp] at hE; cases hE
+  | some p =>
+    rw [hp] at hE
+    dsimp only at hE
+    cases he : (elabTopF b.fuel π p).1 with
+    | error r =>
+      rw [he] at hE
+      cases r <;> simp at hE
+    | ok r =>
+      rw [he] at hE
+      dsimp only at hE
+      obtain ⟨fill, tm, uses, ans, d⟩ := r
+      cases ans with
+      | ex C T => simp [Elab.split] at hE
+      | ty T =>
+        simp only [Elab.split] at hE
+        by_cases hfa : p.fills fill = true
+        · by_cases hk : ATm.skel tm = ATm.skel fill
+          · rw [if_pos hfa, dif_pos hk] at hE
+            cases hE
+            exact ⟨p, rfl, hfa, _, he, rfl, rfl, rfl, rfl⟩
+          · rw [if_pos hfa, dif_neg hk] at hE
+            cases hE
+        · rw [if_neg hfa] at hE
+          cases hE
 
 /-- **Safety of the compiled program.**  Every state of a run `r` from the
 platform's initial store is final or has a step.  `DotMNF.dot_safety_platform`
@@ -907,6 +933,37 @@ theorem compile_full {a : ATm π.sig} (h : resolveTop Λ π e = some a) :
             · simp [hk, verdictOf]
           | inr q =>
             simp [Verdict.bind, hc, verdictOf]
+
+/-- **A program with every slot written is compiled faithfully.**  When `e`
+resolves with every slot written, `a` is what `resolveTop` makes of it.
+`synthTop?` answers on `a` with the term, use set and plain answer of the
+record, and the elaborated term has the skeleton of `a`.  This is
+`compile_full` read at the record. -/
+theorem compile_faithful_written {a : ATm π.sig} {c : Compiled π.plat a}
+    (h : compile b Λ π e = .ok ⟨a, c⟩) (hw : (resolveTop Λ π e).isSome = true) :
+    resolveTop Λ π e = some a ∧
+      (∃ r : Elab π.plat.ctx, synthTop? b π a = .ok r ∧
+        r.tm = c.tm ∧ r.uses = c.use ∧ r.ans = .ty c.ty) ∧
+      ATm.skel c.tm = ATm.skel a := by
+  obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp hw
+  rw [compile_full ha'] at h
+  unfold compileLanded at h
+  cases hs : synthTop? b π a' with
+  | rejected _ => rw [hs] at h; cases h
+  | unknown => rw [hs] at h; cases h
+  | ok r =>
+    rw [hs] at h
+    simp only [Verdict.bind] at h
+    obtain ⟨tm, uses, ans, d⟩ := r
+    cases ans with
+    | ex C T => simp [Elab.split] at h
+    | ty T =>
+      simp only [Elab.split] at h
+      split at h
+      · rename_i hk
+        cases h
+        exact ⟨ha', ⟨_, hs, rfl, rfl, rfl⟩, hk⟩
+      · cases h
 
 /-- **Inference fills only empty slots.**  The fill of a compiled program
 agrees with every slot its partial term writes. -/
@@ -3423,7 +3480,7 @@ of `synthIn?` at the open contexts `Z1Ctx` and `W2CallCtx`, for the caller of
 non-empty there.  They are not compiled programs, so they do not meet the
 premise of `compile_lvl_safety`.  `Examples.lean` applies
 `compile_lvl_safety_get` to an entry of the log of C7 and to an entry of the
-log of `NestSrc`. -/
+log of `CallbackSrc`. -/
 
 section Checks
 

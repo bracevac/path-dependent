@@ -632,8 +632,8 @@ term. -/
 theorem C7nb_checks : CheckerAccepts {} Λc πc C7nbSrc C7nb_compiles :=
   compile_checks_get C7nb_compiles
 
-/-- **`compile_faithful` at C7 with no box.**  The resolved term is the one
-`resolveTop` makes of the program.  The elaborated term is not the resolved
+/-- **`compile_faithful_written_get` at C7 with no box.**  Every slot is written,
+and the resolved term is the one `resolveTop` makes of the program.  The elaborated term is not the resolved
 one, since box inference inserted two boxes and an unboxing, and the two
 have one skeleton. -/
 theorem C7nb_faithful :
@@ -642,7 +642,7 @@ theorem C7nb_faithful :
         ((compile {} Λc πc C7nbSrc).get C7nb_compiles).1 ∧
       ATm.skel ((compile {} Λc πc C7nbSrc).get C7nb_compiles).2.tm =
         ATm.skel ((compile {} Λc πc C7nbSrc).get C7nb_compiles).1 :=
-  have hf := compile_faithful_get C7nb_compiles
+  have hf := compile_faithful_written_get C7nb_compiles (by decide +kernel)
   ⟨hf.1, by decide +kernel, hf.2.2⟩
 
 /-! ## C7 in the form a Scala program has

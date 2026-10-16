@@ -109,7 +109,7 @@ variable declared at `{k2}`, next to a variable declared at `{k1}` that the
 run never reads.  The logs `levelSteps` reads off the derivations of C2 and S1
 are pinned in size.  `compile_lvl_safety_get` is applied to an entry of the
 log of C7, whose premise holds at every capture binder, and to an entry of
-the log of `NestSrc`, whose premise holds at one root and fails at another.  S2 and C2 are run from the platform's initial store,
+the log of `CallbackSrc`, whose premise holds at one root and fails at another.  S2 and C2 are run from the platform's initial store,
 printed with the platform's own names, and pinned at the step count at which
 they become final.  E2 is run beside them over the empty platform.
 
@@ -2046,7 +2046,7 @@ Entry 6 of the log of C7 has `hi` a platform capability.  It is confined to
 every capture binder of the entry's context, so the premise holds at every
 root.
 
-The first entry of the log of `NestSrc` separates the roots.  The program is
+The first entry of the log of `CallbackSrc` separates the roots.  The program is
 `λ(g : ⊤). λ(f : ⊤ ^ {any}). let h = ((λ(u : ⊤ ^ {f}). u) : A) in f`, where
 the ascription `A` reads its `any`s as the root of `f`'s body.  The entry is
 `{u} <: {κ_f}` under the scope of `u`, with `κ_f` that root.  The premise
@@ -2106,49 +2106,49 @@ theorem C7entry_lvl :
   compile_lvl_safety_get C7_compiles C7entry C7entry_mem C7root C7entry_premise
 
 /-- A callback ascribed at the root of an inner scope. -/
-def NestSrc : STm :=
+def CallbackSrc : STm :=
   cc% λ(g : ⊤). λ(f : ⊤ ^ {any}).
         let h = ((λ(u : ⊤ ^ {f}). u) : (∀(u : ⊤ ^ {f}) ⊤ ^ {any}) ^ {any}) in f
 
-theorem Nest_compiles : (compile {} Λc πc NestSrc).isOk = true := by decide +kernel
+theorem Callback_compiles : (compile {} Λc πc CallbackSrc).isOk = true := by decide +kernel
 
-theorem Nest_log_ne : compileLog {} Λc πc NestSrc ≠ [] := by decide +kernel
+theorem Callback_log_ne : compileLog {} Λc πc CallbackSrc ≠ [] := by decide +kernel
 
-/-- The first entry of the log of `NestSrc`. -/
-def NestEntry : LevelStep := (compileLog {} Λc πc NestSrc).head Nest_log_ne
+/-- The first entry of the log of `CallbackSrc`. -/
+def CallbackEntry : LevelStep := (compileLog {} Λc πc CallbackSrc).head Callback_log_ne
 
-theorem NestEntry_mem : NestEntry ∈ compileLog {} Λc πc NestSrc := List.head_mem _
+theorem CallbackEntry_mem : CallbackEntry ∈ compileLog {} Λc πc CallbackSrc := List.head_mem _
 
 /-- `lo` is the parameter `u` and `hi` is the root of `f`'s body, each a
 single atom. -/
-example : NestEntry.lo.length = 1 ∧ NestEntry.hi.length = 1 ∧
-    NestEntry.hi.translate = [cvarAt NestEntry.sig 5] := by
+example : CallbackEntry.lo.length = 1 ∧ CallbackEntry.hi.length = 1 ∧
+    CallbackEntry.hi.translate = [cvarAt CallbackEntry.sig 5] := by
   decide +kernel
 
 /-- The root of `f`'s body, at depth 5. -/
-def NestRoot : FCdot.CapAtom NestEntry.sig := cvarAt NestEntry.sig 5
+def CallbackRoot : FCdot.CapAtom CallbackEntry.sig := cvarAt CallbackEntry.sig 5
 
 /-- The root of `g`'s body, at depth 8. -/
-def NestOuter : FCdot.CapAtom NestEntry.sig := cvarAt NestEntry.sig 8
+def CallbackOuter : FCdot.CapAtom CallbackEntry.sig := cvarAt CallbackEntry.sig 8
 
 /-- Both are scope roots, and neither is the universal one. -/
-theorem Nest_roots :
-    NestEntry.ctx.translate.IsRoot NestRoot ∧ NestRoot ≠ .top ∧
-      NestEntry.ctx.translate.IsRoot NestOuter ∧ NestOuter ≠ .top := by
+theorem Callback_roots :
+    CallbackEntry.ctx.translate.IsRoot CallbackRoot ∧ CallbackRoot ≠ .top ∧
+      CallbackEntry.ctx.translate.IsRoot CallbackOuter ∧ CallbackOuter ≠ .top := by
   decide +kernel
 
 /-- The premise at the root of `f`'s body, at every depth. -/
-theorem NestEntry_premise :
-    ∀ m, NestEntry.ctx.translate.Confined
-      (NestEntry.ctx.translate.caps m NestEntry.hi.translate) NestRoot := by
+theorem CallbackEntry_premise :
+    ∀ m, CallbackEntry.ctx.translate.Confined
+      (CallbackEntry.ctx.translate.caps m CallbackEntry.hi.translate) CallbackRoot := by
   intro m
   rw [caps_self _ (by decide +kernel) m]
   decide +kernel
 
 /-- The premise fails at the root of `g`'s body. -/
-theorem NestEntry_separates :
-    ¬ ∀ m, NestEntry.ctx.translate.Confined
-      (NestEntry.ctx.translate.caps m NestEntry.hi.translate) NestOuter := by
+theorem CallbackEntry_separates :
+    ¬ ∀ m, CallbackEntry.ctx.translate.Confined
+      (CallbackEntry.ctx.translate.caps m CallbackEntry.hi.translate) CallbackOuter := by
   intro h
   have h0 := h 0
   rw [← capsS_eq] at h0
@@ -2156,15 +2156,15 @@ theorem NestEntry_separates :
   decide +kernel
 
 /-- `lo` as written is not confined to the root of `f`'s body. -/
-theorem NestEntry_lo_not :
-    ¬ NestEntry.ctx.translate.Confined NestEntry.lo.translate NestRoot := by
+theorem CallbackEntry_lo_not :
+    ¬ CallbackEntry.ctx.translate.Confined CallbackEntry.lo.translate CallbackRoot := by
   decide +kernel
 
-/-- **Level safety at the first entry of `NestSrc`.** -/
-theorem NestEntry_lvl :
-    ∀ n, NestEntry.ctx.translate.Confined
-      (NestEntry.ctx.translate.caps n NestEntry.lo.translate) NestRoot :=
-  compile_lvl_safety_get Nest_compiles NestEntry NestEntry_mem NestRoot NestEntry_premise
+/-- **Level safety at the first entry of `CallbackSrc`.** -/
+theorem CallbackEntry_lvl :
+    ∀ n, CallbackEntry.ctx.translate.Confined
+      (CallbackEntry.ctx.translate.caps n CallbackEntry.lo.translate) CallbackRoot :=
+  compile_lvl_safety_get Callback_compiles CallbackEntry CallbackEntry_mem CallbackRoot CallbackEntry_premise
 
 /-! ## The run tests
 

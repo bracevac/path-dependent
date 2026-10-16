@@ -24,10 +24,12 @@ compiles. The programs named here, such as R1, E1p and LPt, are in `Examples`.
 
 `compile b Λ e` resolves `e` at the label table `Λ`, which maps member names
 to labels (the examples use `pathsTable`). The budget `b` holds the fuel, by
-default `defaultFuel = 2 ^ 15`. The result is `none` if `e` is rejected, and
-otherwise the filled term with its type and its `Paths.DotMNF.HasTy`
-derivation. `compileE` returns the reason of a rejection and `ppReason` prints
-it. `compileAndRun` and `compileAndRunFC` also run the two machines.
+default `defaultFuel = 2 ^ 15`. The result is `none` if `e` is out of scope,
+uses a name missing from `Λ`, is rejected, or ends at the recursion limit, and
+it gives no reason. Otherwise it is the filled term with its type and its
+`Paths.DotMNF.HasTy` derivation. `compileE` returns the reason of a rejection
+and `ppReason` prints it. `compileAndRun` and `compileAndRunFC` also run the
+DOT-MNF or the FCdot machine.
 
 ## What the programmer may leave out
 
@@ -76,32 +78,41 @@ program with an empty slot gets the first three (`compileE_slot`).
 ## The typer
 
 The typer follows the subtype checker of the Scala 3 compiler,
-`TypeComparer.recur` in `core/TypeComparer.scala`, in its case order (scala/scala3
-at commit 4dae25087d). The search spends one tank of fuel for the whole typing,
-the elaborator's included. A short tank is marked and the typer reports a
-recursion limit, which is never a rejection by the rules. Up to that limit it
-is complete with respect to `Alg`, the judgment that says which subtyping goals
-the algorithm should decide. It takes no middle type from the context, so it
-rejects what scalac rejects (E1p, E3p, E4p, R1). A `let` without a type gets
-the type of its body with the binder avoided, as `TypeOps.avoid` does. The
-typer returns the derivation, so it is sound by construction. Each verdict is a
-`decide +kernel` theorem.
+`TypeComparer.recur` in `core/TypeComparer.scala`, in its case order. The
+pinned version is scala/scala3 at commit 4dae25087d. The typer runs on one
+fuel tank for the whole typing, the elaborator's included. When the tank runs
+short it is marked and the typer reports a recursion limit, which is never a
+rejection by the rules. Up to that limit its subtyping, path and variable goals
+are complete with respect to `Alg`, the inductive judgment that says which
+subtyping goals the algorithm should decide. The typer as a whole has no such
+theorem. It takes no middle type from the context, so it rejects what scalac
+rejects (E1p, E3p, E4p, R1). A written `let` type binds. Without one, the
+body's type is replaced by a type free of the binder, as `TypeOps.avoid` does.
+The typer returns the derivation, so it is sound by construction. Each verdict
+is a `decide +kernel` theorem.
 
 ## Main theorems
 
-- `compile_checks`, `compile_checks_get`: the FCdot checker accepts the translated derivation.
-- `compile_erase`, `compile_safe`, `compile_not_stuck`, `compile_run_progress`: the translation erases to the filled term, no reachable state is stuck, and the source driver stops at a final state or at one that can still step.
-- `compile_consistent`, `compile_fcRun_consistent`, `compile_no_bad_literal`: every store a run reaches is typed at a context that does not prove `⊤ ≤ ⊥`, and a compiled object literal never has the type `μ(x. {A : ⊤..⊥})`.
-- `sub?_complete`, `path?_complete`, `var?_complete`, `sub?_reject`, `path?_reject`, `var?_reject`: a goal `Alg` derives is found whenever the tank ends unmarked, and a rejection with the tank unmarked means `Alg` derives no such goal.
+- `compile_checks`, `compile_checks_get`: for a program that compiles, the FCdot checker accepts the translated derivation.
+- `compile_erase`: the translation erases to the erasure of the fill, which has the `let`s the resolver inserted.
+- `compile_safe`, `compile_not_stuck`: no state reachable from the empty store by a compiled program is stuck.
+- `compile_run_progress`: the source driver stops at a final state or at one that can still step.
+- `compile_consistent`, `compile_fcRun_consistent`: every store the translated program reaches from the empty store is typed at a context that does not prove `⊤ ≤ ⊥`.
+- `compile_no_bad_literal`: if the erasure of the fill is an object literal, the compiled type is not `μ(x. {A : ⊤..⊥})`.
+- `sub?_complete`, `path?_complete`, `var?_complete`: if `Alg` derives a goal and the run ends with the tank unmarked, the algorithm answers it. For a path goal, the search must start from a type (`StartP`). `sub?_reject`, `path?_reject` and `var?_reject` say that a rejection with the tank unmarked means `Alg` derives no such goal. `path?_reject` also needs `StartP`.
 - `Alg.sound`: a subtyping goal `Alg` derives has a `Paths.DotMNF.Sub` derivation.
-- `compile_full`, `compileE_fills`, `compileE_slot`: a program with every slot written compiles as the typer's synthesis, the fill agrees with every written slot, and the first three reasons come only from a program with an empty slot.
-- `elabTop?_mono`, `elabTop?_stable`, `synthTop?_mono`, `synthTop?_stable`: an answer, and a rejection that ends with the tank unmarked, stay the same at more fuel.
+- `synthTop?_mono`, `elabTop?_mono`: a closed typing or elaboration keeps its answer at more fuel. `synthTop?_stable`, `elabTop?_stable`: one that ends with the tank unmarked, answer or rejection, gives the same verdict at more fuel.
+- `avoidLet_strengthen`: from an unmarked tank with fuel left, a body type that does not mention the binder is returned as that type outside the binder.
+- `compile_full`, `compileE_fills`, `compileE_slot`: a program with every slot written compiles as the typer's synthesis, the fill agrees with every written slot, and the first three reasons above come only from a program with an empty slot.
 - `elab_complete_direct`, `compile_complete_direct`: at the sites where the elaborator reads a goal and then runs the typer's own clause, a fill the typer accepts is found from some fuel on.
 - In `Examples`: `Ek_checks` for each accepted program, `Ek_rejected` for each rejected one, `Ek_erased` for each program with annotations erased, `LPt_limit` and `LPd_limit` at the recursion limit, and `Fig2_not_stuck` for gDOT's Fig. 2 (ICFP 2020).
 
-The side conditions are decided (`tyWf?_iff`, `defsDistinct?_iff`,
-`tyStrengthen?_iff`) and the machines agree with the step relations
-(`step?_sound`, `fcStep?_complete`).
+Resolution is total on scoped programs whose member names are in the label
+table (`resolveTm_isSome`). The side conditions are decided (`tyWf?_iff`,
+`defsDistinct?_iff`, `tyStrengthen?_iff`). The DOT-MNF machine agrees with its
+step relation (`step?_sound`, `step?_complete`). The FCdot machine `fcStep?` is
+sound at every normalisation fuel (`fcStep?_sound`) and complete at some fuel
+(`fcStep?_complete`).
 
 ## What it leaves out
 
