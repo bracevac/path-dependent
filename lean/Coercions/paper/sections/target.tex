@@ -8,7 +8,8 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
-\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
+\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \\
+& \top & \mathrel{:=} & \obj{\tnil} \\
 \text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \mid \phas{\ell} \mid \pbnd{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P} \\[2pt]
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \\
@@ -21,7 +22,8 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
 \text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit[x]{W}{F} \mid \ev{cast}\,v\,e \\
-\text{Witnesses} & W & ::= & \tnil \mid W, \ell = T \qquad \text{Fields} \quad F ::= \tnil \mid F, \ell = t \\
+\text{Witnesses} & W & ::= & \tnil \mid W, \ell = T \\
+\text{Fields} & F & ::= & \tnil \mid F, \ell = t \\
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W ; \vec{\ell}
 \end{array}
 \]
@@ -208,9 +210,12 @@ Figure~\ref{fig:evidence} gives the typing of all evidence. There are three fami
 
 Figure~\ref{fig:terms} gives the typing of atoms, terms, values, and fields. An atom is a variable under wrappers that erase to nothing: casts, folding and unfolding, and pairing. Its root is the variable underneath:
 \[
-\begin{array}{@{}l@{}}
-\rt{x} = x \\
-\rt{\ev{cast}\,a\,e} = \rt{\ev{fold}\,\tel\,a} = \rt{\ev{unfold}\,a} = \rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} = \rt{a} .
+\begin{array}{@{}lcl@{}}
+\rt{x} & = & x \\
+\rt{\ev{cast}\,a\,e} & = & \rt{a} \\
+\rt{\ev{fold}\,\tel\,a} & = & \rt{a} \\
+\rt{\ev{unfold}\,a} & = & \rt{a} \\
+\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a} .
 \end{array}
 \]
 In the last case $\rt{b}$ is the same variable whenever the atom is typed.

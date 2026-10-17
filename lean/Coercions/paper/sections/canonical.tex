@@ -39,9 +39,12 @@ The first version of the development required definitions to be well founded, wi
 \begin{array}{@{}lrcl@{}}
 \text{Forms} & F,G,R & ::= & \form{bot} \mid \form{top} \mid \form{id} \mid \form{pi}\,d\,c \mid \form{obj}\,\mathit{Es} \mid \form{bnd}\,i\,F \mid \form{into}\,\mathit{Ds} \\
 \text{Local entries} & L & ::= & \form{le}\,F\,H\,G \mid \form{trans}\,F\,L\,L\,G \mid \form{eq}\,j\,b \mid \form{has}\,j \mid \form{copy}\,j \\
-\text{Entries} & E & ::= & L \mid \form{bnd}\,G \qquad\qquad\qquad\quad\, \mathit{Es} ::= \tnil \mid \tcons{\mathit{Es}}{E} \\
-\text{Free entries} & D & ::= & \form{bnd}\,G \mid \form{thru}\,R\,L \qquad\qquad\ \ \mathit{Ds} ::= \tnil \mid \tcons{\mathit{Ds}}{D} \\
-\text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \mid \form{has}\,x\,\ell \mid \form{bnd}\,G \qquad V ::= \tnil \mid \tcons{V}{Q}
+\text{Entries} & E & ::= & L \mid \form{bnd}\,G \\
+\text{Entry lists} & \mathit{Es} & ::= & \tnil \mid \tcons{\mathit{Es}}{E} \\
+\text{Free entries} & D & ::= & \form{bnd}\,G \mid \form{thru}\,R\,L \\
+\text{Free entry lists} & \mathit{Ds} & ::= & \tnil \mid \tcons{\mathit{Ds}}{D} \\
+\text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \mid \form{has}\,x\,\ell \mid \form{bnd}\,G \\
+\text{Views} & V & ::= & \tnil \mid \tcons{V}{Q}
 \end{array}
 \]
 \color{black}
@@ -68,11 +71,16 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \color{tgtcol}
 \[
 \begin{array}{@{}lcl@{}}
-\mathit{hnf}_\sigma(\ev{refl}\,T) & = & \form{id} \ =\ \mathit{hnf}_\sigma(\ev{eqToLe}\,\varphi) \qquad \mathit{hnf}_\sigma(\ev{pi}\,d\,c) \ =\ \form{pi}\,d\,c \\
-\mathit{hnf}_\sigma(\ev{top}\,T) & = & \form{top} \qquad \mathit{hnf}_\sigma(\ev{bot}\,T) \ =\ \form{bot} \qquad \mathit{hnf}_\sigma(\ev{obj}\,\tel\,m) \ =\ \form{obj}\,(\mathit{entries}_\sigma(m)) \\
+\mathit{hnf}_\sigma(\ev{refl}\,T) & = & \form{id} \\
+\mathit{hnf}_\sigma(\ev{eqToLe}\,\varphi) & = & \form{id} \\
+\mathit{hnf}_\sigma(\ev{top}\,T) & = & \form{top} \\
+\mathit{hnf}_\sigma(\ev{bot}\,T) & = & \form{bot} \\
+\mathit{hnf}_\sigma(\ev{pi}\,d\,c) & = & \form{pi}\,d\,c \\
+\mathit{hnf}_\sigma(\ev{obj}\,\tel\,m) & = & \form{obj}\,(\mathit{entries}_\sigma(m)) \\
 \mathit{hnf}_\sigma(\ev{pair}\,\tel_1\,\tel_2\,e\,f) & = & \mathit{pair}_{\tel_1,\tel_2}\,(\mathit{hnf}_\sigma(e))\,(\mathit{hnf}_\sigma(f)) \\
 \mathit{hnf}_\sigma(\ev{trans}\,e\,f) & = & \mathit{hnf}_\sigma(e) \circ \mathit{hnf}_\sigma(f) \\
-\mathit{hnf}_\sigma(\ev{bound}\,\tel\,i) & = & \form{bnd}\,i\,\form{id} \qquad\quad \mathit{hnf}_\sigma(\ev{intoBnd}\,e) \ =\ \form{into}\,[\,\form{bnd}\,(\mathit{hnf}_\sigma(e))\,] \\
+\mathit{hnf}_\sigma(\ev{bound}\,\tel\,i) & = & \form{bnd}\,i\,\form{id} \\
+\mathit{hnf}_\sigma(\ev{intoBnd}\,e) & = & \form{into}\,[\,\form{bnd}\,(\mathit{hnf}_\sigma(e))\,] \\
 \mathit{hnf}_\sigma(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
 \mathit{entries}_\sigma(\ev{le}\,m\,q\,H\,q') & = & \tcons{\mathit{entries}_\sigma(m)}{\form{le}\,(\mathit{side}_\sigma(q))\,H\,(\mathit{side}_\sigma(q'))} \\
 \mathit{entries}_\sigma(\ev{leTrans}\,m\,p\,q) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{trans}\,\form{id}\,L_1\,L_2\,\form{id}} \\
@@ -80,10 +88,13 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{entries}_\sigma(\ev{bnd}\,m\,e) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{bnd}\,(\mathit{hnf}_\sigma(e))} \\[3pt]
 \mathit{view}_\sigma(x) & = & \text{the precise view of } \sigma(x) \text{ at } x \\
 \mathit{view}_\sigma(\ev{cast}\,a\,e) & = & \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \\
-\mathit{view}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{view}_\sigma(a) \ =\ \mathit{view}_\sigma(\ev{unfold}\,a) \\
+\mathit{view}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{view}_\sigma(a) \\
+\mathit{view}_\sigma(\ev{unfold}\,a) & = & \mathit{view}_\sigma(a) \\
 \mathit{view}_\sigma(\ev{both}\,\tel_1\,\tel_2\,a\,b) & = & \mathit{view}_\sigma(a) \mathbin{+\!\!+} \mathit{view}_\sigma(b) \\[3pt]
-\mathit{chain}_\sigma(x) & = & \form{id} \qquad\quad \mathit{chain}_\sigma(\ev{cast}\,a\,e) \ =\ \mathit{chain}_\sigma(a) \circ \mathit{hnf}_\sigma(e) \\
-\mathit{chain}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{chain}_\sigma(a) \ =\ \mathit{chain}_\sigma(\ev{unfold}\,a) \\
+\mathit{chain}_\sigma(x) & = & \form{id} \\
+\mathit{chain}_\sigma(\ev{cast}\,a\,e) & = & \mathit{chain}_\sigma(a) \circ \mathit{hnf}_\sigma(e) \\
+\mathit{chain}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{chain}_\sigma(a) \\
+\mathit{chain}_\sigma(\ev{unfold}\,a) & = & \mathit{chain}_\sigma(a) \\
 \mathit{chain}_\sigma(\ev{both}\,\tel_1\,\tel_2\,a\,b) & = & \mathit{pair}_{\tel_1,\tel_2}\,(\mathit{chain}_\sigma(a))\,(\mathit{chain}_\sigma(b)) \\[3pt]
 \mathit{viewThrough}_\sigma(\form{id}, a) & = & \mathit{view}_\sigma(a) \\
 \mathit{viewThrough}_\sigma(\form{obj}\,\mathit{Es}, a) & = & \mathit{entriesAt}_\sigma(a, \mathit{chain}_\sigma(a), \mathit{view}_\sigma(a), \mathit{Es}) \\
@@ -102,14 +113,20 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \color{tgtcol}
 \[
 \begin{array}{@{}lcl@{}}
-\form{id} \circ G = G & \qquad & F \circ \form{id} = F \\
-\form{bot} \circ G = \form{bot} & & F \circ \form{top} = \form{top} \\
-\multicolumn{3}{@{}l@{}}{\form{pi}\,d_1\,c_1 \circ \form{pi}\,d_2\,c_2 = \form{pi}\,(\ev{trans}\,d_2\,d_1)\,(\ev{trans}\,(c_1[x \mapsto \ev{cast}\,x\,d_2])\,c_2)} \\
-\multicolumn{3}{@{}l@{}}{\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 = \form{obj}\,(\mathit{Es}_1 \text{ substituted into } \mathit{Es}_2)} \\
-\multicolumn{3}{@{}l@{}}{\form{into}\,\mathit{Ds} \circ \form{obj}\,\mathit{Es} = \form{into}\,(\mathit{Es} \text{ prefixed by } \form{into}\,\mathit{Ds}) \qquad \form{top} \circ \form{obj}\,\mathit{Es} = \form{into}\,(\mathit{Es} \text{ prefixed by } \form{top})} \\
-\multicolumn{3}{@{}l@{}}{F \circ \form{into}\,\mathit{Ds} = \form{into}\,(\mathit{Ds} \text{ prefixed by } F) \qquad \form{bnd}\,i\,F \circ G = \form{bnd}\,i\,(F \circ G)} \\
-\multicolumn{3}{@{}l@{}}{\form{obj}\,\mathit{Es} \circ \form{bnd}\,i\,F = G \circ F \text{ if } \mathit{Es} \ni (i \mapsto \form{bnd}\,G), \text{ and } \form{bnd}\,j\,F \text{ if } \mathit{Es} \ni (i \mapsto \form{copy}\,j)} \\
-\multicolumn{3}{@{}l@{}}{\form{into}\,\mathit{Ds} \circ \form{bnd}\,i\,F = G \circ F \text{ if } \mathit{Ds} \ni (i \mapsto \form{bnd}\,G), \text{ and } H \circ \form{bnd}\,j\,F \text{ if } \mathit{Ds} \ni (i \mapsto \form{thru}\,H\,(\form{copy}\,j))}
+\form{id} \circ G & = & G \\
+F \circ \form{id} & = & F \\
+\form{bot} \circ G & = & \form{bot} \\
+F \circ \form{top} & = & \form{top} \\
+\form{pi}\,d_1\,c_1 \circ \form{pi}\,d_2\,c_2 & = & \form{pi}\,(\ev{trans}\,d_2\,d_1)\,(\ev{trans}\,(c_1[x \mapsto \ev{cast}\,x\,d_2])\,c_2) \\
+\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 & = & \form{obj}\,(\mathit{Es}_1 \text{ substituted into } \mathit{Es}_2) \\
+\form{into}\,\mathit{Ds} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{Es} \text{ prefixed by } \form{into}\,\mathit{Ds}) \\
+\form{top} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{Es} \text{ prefixed by } \form{top}) \\
+F \circ \form{into}\,\mathit{Ds} & = & \form{into}\,(\mathit{Ds} \text{ prefixed by } F) \\
+\form{bnd}\,i\,F \circ G & = & \form{bnd}\,i\,(F \circ G) \\
+\form{obj}\,\mathit{Es} \circ \form{bnd}\,i\,F & = & G \circ F \quad \text{if } \mathit{Es} \ni (i \mapsto \form{bnd}\,G) \\
+& = & \form{bnd}\,j\,F \quad \text{if } \mathit{Es} \ni (i \mapsto \form{copy}\,j) \\
+\form{into}\,\mathit{Ds} \circ \form{bnd}\,i\,F & = & G \circ F \quad \text{if } \mathit{Ds} \ni (i \mapsto \form{bnd}\,G) \\
+& = & H \circ \form{bnd}\,j\,F \quad \text{if } \mathit{Ds} \ni (i \mapsto \form{thru}\,H\,(\form{copy}\,j))
 \end{array}
 \]
 \color{black}
@@ -205,7 +222,8 @@ Typedness has two modes, indexed by an optional root $\rho$, and keeping them ap
 \[
 \begin{array}{@{}rcl@{}}
 \resolveAt{\Gamma}{r}{T} & = & \mathit{open}_r(\resolve{\Gamma}{T}) \\
-\mathit{open}_r(\obj{\tel}) & = & \obj{\weak{(\inst{\tel}{r})}} \qquad \mathit{open}_r(T) = T \text{ otherwise} .
+\mathit{open}_r(\obj{\tel}) & = & \obj{\weak{(\inst{\tel}{r})}} \\
+\mathit{open}_r(T) & = & T \quad \text{otherwise} .
 \end{array}
 \]
 A telescope is open in a mode when opening leaves its object type unchanged, which every telescope is in the plain mode. The chain of casts of an atom is typed in the mode at its root, and opening makes $\ev{fold}$ and $\ev{unfold}$ invisible to it. The two modes are one inductive family, and every lemma about typed forms is proven once for both. The only rule that mixes them is the view rule for a bound: the form of a bound in the view of an atom is typed at the root, from the type of the root into the bound, because a bound of an opened telescope is a fact about the root. The first version of the development defined the rooted judgment as the plain one at opened endpoints. Bounds ended that, because the form that continues from a bound has the bound's type as its source, and that type has to be opened at the root as well.

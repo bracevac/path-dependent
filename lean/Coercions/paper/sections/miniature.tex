@@ -50,7 +50,8 @@ Evidence is a proof term for an inclusion or an equality. The fragment has
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \mid \ev{obj}\,\tel\,m \mid \ev{member}\,a\,e\,i \\
 \text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,\ell \\
 \text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \\
-\text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \qquad \text{Sides} \quad q ::= \ev{none} \mid \ev{some}\,e
+\text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
+\text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e
 \end{array}
 \]
 where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{fig:mini-evidence} gives the typing. An inclusion judgment $\lej{\Gamma}{e}{S}{T}$ says that $e$ proves $S \le T$ in $\Gamma$. The endpoints are determined by the evidence and the context.
@@ -201,8 +202,10 @@ Over a store, every variable is a location, every location is bound transparentl
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Head forms} & F, G & ::= & \form{bot} \mid \form{top} \mid \form{id} \mid \form{pi}\,d\,c \mid \form{obj}\,\mathit{Es} \\
-\text{Entries} & E & ::= & \form{le}\,F\,H\,G \qquad\qquad \mathit{Es} ::= \tnil \mid \tcons{\mathit{Es}}{E} \\
-\text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \qquad\qquad\quad\, V ::= \tnil \mid \tcons{V}{Q}
+\text{Entries} & E & ::= & \form{le}\,F\,H\,G \\
+\text{Entry lists} & \mathit{Es} & ::= & \tnil \mid \tcons{\mathit{Es}}{E} \\
+\text{Proposition forms} & Q & ::= & \form{le}\,F \mid \form{eq} \\
+\text{Views} & V & ::= & \tnil \mid \tcons{V}{Q}
 \end{array}
 \]
 Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}$. A head form says how an inclusion holds at its head. $\form{bot}$ and $\form{top}$ say that the source is $\bot$ or the target is $\top$. $\form{id}$ says that the two sides are equal after following definitions. $\form{pi}\,d\,c$ is a function coercion with domain evidence $d$ and codomain evidence $c$, kept as evidence, since the machine uses them as casts. $\form{obj}\,\mathit{Es}$ is an object coercion with one entry per target proposition. An entry $\form{le}\,F\,H\,G$ is a normalized template: the two sides have become head forms, with $\form{id}$ for an absent side, and the hole still names a source proposition. A view $V$ lists one proposition form per proposition of an atom's object type: the head form that proves an inclusion, or $\form{eq}$ for an equality.
@@ -212,17 +215,23 @@ Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}
 \color{tgtcol}
 \[
 \begin{array}{@{}lcl@{}}
-\mathit{hnf}(\ev{refl}\,T) & = & \form{id} \qquad \mathit{hnf}(\ev{eqToLe}\,\varphi) \ =\ \form{id} \qquad \mathit{hnf}(\ev{top}\,T) \ =\ \form{top} \qquad \mathit{hnf}(\ev{bot}\,T) \ =\ \form{bot} \\
-\mathit{hnf}(\ev{pi}\,d\,c) & = & \form{pi}\,d\,c \qquad \mathit{hnf}(\ev{obj}\,\tel\,m) \ =\ \form{obj}\,(\mathit{entries}(m)) \\
+\mathit{hnf}(\ev{refl}\,T) & = & \form{id} \\
+\mathit{hnf}(\ev{eqToLe}\,\varphi) & = & \form{id} \\
+\mathit{hnf}(\ev{top}\,T) & = & \form{top} \\
+\mathit{hnf}(\ev{bot}\,T) & = & \form{bot} \\
+\mathit{hnf}(\ev{pi}\,d\,c) & = & \form{pi}\,d\,c \\
+\mathit{hnf}(\ev{obj}\,\tel\,m) & = & \form{obj}\,(\mathit{entries}(m)) \\
 \mathit{hnf}(\ev{trans}\,e\,f) & = & \mathit{hnf}(e) \circ \mathit{hnf}(f) \\
 \mathit{hnf}(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}(\mathit{hnf}(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
-\mathit{entries}(\ev{nil}) & = & \tnil \qquad \mathit{entries}(\ev{le}\,m\,q\,H\,q') \ =\ \tcons{\mathit{entries}(m)}{\form{le}\,(\mathit{side}(q))\,H\,(\mathit{side}(q'))} \\[3pt]
+\mathit{entries}(\ev{nil}) & = & \tnil \\
+\mathit{entries}(\ev{le}\,m\,q\,H\,q') & = & \tcons{\mathit{entries}(m)}{\form{le}\,(\mathit{side}(q))\,H\,(\mathit{side}(q'))} \\[3pt]
 \mathit{view}(x) & = & [\,\form{eq}, \ldots, \form{eq}\,] \text{ with one } \form{eq} \text{ per witness of } \sigma(x) \\
 \mathit{view}(\ev{cast}\,a\,e) & = & \mathit{viewThrough}(\mathit{hnf}(e), a) \\[3pt]
 \mathit{viewThrough}(\form{id}, a) & = & \mathit{view}(a) \\
 \mathit{viewThrough}(\form{obj}\,\mathit{Es}, a) & = & \mathit{Es} \text{ applied to } \mathit{view}(a) \\
 \mathit{viewThrough}(F, a) & = & \tnil \quad \text{for } F \in \{\form{pi}\,d\,c, \form{top}, \form{bot}\} \\[3pt]
-\mathit{chain}(x) & = & \form{id} \qquad \mathit{chain}(\ev{cast}\,a\,e) \ =\ \mathit{chain}(a) \circ \mathit{hnf}(e)
+\mathit{chain}(x) & = & \form{id} \\
+\mathit{chain}(\ev{cast}\,a\,e) & = & \mathit{chain}(a) \circ \mathit{hnf}(e)
 \end{array}
 \]
 \color{black}
@@ -237,13 +246,11 @@ Reflexivity, and inclusion read off an equality, normalize to the identity. Tran
 \paragraph{Composition.}
 Composition $F \circ G$ is defined by the first equation that applies:
 \[
-\begin{array}{@{}lcl@{\qquad}lcl@{}}
-\form{id} \circ G & = & G & F \circ \form{id} & = & F \\
-\form{bot} \circ G & = & \form{bot} & F \circ \form{top} & = & \form{top}
-\end{array}
-\]
-\[
 \begin{array}{@{}lcl@{}}
+\form{id} \circ G & = & G \\
+F \circ \form{id} & = & F \\
+\form{bot} \circ G & = & \form{bot} \\
+F \circ \form{top} & = & \form{top} \\
 \form{pi}\,d_1\,c_1 \circ \form{pi}\,d_2\,c_2 & = & \form{pi}\,(\ev{trans}\,d_2\,d_1)\,(\ev{trans}\,(c_1[x \mapsto \ev{cast}\,x\,d_2])\,c_2) \\
 \form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 & = & \form{obj}\,(\mathit{Es}_1 \text{ substituted into } \mathit{Es}_2)
 \end{array}
