@@ -186,4 +186,42 @@ The published rules annotate a literal with its self type, $\src{\nu(x : T)\,d}$
 The labels of a definition list must be distinct, which \rn{\{\}-I} checks. Nothing else is restricted. A recursive type may have any body, including a selection, a function type, $\bot$, or an intersection with such an operand, as in $\dmu{x}{x.A \wedge \dfld{a}{T}}$. The bounds of a declaration are arbitrary types, and \rn{Typ} relates $\dtyp{A}{S}{T}$ to other declarations whether or not $S \sub T$. Earlier versions of the development restricted the bodies of recursive types and the operands of intersections to declarations, and Section~\ref{sec:history} says what lifting those restrictions took.
 
 \paragraph{Erasure.}
-Both the source and the target erase into one untyped runtime: a store machine with the same five rules, whose object literals keep their term members only. Erasure drops types and type members and is the identity on signatures. Every source step erases to exactly one runtime step, and every runtime step out of an erased state is the erasure of a source step. These two facts, \lean{erase\_step} and \lean{erase\_reflect}, and the agreement of final states under erasure, \lean{final\_erase} and \lean{final\_reflect}, are the only metatheory that \DOTMNF has. Section~\ref{sec:safety} uses them to transport safety from the target.
+Both the source and the target erase into one untyped runtime, which Figure~\ref{fig:runtime} gives. It is a store machine with the same five rules, whose object literals keep their term members only. Erasure drops types and type members and is the identity on signatures.
+
+\begin{figure}
+\small
+\mathplain
+\[
+\run{\begin{array}{@{}lrcl@{}}
+\text{Terms} & r & ::= & x \mid w \mid x\,y \mid x.a \mid \klet x = r \kin r \\
+\text{Values} & w & ::= & \lambda x.\,r \mid \nu(x.\,f) \\
+\text{Fields} & f & ::= & \tnil \mid f, a = r
+\end{array}}
+\]
+\[
+\run{\begin{array}{@{}lcll@{}}
+\mst{\sigma}{K}{\klet x = r \kin r'} &\step& \mst{\sigma}{K \triangleright (x.\,r')}{r} \\
+\mst{\sigma}{K \triangleright (x.\,r')}{w} &\step& \mst{\sigma, w}{\weak{K}}{r'} \\
+\mst{\sigma}{K \triangleright (x.\,r')}{y} &\step& \mst{\sigma}{K}{\inst{r'}{y}} \\
+\mst{\sigma}{K}{x\,y} &\step& \mst{\sigma}{K}{\inst{r}{y}} & \text{if } \sigma(x) = \lambda z.\,r \\
+\mst{\sigma}{K}{x.a} &\step& \mst{\sigma}{K}{\inst{r}{x}} & \text{if } \sigma(x) = \nu(z.\,f) \text{ and } f(a) = r
+\end{array}}
+\]
+\[
+\begin{array}{@{}lcl@{}}
+\erase{\src{x}} & = & \run{x} \\
+\erase{\src{\lambda(x : T).\,t}} & = & \run{\lambda x.\,\erase{\src{t}}} \\
+\erase{\dnew{x}{d}} & = & \run{\nu(x.\,\erase{\src{d}})} \\
+\erase{\src{x\,y}} & = & \run{x\,y} \\
+\erase{\src{x.a}} & = & \run{x.a} \\
+\erase{\src{\klet x = t \kin u}} & = & \run{\klet x = \erase{\src{t}} \kin \erase{\src{u}}} \\[3pt]
+\erase{\ddeftyp{A}{T}} & = & \run{\tnil} \\
+\erase{\ddeftrm{a}{t}} & = & \run{[\,a = \erase{\src{t}}\,]} \\
+\erase{\src{d_1 \wedge d_2}} & = & \run{\erase{\src{d_1}} \mathbin{+\!\!+} \erase{\src{d_2}}}
+\end{array}
+\]
+\caption{The untyped runtime, its machine, and the erasure of \DOTMNF. The lookup $f(a)$ finds the newest field labelled $a$, so in $\erase{\src{d_1}} \mathbin{+\!\!+} \erase{\src{d_2}}$ the fields of $\src{d_2}$ shadow those of $\src{d_1}$, as on the source side. A state is final when its continuation is empty and its term is a value or a variable. Stores, continuations, and states erase pointwise.}
+\label{fig:runtime}
+\end{figure}
+
+The source machine and the runtime machine run in lockstep. Every source step erases to exactly one runtime step, and every runtime step out of an erased state is the erasure of a source step. These two facts, \lean{erase\_step} and \lean{erase\_reflect}, and the agreement of final states under erasure, \lean{final\_erase} and \lean{final\_reflect}, are the only metatheory that \DOTMNF has. Section~\ref{sec:safety} uses them to transport safety from the target.

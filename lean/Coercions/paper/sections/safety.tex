@@ -31,10 +31,47 @@ Along any run of the translation of a closed well-typed program, the store is ty
 \DOTMNF differs from the calculus of the WadlerFest paper in its presentation of objects and in its semantics. The development states the published rules and the published semantics as the paper gives them and relates both to \DOTMNF.
 
 \paragraph{Annotated objects.}
-The published rules annotate an object literal with its self type, $\src{\nu(x : T)\,d}$, and type its definitions under the opened assumption $x : T$, which mentions $x$ itself. Every closed derivation of the published rules translates to a \DOTMNF derivation of the term with its annotations erased. The opened assumption of a literal's self is recovered by \rn{Rec-E} from the recursive binder that \DOTMNF uses. The proof assumes nothing about the contexts it passes through, neither inertness nor good bounds nor acyclic definitions.
+The published rules annotate an object literal with its self type, $\src{\nu(x : T)\,d}$, and type its definitions under the opened assumption $x : T$, which mentions $x$ itself. Figure~\ref{fig:published} gives the rules that differ from those of \DOTMNF.
+\begin{figure}
+\small
+\begin{mathpar}
+\inferrule[\{\}-I]{\dtyj{\Gamma, x : T}{d}{T}}{\dtyj{\Gamma}{\nu(x : T)\,d}{\dmu{x}{T}}}
+\and
+\inferrule[Def-And]{\dtyj{\Gamma}{d_1}{T_1} \\ \dtyj{\Gamma}{d_2}{T_2} \\ \mathit{labels}(d_1) \cap \mathit{labels}(d_2) = \emptyset}{\dtyj{\Gamma}{d_1 \wedge d_2}{T_1 \wedge T_2}}
+\\
+\inferrule[App]{\sigma(x) = \lambda(z : S).\,t}{\sigma \vdash x\,y \step \inst{t}{y}}
+\and
+\inferrule[Proj]{\sigma(x) = \nu(z : T)\,d \\ d \ni \ddeftrm{a}{t}}{\sigma \vdash x.a \step \inst{t}{x}}
+\and
+\inferrule[Alias]{ }{\sigma \vdash \klet x = y \kin u \step \inst{u}{y}}
+\and
+\inferrule[Assoc]{ }{\sigma \vdash \klet x = (\klet y = t \kin u) \kin u' \step \klet y = t \kin \klet x = u \kin u'}
+\and
+\inferrule[Let-RHS]{\sigma \vdash t \step t'}{\sigma \vdash \klet x = t \kin u \step \klet x = t' \kin u}
+\and
+\inferrule[Let-Value]{\sigma, v \vdash u \step u'}{\sigma \vdash \klet x = v \kin u \step \klet x = v \kin u'}
+\end{mathpar}
+\[
+\begin{array}{@{}lrcl@{}}
+\text{Answers} & n & ::= & x \mid v \mid \klet x = v \kin n
+\end{array}
+\]
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{readback}\,\mst{\sigma}{K}{t} & = & \mathit{close}_\sigma(\mathit{plug}_K(t)) \\
+\mathit{plug}_{\cdot}(t) & = & t \\
+\mathit{plug}_{K \triangleright (x.\,u)}(t) & = & \mathit{plug}_K(\klet x = t \kin u) \\
+\mathit{close}_{\cdot}(t) & = & t \\
+\mathit{close}_{\sigma, v}(t) & = & \mathit{close}_\sigma(\klet x = v \kin t)
+\end{array}
+\]
+\caption{The published calculus. Its values are $\lambda(x : T).\,t$ and annotated literals $\nu(x : T)\,d$, and its contexts have no literal binders. Its typing rules are those of Figure~\ref{fig:source-typing} with contexts of ordinary binders only, except for the two rules shown. In \rn{\{\}-I} the type $T$ of the self may mention $x$. Retained-let reduction $\sigma \vdash t \step t'$ runs under the list $\sigma$ of enclosing value bindings, and a closed term reduces with $\sigma$ empty. $d \ni \ddeftrm{a}{t}$ says that the definition occurs in $d$. $\mathit{readback}$ turns a state of the machine of Figure~\ref{fig:source-machine}, run on annotated terms, into a closed term.}
+\label{fig:published}
+\end{figure}
+ Every closed derivation of the published rules translates to a \DOTMNF derivation of the term with its annotations erased. The opened assumption of a literal's self is recovered by \rn{Rec-E} from the recursive binder that \DOTMNF uses. The proof assumes nothing about the contexts it passes through, neither inertness nor good bounds nor acyclic definitions.
 
 \paragraph{Retained-let reduction.}
-The published semantics is not a store machine but a reduction relation on terms. A value bound by a let stays in place in the term, as a binding, and reduction continues in the body under it. Application and selection look their receiver up among the enclosing bindings. A let reduces in its right-hand side, and once that is a value, in its body. A let whose right-hand side is a variable substitutes it. Nested lets reassociate, $\klet x = (\klet y = t \kin u) \kin u' \step \klet y = t \kin \klet x = u \kin u'$, and there is no priority between reassociation and reduction in the right-hand side, so the relation is not deterministic. An answer is a variable, a value, or a value-bound let around an answer.
+The published semantics is not a store machine but a reduction relation on terms, which Figure~\ref{fig:published} gives. A value bound by a let stays in place in the term, as a binding, and reduction continues in the body under it. Application and selection look their receiver up among the enclosing bindings. A let reduces in its right-hand side, and once that is a value, in its body. A let whose right-hand side is a variable substitutes it. Nested lets reassociate, $\klet x = (\klet y = t \kin u) \kin u' \step \klet y = t \kin \klet x = u \kin u'$, and there is no priority between reassociation and reduction in the right-hand side, so the relation is not deterministic. An answer is a variable, a value, or a value-bound let around an answer.
 
 The relation and the store machine agree. A closed term reduces to an answer exactly when the machine runs to a final state whose readback is that answer, where readback plugs the term into the pending let frames and closes it with the store. A closed term reduces to a stuck term exactly when the machine gets stuck. The only invariant this needs is that the labels of every definition list are distinct, which reduction preserves.
 

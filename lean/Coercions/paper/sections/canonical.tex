@@ -89,7 +89,8 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{entries}_\sigma(\ev{eq}\,m\,j\,b) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{eq}\,j\,b} \\
 \mathit{entries}_\sigma(\ev{has}\,m\,j) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{has}\,j} \\
 \mathit{entries}_\sigma(\ev{bnd}\,m\,e) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{bnd}\,(\mathit{hnf}_\sigma(e))} \\[3pt]
-\mathit{view}_\sigma(x) & = & \text{the precise view of } \sigma(x) \text{ at } x \\
+\mathit{view}_\sigma(x) & = & [\,\form{eq}, \ldots, \form{eq},\ \form{has}\,x\,\ell'_1, \ldots, \form{has}\,x\,\ell'_n\,] \quad \text{if } \sigma(x) = \lit{W}{F} \\
+\mathit{view}_\sigma(x) & = & \tnil \quad \text{if } \sigma(x) \text{ is a lambda} \\
 \mathit{view}_\sigma(\ev{cast}\,a\,e) & = & \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \\
 \mathit{view}_\sigma(\ev{fold}\,\tel\,a) & = & \mathit{view}_\sigma(a) \\
 \mathit{view}_\sigma(\ev{unfold}\,a) & = & \mathit{view}_\sigma(a) \\
@@ -103,11 +104,13 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{viewThrough}_\sigma(\form{obj}\,\mathit{Es}, a) & = & \mathit{entriesAt}_\sigma(a, \mathit{chain}_\sigma(a), \mathit{view}_\sigma(a), \mathit{Es}) \\
 \mathit{viewThrough}_\sigma(\form{into}\,\mathit{Ds}, a) & = & \mathit{freeEntriesAt}_\sigma(a, \mathit{chain}_\sigma(a), \mathit{Ds}) \\
 \mathit{viewThrough}_\sigma(\form{bnd}\,i\,F, a) & = & \mathit{viewThrough}_\sigma(G \circ F, \rt{a}) \quad \text{where } \mathit{view}_\sigma(a) \ni (i \mapsto \form{bnd}\,G) \\
-\mathit{viewThrough}_\sigma(F, a) & = & \tnil \quad \text{for } F \in \{\form{pi}\,d\,c, \form{top}, \form{bot}\}
+\mathit{viewThrough}_\sigma(F, a) & = & \tnil \quad \text{for } F \in \{\form{pi}\,d\,c, \form{top}, \form{bot}\} \\[3pt]
+\mathit{pres}_\sigma(x, \ev{field}\,\ell) & = & (x, \ell) \\
+\mathit{pres}_\sigma(x, \ev{member}\,a\,e\,i) & = & (y, \ell) \quad \text{where } \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \ni (i \mapsto \form{has}\,y\,\ell)
 \end{array}
 \]
 \color{black}
-\caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel. $\mathit{side}_\sigma$ is $\form{id}$ on an absent side and $\mathit{hnf}_\sigma$ on a present one.}
+\caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel. $\mathit{side}_\sigma$ is $\form{id}$ on an absent side and $\mathit{hnf}_\sigma$ on a present one. The view of a stored literal has one $\form{eq}$ per label of $W$ and one $\form{has}$ per label $\ell'_i$ of $F$, in the order of its precise telescope. $\mathit{pres}_\sigma(x, h)$ normalizes presence evidence $h$ for a field at $x$ to the binder and the field it names. $\mathit{pair}$, $\mathit{entriesAt}$, and $\mathit{freeEntriesAt}$ are defined in Figure~\ref{fig:form-ops}.}
 \label{fig:normalizer}
 \end{figure}
 
@@ -121,10 +124,10 @@ F \circ \form{id} & = & F \\
 \form{bot} \circ G & = & \form{bot} \\
 F \circ \form{top} & = & \form{top} \\
 \form{pi}\,d_1\,c_1 \circ \form{pi}\,d_2\,c_2 & = & \form{pi}\,(\ev{trans}\,d_2\,d_1)\,(\ev{trans}\,(c_1[x \mapsto \ev{cast}\,x\,d_2])\,c_2) \\
-\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 & = & \form{obj}\,(\mathit{Es}_1 \text{ substituted into } \mathit{Es}_2) \\
-\form{into}\,\mathit{Ds} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{Es} \text{ prefixed by } \form{into}\,\mathit{Ds}) \\
-\form{top} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{Es} \text{ prefixed by } \form{top}) \\
-F \circ \form{into}\,\mathit{Ds} & = & \form{into}\,(\mathit{Ds} \text{ prefixed by } F) \\
+\form{obj}\,\mathit{Es}_1 \circ \form{obj}\,\mathit{Es}_2 & = & \form{obj}\,(\mathit{sub}_{\mathit{Es}_1}(\mathit{Es}_2)) \\
+\form{into}\,\mathit{Ds} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{pre}_{\form{into}\,\mathit{Ds}}(\mathit{Es})) \\
+\form{top} \circ \form{obj}\,\mathit{Es} & = & \form{into}\,(\mathit{pre}_{\form{top}}(\mathit{Es})) \\
+F \circ \form{into}\,\mathit{Ds} & = & \form{into}\,(\mathit{pre}_F(\mathit{Ds})) \\
 \form{bnd}\,i\,F \circ G & = & \form{bnd}\,i\,(F \circ G) \\
 \form{obj}\,\mathit{Es} \circ \form{bnd}\,i\,F & = & G \circ F \quad \text{if } \mathit{Es} \ni (i \mapsto \form{bnd}\,G) \\
 & = & \form{bnd}\,j\,F \quad \text{if } \mathit{Es} \ni (i \mapsto \form{copy}\,j) \\
@@ -133,21 +136,65 @@ F \circ \form{into}\,\mathit{Ds} & = & \form{into}\,(\mathit{Ds} \text{ prefixed
 \end{array}
 \]
 \color{black}
-\caption{Composition of head forms, $F \circ G$. The first equation that applies is used, in the order of the figure. Every other pair is not composable between typed forms, and its composite is $F$. Composition fails when a lookup finds an entry of the wrong kind, which does not happen between typed forms.}
+\caption{Composition of head forms, $F \circ G$, with $\mathit{sub}$ and $\mathit{pre}$ from Figure~\ref{fig:form-ops}. The first equation that applies is used, in the order of the figure. Every other pair is not composable between typed forms, and its composite is $F$. Composition fails when a lookup finds an entry of the wrong kind, which does not happen between typed forms.}
 \label{fig:combine}
+\end{figure}
+
+\begin{figure}
+\small
+\color{tgtcol}
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{sub}_{\mathit{Es}}(\form{le}\,F\,(\ev{le}\,j)\,G) & = & \mathit{surround}(F, L, G) \quad \text{if } \mathit{Es} \ni (j \mapsto L) \\
+\mathit{sub}_{\mathit{Es}}(\form{le}\,F\,(\ev{eq}\,j)\,G) & = & \form{le}\,F\,(\ev{eq}\,k)^{b}\,G \quad \text{if } \mathit{Es} \ni (j \mapsto \form{eq}\,k\,b) \\
+\mathit{sub}_{\mathit{Es}}(\form{le}\,F\,(\ev{eqSym}\,j)\,G) & = & \form{le}\,F\,(\ev{eqSym}\,k)^{b}\,G \quad \text{if } \mathit{Es} \ni (j \mapsto \form{eq}\,k\,b) \\
+\mathit{sub}_{\mathit{Es}}(\form{trans}\,F\,L_1\,L_2\,G) & = & \form{trans}\,F\,(\mathit{sub}_{\mathit{Es}}(L_1))\,(\mathit{sub}_{\mathit{Es}}(L_2))\,G \\
+\mathit{sub}_{\mathit{Es}}(\form{eq}\,j\,b) & = & \form{eq}\,k\,(b \oplus b') \quad \text{if } \mathit{Es} \ni (j \mapsto \form{eq}\,k\,b') \\
+\mathit{sub}_{\mathit{Es}}(\form{has}\,j) & = & \form{has}\,k \quad \text{if } \mathit{Es} \ni (j \mapsto \form{has}\,k) \\
+\mathit{sub}_{\mathit{Es}}(\form{copy}\,j) & = & E \quad \text{if } \mathit{Es} \ni (j \mapsto E) \\
+\mathit{sub}_{\mathit{Es}}(\form{bnd}\,G) & = & \form{bnd}\,(\form{obj}\,\mathit{Es} \circ G) \\[3pt]
+\mathit{surround}(F, \form{le}\,F'\,H\,G', G) & = & \form{le}\,(F \circ F')\,H\,(G' \circ G) \\
+\mathit{surround}(F, \form{trans}\,F'\,L_1\,L_2\,G', G) & = & \form{trans}\,(F \circ F')\,L_1\,L_2\,(G' \circ G) \\[3pt]
+\mathit{pre}_F(\form{bnd}\,G) & = & \form{bnd}\,(F \circ G) \\
+\mathit{pre}_F(\form{thru}\,R\,L) & = & \form{thru}\,(F \circ R)\,L \\
+\mathit{pre}_F(L) & = & \form{thru}\,F\,L \quad \text{for a local entry } L \\[3pt]
+\mathit{pair}_{\tel_1,\tel_2}\,F\,G & = & \form{bot} \quad \text{if } F = \form{bot} \text{ or } G = \form{bot} \\
+& = & \form{top} \quad \text{if } F = G = \form{top} \\
+& = & F \quad \text{if } F \text{ absorbs} \\
+& = & G \quad \text{if } G \text{ absorbs} \\
+& = & \form{into}\,(\mathit{free}_{\tel_1}(F) \mathbin{+\!\!+} \mathit{free}_{\tel_2}(G)) \quad \text{otherwise} \\[3pt]
+\mathit{free}_{\tel}(\form{into}\,\mathit{Ds}) & = & \mathit{Ds} \\
+\mathit{free}_{\tel}(\form{bnd}\,i\,F) & = & \mathit{pre}_{\form{bnd}\,i\,\form{id}}(\mathit{free}_{\tel}(F)) \\
+\mathit{free}_{\tel}(\form{obj}\,\mathit{Es}) & = & \mathit{pre}_{\form{id}}(\mathit{Es}) \\
+\mathit{free}_{\tel}(F) & = & \mathit{pre}_{\form{id}}(\mathit{ids}(\tel)) \quad \text{for } F \in \{\form{id}, \form{top}\} \\[3pt]
+\mathit{at}_V(\form{le}\,F\,(\ev{le}\,j)\,G) & = & \form{le}\,(F \circ F' \circ G) \quad \text{if } V \ni (j \mapsto \form{le}\,F') \\
+\mathit{at}_V(\form{le}\,F\,H\,G) & = & \form{le}\,(F \circ G) \quad \text{if } H \in \{\ev{eq}\,j, \ev{eqSym}\,j\} \text{ and } V \ni (j \mapsto \form{eq}) \\
+\mathit{at}_V(\form{trans}\,F\,L_1\,L_2\,G) & = & \form{le}\,(F \circ F_1 \circ F_2 \circ G) \quad \text{if } \mathit{at}_V(L_1) = \form{le}\,F_1 \text{ and } \mathit{at}_V(L_2) = \form{le}\,F_2 \\
+\mathit{at}_V(\form{eq}\,j\,b) & = & \form{eq} \quad \text{if } V \ni (j \mapsto \form{eq}) \\
+\mathit{at}_V(\form{has}\,j) & = & \form{has}\,y\,\ell \quad \text{if } V \ni (j \mapsto \form{has}\,y\,\ell) \\
+\mathit{at}_V(\form{copy}\,j) & = & \form{bnd}\,G \quad \text{if } V \ni (j \mapsto \form{bnd}\,G) \\[3pt]
+\mathit{entryAt}_{C,V}(L) & = & \mathit{at}_V(L) \quad \text{for a local entry } L \\
+\mathit{entryAt}_{C,V}(\form{bnd}\,G) & = & \form{bnd}\,(C \circ G) \\
+\mathit{freeEntryAt}_{a,C}(\form{bnd}\,G) & = & \form{bnd}\,(C \circ G) \\
+\mathit{freeEntryAt}_{a,C}(\form{thru}\,R\,L) & = & \mathit{at}_{V}(L) \quad \text{where } \mathit{viewThrough}_\sigma(R, a) = V
+\end{array}
+\]
+\color{black}
+\caption{Operations on forms and entries. $\mathit{sub}_{\mathit{Es}}$ substitutes the entries $\mathit{Es}$ of a first object form for the source propositions that an entry of a second form names. $\mathit{pre}_F$ prefixes an entry by a form $F$. Both act on lists entry by entry, and so do $\mathit{entriesAt}_\sigma(a, C, V, \mathit{Es})$, which applies $\mathit{entryAt}_{C,V}$, and $\mathit{freeEntriesAt}_\sigma(a, C, \mathit{Ds})$, which applies $\mathit{freeEntryAt}_{a,C}$. $(\ev{eq}\,k)^b$ is $\ev{eq}\,k$ when $b$ is false and $\ev{eqSym}\,k$ when $b$ is true, and $(\ev{eqSym}\,k)^b$ the other way round. A form absorbs when it is $\form{bot}$ behind zero or more bound casts. $\mathit{ids}(\tel)$ has at each position $j$ the entry $\form{le}\,\form{id}\,(\ev{le}\,j)\,\form{id}$, $\form{eq}\,j\,\mathit{false}$, $\form{has}\,j$, or $\form{copy}\,j$, according to the kind of the $j$-th proposition of $\tel$. Composition associates to the left.}
+\label{fig:form-ops}
 \end{figure}
 
 Figure~\ref{fig:normalizer} gives the normalizer, a family of mutually recursive functions indexed by fuel. Each returns an option, and the results are monotone in the fuel and deterministic, so the fuel is bookkeeping: a statement about a normal form holds for some fuel and for every larger one. Normalization of an inclusion is written $\hnf{\sigma}{e}{n}{F}$, the view of an atom $\vw{\sigma}{a}{n}{V}$, and the chain of casts of an atom $\chn{\sigma}{a}{n}{F}$. Presence evidence normalizes to the binder and the field it names. $\ev{field}\,\ell$ at $x$ gives $(x, \ell)$, and $\ev{member}\,a\,e\,i$ reads $\form{has}\,y\,\ell$ at position $i$ of the view of $a$ through the form of $e$ and gives $(y, \ell)$.
 
 A basic template normalizes its sides and keeps its hole. A composition template normalizes its two premise morphisms, each of which proves a single inclusion and so has a single local entry, and keeps them as the two branches of a composition entry with identity sides. No branch is evaluated, because there is no view to evaluate it against yet. The precise view of a stored literal lists $\form{eq}$ for each witness and $\form{has}\,x\,\ell$ for each field, in the order of the literal's precise telescope. The view of a cast atom is the view of the underlying atom pushed through the head form of the cast, and folding, unfolding, and pairing act on views as they act on telescopes.
 
-Composition, $F \circ G$ in Figure~\ref{fig:combine}, is where the design of Section~\ref{sec:why-structural} shows. Two function forms compose contravariantly in the domain and by substituting the domain cast for the parameter in the first codomain. Two object forms compose by substitution: every source fact that an entry of the second form names is replaced by the first form's entry for that fact. Consider a basic template $\form{le}\,F\,H\,G$ of the second form whose hole names the inclusion $j$ of the middle telescope. The first form's entry at $j$ is a local inclusion entry, basic or composite, and the substitution keeps it and composes its outer sides with $F$ and $G$. When the hole names an equality, the first form's entry at $j$ is an equality entry, and the hole is redirected to the source equality it names, flipped if the entry flips. A composition entry substitutes into both of its branches. Equality and presence entries follow the index, a copied bound takes the first form's entry at its position as it is, and a bound entry $\form{bnd}\,G$ becomes $\form{bnd}\,(\form{obj}\,\mathit{Es}_1 \circ G)$. Every recursive call is on a strict subterm, and no view is consulted. A composition entry records no middle type at all: its branches meet only when the entry is applied to a view, where each has become a form.
+Composition, $F \circ G$ in Figure~\ref{fig:combine}, is where the design of Section~\ref{sec:why-structural} shows. Two function forms compose contravariantly in the domain and by substituting the domain cast for the parameter in the first codomain. Two object forms compose by substitution, $\mathit{sub}$ in Figure~\ref{fig:form-ops}: every source fact that an entry of the second form names is replaced by the first form's entry for that fact. Consider a basic template $\form{le}\,F\,H\,G$ of the second form whose hole names the inclusion $j$ of the middle telescope. The first form's entry at $j$ is a local inclusion entry, basic or composite, and the substitution keeps it and composes its outer sides with $F$ and $G$. When the hole names an equality, the first form's entry at $j$ is an equality entry, and the hole is redirected to the source equality it names, flipped if the entry flips. A composition entry substitutes into both of its branches. Equality and presence entries follow the index, a copied bound takes the first form's entry at its position as it is, and a bound entry $\form{bnd}\,G$ becomes $\form{bnd}\,(\form{obj}\,\mathit{Es}_1 \circ G)$. Every recursive call is on a strict subterm, and no view is consulted. A composition entry records no middle type at all: its branches meet only when the entry is applied to a view, where each has become a form.
 
-Prefixing an entry by a form $F$ makes it read the object type that $F$ reaches. A bound entry $\form{bnd}\,G$ becomes $\form{bnd}\,(F \circ G)$, a routed entry $\form{thru}\,R\,L$ becomes $\form{thru}\,(F \circ R)\,L$, and a local entry $L$ becomes $\form{thru}\,F\,L$. A copied bound is routed like every other local entry rather than composed, so that a later bound cast through its position still finds the bound it names, which is the last row of Figure~\ref{fig:combine}.
+Prefixing an entry by a form $F$, $\mathit{pre}_F$ in Figure~\ref{fig:form-ops}, makes it read the object type that $F$ reaches. A bound entry $\form{bnd}\,G$ becomes $\form{bnd}\,(F \circ G)$, a routed entry $\form{thru}\,R\,L$ becomes $\form{thru}\,(F \circ R)\,L$, and a local entry $L$ becomes $\form{thru}\,F\,L$. A copied bound is routed like every other local entry rather than composed, so that a later bound cast through its position still finds the bound it names, which is the last row of Figure~\ref{fig:combine}.
 
-Application of an object form to an atom is pointwise. It is written $\mathit{entriesAt}_\sigma(a,\allowbreak C,\allowbreak V,\allowbreak \mathit{Es})$ and takes the view $V$ of the atom and the form $C$ of its chain of casts. A local entry is interpreted against $V$ alone. A basic template replaces its hole by the view's form at the named position, an equality reading as $\form{id}$, and composes the result with its sides. A composition template interprets its branches to forms $F_1$ and $F_2$ and returns $F \circ F_1 \circ F_2 \circ G$ for its sides $F$ and $G$. An equality entry requires the view to hold an equality at the named position, and a presence entry and a copied bound copy what they find there. A bound entry $\form{bnd}\,G$ is instantiated as $C \circ G$, which is why application takes the chain of casts and not only the view. Application of the free entries of an $\form{into}$ form, $\mathit{freeEntriesAt}$, instantiates a bound entry the same way, and a routed entry $\form{thru}\,R\,L$ by computing the view of the atom through $R$ and interpreting $L$ there.
+Application of an object form to an atom is pointwise, by $\mathit{entryAt}$ and $\mathit{at}$ in Figure~\ref{fig:form-ops}. It is written $\mathit{entriesAt}_\sigma(a,\allowbreak C,\allowbreak V,\allowbreak \mathit{Es})$ and takes the view $V$ of the atom and the form $C$ of its chain of casts. A local entry is interpreted against $V$ alone. A basic template replaces its hole by the view's form at the named position, an equality reading as $\form{id}$, and composes the result with its sides. A composition template interprets its branches to forms $F_1$ and $F_2$ and returns $F \circ F_1 \circ F_2 \circ G$ for its sides $F$ and $G$. An equality entry requires the view to hold an equality at the named position, and a presence entry and a copied bound copy what they find there. A bound entry $\form{bnd}\,G$ is instantiated as $C \circ G$, which is why application takes the chain of casts and not only the view. Application of the free entries of an $\form{into}$ form, $\mathit{freeEntriesAt}$, instantiates a bound entry the same way, and a routed entry $\form{thru}\,R\,L$ by computing the view of the atom through $R$ and interpreting $L$ there.
 
-Pairing produces an $\form{into}$ form. When either component is $\form{bot}$ the pair is $\form{bot}$, when both are $\form{top}$ it is $\form{top}$, and a component that is $\form{bot}$ behind bound casts is typed evidence for every inclusion out of its source and is returned as it is. Otherwise each component contributes free entries, and the pair concatenates them. An $\form{into}$ form contributes its own, a bound cast $\form{bnd}\,i\,F$ contributes those of $F$ prefixed by $\form{bnd}\,i\,\form{id}$, and an object form contributes its entries prefixed by $\form{id}$. The forms $\form{id}$ and $\form{top}$ count as object forms here, with the identity entries of the annotated telescope: $\form{le}\,\form{id}\,(\ev{le}\,j)\,\form{id}$, $\form{eq}\,j\,\mathit{false}$, $\form{has}\,j$, or $\form{copy}\,j$ at each position $j$, according to the kind of its proposition. A component may be a bound cast, whose target propositions are reached through an object type other than the source, and this is the case the routed entries exist for. An $\form{obj}$ form names source propositions by index and cannot express it.
+Pairing, $\mathit{pair}$ in Figure~\ref{fig:form-ops}, produces an $\form{into}$ form. When either component is $\form{bot}$ the pair is $\form{bot}$, when both are $\form{top}$ it is $\form{top}$, and a component that is $\form{bot}$ behind bound casts is typed evidence for every inclusion out of its source and is returned as it is. Otherwise each component contributes free entries, and the pair concatenates them. An $\form{into}$ form contributes its own, a bound cast $\form{bnd}\,i\,F$ contributes those of $F$ prefixed by $\form{bnd}\,i\,\form{id}$, and an object form contributes its entries prefixed by $\form{id}$. The forms $\form{id}$ and $\form{top}$ count as object forms here, with the identity entries of the annotated telescope: $\form{le}\,\form{id}\,(\ev{le}\,j)\,\form{id}$, $\form{eq}\,j\,\mathit{false}$, $\form{has}\,j$, or $\form{copy}\,j$ at each position $j$, according to the kind of its proposition. A component may be a bound cast, whose target propositions are reached through an object type other than the source, and this is the case the routed entries exist for. An $\form{obj}$ form names source propositions by index and cannot express it.
 
 The chain of casts of an atom, $\chn{\sigma}{a}{n}{F}$, composes the head forms of the casts on the atom from its root outwards, pairs at $\ev{both}$, and passes through $\ev{fold}$ and $\ev{unfold}$. Its result is a form out of the type of the root, and it is the form the machine consults at an application.
 
@@ -197,6 +244,13 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{F}$, composes the head forms 
 \and
 \inferrule{\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2} \\ \tat{\tel_1}{j}{\pbnd{X}}}
   {\entjm{\Gamma}{\rho}{\tcons{\mathit{Es}}{\form{copy}\,j}}{\tel_1}{\tcons{\tel_2}{\pbnd{X}}}}
+\and
+\inferrule{\chainj{\Gamma}{\rho}{\form{bnd}\,j\,\form{id}}{\obj{\tel_1}}{T}}
+  {\entjm{\Gamma}{\rho}{\form{copy}\,j}{\tel_1}{\pbnd{\weak{T}}}}
+\\
+\inferrule{ }{\Gamma \models \form{id} : X \le X \text{ (side)}}
+\and
+\inferrule{\formj{\Gamma}{F}{A}{B}}{\Gamma \models F : \weak{A} \le \weak{B} \text{ (side)}}
 \\
 \inferrule{ }{\entjm{\Gamma}{\rho}{\tnil}{S}{\tnil}}
 \and
@@ -221,7 +275,7 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{F}$, composes the head forms 
   {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{bnd}\,G}}{\tcons{\tel}{\pbnd{X}}}}
 \end{mathpar}
 \color{black}
-\caption{Typed forms $\chainj{\Gamma}{\rho}{F}{S}{T}$ in a mode $\rho$, typed entries $\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2}$ and free entries $\entjm{\Gamma}{\rho}{\mathit{Ds}}{S}{\tel}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. A side is typed as $\form{id}$ between equal types, or as a form in the plain mode between closed types weakened under the self binder. The free entries of an $\form{into}$ form are typed from the source type rather than from its telescope, since they never consult the view, and $\entjm{\Gamma}{\rho}{L}{\tel_1}{P}$ types one local entry at one proposition, by the rules for lists with the list left out.}
+\caption{Typed forms $\chainj{\Gamma}{\rho}{F}{S}{T}$ in a mode $\rho$, typed entries $\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2}$ and free entries $\entjm{\Gamma}{\rho}{\mathit{Ds}}{S}{\tel}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. A side is typed as $\form{id}$ between equal types, or as a form in the plain mode between closed types weakened under the self binder. The free entries of an $\form{into}$ form are typed from the source type rather than from its telescope, since they never consult the view. $\entjm{\Gamma}{\rho}{L}{\tel_1}{P}$ types one local entry $L$ at one proposition $P$. Its rules are the rules for lists with the list left out, and one more for a copied bound, which a route may read through a bound cast.}
 \label{fig:formtyped}
 \end{figure}
 

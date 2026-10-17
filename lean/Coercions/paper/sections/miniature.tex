@@ -127,7 +127,7 @@ whose first template proves the new lower bound $\ple{S_2}{\sel{\self}{A}}$ from
 \paragraph{Definitions.}
 The rule $\ev{def}$ reads the definition of a name off the context. A context has two kinds of binder. An opaque binder $x : T$ is what a lambda parameter or a let introduces, and its block is abstract. A transparent binder $x : T \mathrel{:=} W$ comes with a witness list $W$ that defines its block, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that the witness at $\ell$ is $W$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in the store, where every location is bound transparently by the literal stored there.
 
-\subsection{Atoms, terms, values, and the machine}
+\subsection{Atoms, terms, values, and the machine}\label{sec:mini-machine}
 
 Terms are in let-normal form over atoms:
 \[
@@ -184,7 +184,7 @@ A store holds one value per location, and store typing $\storej{\sigma}{\Gamma}$
 \and
 \inferrule{\storej{\sigma}{\Gamma} \\ v \text{ has no casts} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v)}}
 \end{mathpar}
-A lambda has no witnesses, so its block names are all defined as $\top$. The store is inert: a location's type is the precise type of its value and asserts nothing beyond its definitions. Every further fact about a location is established by a cast in the program.
+Here $\mathit{witnesses}(\tgt{\nu(\self.\,W)}) = W$ and $\mathit{witnesses}(\lambda(x : S).\,t) = \tnil$, so every block name of a lambda is defined as $\top$. The store is inert: a location's type is the precise type of its value and asserts nothing beyond its definitions. Every further fact about a location is established by a cast in the program.
 
 \paragraph{The machine.}
 A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames and cast frames, and a term. The steps of the fragment are
@@ -204,7 +204,29 @@ A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames and cast 
 & & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{pi}\,d\,c
 \end{array}
 \]
-where the last two rules apply when $a$ is not a variable. Allocation keeps the store inert. The value that reaches a let frame may carry casts. The machine stores the value underneath, $\mathit{core}(v)$, at its own type, and $\mathit{adjust}(u, v)$ replaces the new variable $x$ in $u$ by $\ev{cast}\,x\,E$, where $E$ is the composite of the stripped casts. The variable is still used at the type the program expects, through a cast, and the store holds the literal at its precise type. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, including the atoms that $\ev{member}$ eliminates at, and puts the root of the atom into types and into $\ev{def}$, which only ever see variables.
+where the last two rules apply when $a$ is not a variable. Allocation keeps the store inert. The value that reaches a let frame may carry casts. The machine stores the value underneath at its own type, and the body uses the new variable $x$ through the composite of the stripped casts:
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{core}(\ev{cast}\,v\,e) & = & \mathit{core}(v) \\
+\mathit{core}(v) & = & v \quad \text{if } v \text{ is not a cast} \\
+\mathit{adjust}(u, v) & = & u \quad \text{if } v \text{ is not a cast} \\
+\mathit{adjust}(u, \ev{cast}\,(\cdots(\ev{cast}\,v_0\,e_1)\cdots)\,e_n) & = & u[x \mapsto \ev{cast}\,x\,\weak{E}]
+\end{array}
+\]
+for a value $v_0$ that is not a cast, where $E = \ev{trans}\,(\cdots(\ev{trans}\,e_1\,e_2)\cdots)\,e_n$ is the composite of the casts. The variable is still used at the type the program expects, through a cast, and the store holds the literal at its precise type. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, including the atoms that $\ev{member}$ eliminates at, and puts the root of the atom into types and into $\ev{def}$, which only ever see variables.
+
+Continuations and states are typed by the rules
+\begin{mathpar}
+\color{tgtcol}
+\inferrule{ }{\contj{\Gamma}{\cdot}{T}{T}}
+\and
+\inferrule{\tmj{\Gamma, x : T}{u}{\weak{U}} \\ \contj{\Gamma}{K}{U}{V}}{\contj{\Gamma}{K \triangleright \ev{let}\,u}{T}{V}}
+\and
+\inferrule{\lej{\Gamma}{e}{T}{U} \\ \contj{\Gamma}{K}{U}{V}}{\contj{\Gamma}{K \triangleright \ev{cast}\,e}{T}{V}}
+\and
+\inferrule{\storej{\sigma}{\Gamma} \\ \tmj{\Gamma}{t}{T} \\ \contj{\Gamma}{K}{T}{U}}{\vdash \mst{\sigma}{K}{t} : U}
+\end{mathpar}
+where $\contj{\Gamma}{K}{T}{U}$ says that $K$ accepts a value of type $T$ and produces one of type $U$, and $u$ in a let frame binds $x$. A state is final when its continuation is empty and its term is a value or an atom.
 
 Application through a bare variable is $\beta$. Application through a wrapped atom is where evidence meets execution. The machine normalizes the chain of casts on the atom, $\mathit{chain}_\sigma(a)$, which is defined in the next subsection. If the chain is the identity, the closure is applied directly. If it is a function coercion $\form{pi}\,d\,c$, the argument is cast by the domain evidence $d$ and the result by the codomain evidence $c$. This is the usual way a coercion between function types acts on a function, except that here the machine computes the coercion from the evidence at run time. Progress therefore has to show that the normalizer succeeds and returns one of these two forms whenever an atom of function type is applied.
 

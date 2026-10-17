@@ -22,16 +22,61 @@ The translation is a function on derivations, not on terms. A term can have many
 \mathit{tel}\,\dfld{a}{T} & = & [\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,] \\
 \mathit{tel}\,\src{(S \wedge T)} & = & \mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T} \\
 \mathit{tel}\,\dmu{x}{T} & = & \mathit{tel}_{x}\,\src{T} \quad \text{if } \Decl\,\src{T} \\
-\mathit{tel}\,\src{B} & = & [\,\pbnd{\weak{\trans{B}}}\,] \quad \text{for every other } \src{B}
+\mathit{tel}\,\src{B} & = & [\,\pbnd{\weak{\trans{B}}}\,] \quad \text{for every other } \src{B} \\[4pt]
+\mathit{tel}_{x}\,\src{\top} & = & \tnil \\
+\mathit{tel}_{x}\,\dtyp{A}{S}{T} & = & [\,\ple{\trans{S}_x}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\trans{T}_x}\,] \\
+\mathit{tel}_{x}\,\dfld{a}{T} & = & [\,\phas{a},\ \ple{\sel{\self}{a}}{\trans{T}_x}\,] \\
+\mathit{tel}_{x}\,\src{(S \wedge T)} & = & \mathit{tel}_{x}\,\src{S} \mathbin{+\!\!+} \mathit{tel}_{x}\,\src{T} \\
+\mathit{tel}_{x}\,\dmu{y}{T} & = & \mathit{tel}_{x}\,\src{\inst{T}{x}} \quad \text{if } \Decl\,\src{T} \\
+\mathit{tel}_{x}\,\src{B} & = & [\,\pbnd{\trans{B}_x}\,] \quad \text{for every other } \src{B}
 \end{array}
 \]
-\caption{Translation of types. $\mathit{tel}\,\src{T}$ is the telescope of a type over a fresh self, which $\src{T}$ does not mention. $\mathit{tel}_{x}\,\src{T}$ reads a body whose self is $\src{x}$ as propositions about $\self$, so that the self of $\dmu{x}{T}$ becomes the self of the object type. Its clauses are those of $\mathit{tel}$ with $\self$ for $\src{x}$ and without the weakening, so a type that is not an object shape becomes a bound that may mention the self. $\Decl\,\src{T}$ holds when $\src{T}$ is $\src{\top}$, a declaration, an intersection of such, or a recursive type whose body is such.}
+\caption{Translation of types. $\mathit{tel}\,\src{T}$ is the telescope of a type over a fresh self, which $\src{T}$ does not mention. $\mathit{tel}_{x}\,\src{T}$ reads a body whose self is $\src{x}$ as propositions about $\self$, so that the self of $\dmu{x}{T}$ becomes the self of the object type. $\trans{T}_x$ is $\trans{T}$ with $\self$ for $\src{x}$. A type that is not an object shape becomes a bound that may mention the self. $\Decl\,\src{T}$ holds when $\src{T}$ is $\src{\top}$, a declaration, an intersection of such, or a recursive type whose body is such.}
 \label{fig:trans-types}
 \end{figure}
 
 Figure~\ref{fig:trans-types} gives the translation of types. Call $\src{T}$ an object shape when $\trans{T} = \obj{\mathit{tel}\,\src{T}}$: that is $\src{\top}$, a declaration, an intersection, or a recursive type with a declaration-shaped body. Every other type enters a telescope as one self-bound, so an intersection is a concatenation of telescopes whatever its operands are, and $\trans{x.A \wedge \dfld{a}{T}}$ is the object type with the bound $\pbnd{\weak{\sel{x}{A}}}$ followed by the two propositions of the field. A recursive type binds its own self, which is identified with the self block of the object type, so $\dmu{x}{T}$ and its opening at a variable $\src{x}$ translate to an object type and its unfolding at $x$. The two telescope readings agree on weakened types and differ on a body that is not an object shape. Read over a fresh self, such a body is the single closed bound $\pbnd{\weak{\trans{B}}}$. Read over its own self, it is the bound $\pbnd{\trans{B}}$ with $\self$ for $\src{x}$, which mentions the self wherever $\src{B}$ mentions $\src{x}$. So $\trans{\dmu{x}{x.A}}$ is $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A recursive type whose body is not a declaration is itself not an object shape, and $\mathit{tel}$ gives it the single closed bound $\pbnd{\weak{\trans{\dmu{x}{T}}}}$. Every bound that $\mathit{tel}$ produces is therefore closed.
 
-A declaration type $\src{T}$ of a literal determines the witnesses of the translated literal: the exact bound of each type member and the declared type of each field. Its precise type $\tgt{\mathit{litTy}(\src{T})}$ is $\obj{\ofLit{W}{F}}$ for those witnesses $W$ and the field labels $F$ of $\src{T}$, as in Section~\ref{sec:target}. Contexts translate binder by binder: an ordinary binder $\src{x : T}$ becomes an opaque binder at $\trans{T}$, and a literal's self binder $\src{x : \dmu{x}{T} \mathrel{:=} d}$ becomes a transparent binder at $\tgt{\mathit{litTy}(\src{T})}$ with the witnesses and field labels of $\src{T}$.
+A declaration type $\src{T}$ of a literal determines the witnesses of the translated literal: the exact bound of each type member and the declared type of each field. Its precise type $\tgt{\mathit{litTy}}\,\src{T}$ is $\obj{\ofLit{W}{F}}$ for those witnesses $W$ and the field labels $F$ of $\src{T}$, as in Section~\ref{sec:target}. Contexts translate binder by binder: an ordinary binder $\src{x : T}$ becomes an opaque binder at $\trans{T}$, and a literal's self binder $\src{x : \dmu{x}{T} \mathrel{:=} d}$ becomes a transparent binder at $\tgt{\mathit{litTy}}\,\src{T}$ with the witnesses and field labels of $\src{T}$. Figure~\ref{fig:trans-aux} gives these definitions, together with the coercions that the translation of evidence uses for literals and intersections.
+
+\begin{figure}
+\small
+\[
+\begin{array}{@{}rcl@{}}
+\mathit{witnesses}\,\dtyp{A}{S}{T} & = & [\,A = \trans{S}\,] \\
+\mathit{witnesses}\,\dfld{a}{T} & = & [\,a = \trans{T}\,] \\
+\mathit{witnesses}\,\src{(S \wedge T)} & = & \mathit{witnesses}\,\src{S} \mathbin{+\!\!+} \mathit{witnesses}\,\src{T} \\[3pt]
+\mathit{fields}\,\dfld{a}{T} & = & [\,a\,] \\
+\mathit{fields}\,\src{(S \wedge T)} & = & \mathit{fields}\,\src{T} \mathbin{+\!\!+} \mathit{fields}\,\src{S} \\[3pt]
+\tgt{\mathit{litTy}}\,\src{T} & = & \obj{\ofLit{\mathit{witnesses}\,\src{T}}{\mathit{fields}\,\src{T}}} \\
+\tgt{\mathit{litCo}}\,\src{T} & = & \ev{obj}\,(\ofLit{\mathit{witnesses}\,\src{T}}{\mathit{fields}\,\src{T}})\,(\mathit{litMor}_{0,k}\,\src{T}) \quad \text{where } k = |\mathit{witnesses}\,\src{T}| \\[3pt]
+\mathit{litMor}_{e,h}\,\dtyp{A}{S}{T} & = & [\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,e)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
+\mathit{litMor}_{e,h}\,\dfld{a}{T} & = & [\,\ev{has}\,h,\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
+\mathit{litMor}_{e,h}\,\src{(S \wedge T)} & = & \mathit{litMor}_{e,\,h + |\mathit{fields}\,\src{T}|}\,\src{S} \mathbin{+\!\!+} \mathit{litMor}_{e + |\mathit{witnesses}\,\src{S}|,\,h}\,\src{T} \\[3pt]
+\mathit{idMor}_k\,\tnil & = & \ev{nil} \\
+\mathit{idMor}_k\,(\tcons{\tel}{\ple{S}{T}}) & = & \ev{le}\,(\mathit{idMor}_k\,\tel)\,\ev{none}\,(\ev{le}\,j)\,\ev{none} \\
+\mathit{idMor}_k\,(\tcons{\tel}{\peq{S}{T}}) & = & \ev{eq}\,(\mathit{idMor}_k\,\tel)\,j\,\mathit{false} \\
+\mathit{idMor}_k\,(\tcons{\tel}{\phas{\ell}}) & = & \ev{has}\,(\mathit{idMor}_k\,\tel)\,j \\
+\mathit{idMor}_k\,(\tcons{\tel}{\pbnd{T}}) & = & \ev{bnd}\,(\mathit{idMor}_k\,\tel)\,(\ev{bound}\,\tel_0\,j) \\[3pt]
+\mathit{into}_{\src{T}}\,e & = & \ev{intoBnd}\,e \\
+\mathit{into}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{intoBnd}\,(\ev{refl}\,\trans{T})) \\
+\mathit{out}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{bound}\,(\mathit{tel}\,\src{T})\,0) \\[3pt]
+\trans{\src{\cdot}} & = & \tgt{\cdot} \\
+\trans{\src{\Gamma, x : T}} & = & \trans{\Gamma}, x : \trans{T} \\
+\trans{\src{\Gamma, x : \dmu{x}{T} \mathrel{:=} d}} & = & \trans{\Gamma}, x : \tgt{\mathit{litTy}}\,\src{T} \mathrel{:=} \mathit{witnesses}\,\src{T} ; \mathit{fields}\,\src{T}
+\end{array}
+\]
+\begin{mathpar}
+\inferrule{ }{\src{\cdot\ \mathit{wf}}}
+\and
+\inferrule{\src{\Gamma\ \mathit{wf}}}{\src{\Gamma, x : T\ \mathit{wf}}}
+\and
+\inferrule{\src{\Gamma\ \mathit{wf}} \\ \src{T} \text{ has literal shape} \\ \text{the labels of } \src{T} \text{ are distinct}}{\src{\Gamma, x : \dmu{x}{T} \mathrel{:=} d\ \mathit{wf}}}
+\end{mathpar}
+\caption{Literals and contexts in the translation. $\mathit{witnesses}$, $\mathit{fields}$, and $\mathit{litMor}$ are empty on every other type. $\mathit{fields}$ lists the right operand of an intersection first, because the right operand shadows. In $\mathit{litMor}_{e,h}$ the index $e$ is the position of the next definition equality of the literal's precise telescope and $h$ that of the next presence. In $\mathit{idMor}_k$ the position $j$ is $k + |\tel|$, and $\tel_0$ is the source telescope of the object coercion the morphism belongs to. $\mathit{into}_{\src{T}}$ and $\mathit{out}_{\src{T}}$ are the identity when $\src{T}$ is an object shape and are given here for the other types. A type has literal shape when it is an intersection of exact type declarations $\dtyp{A}{T}{T}$ and field declarations.}
+\label{fig:trans-aux}
+\end{figure}
+
 
 \subsection{Evidence and atoms}
 
@@ -58,7 +103,7 @@ A declaration type $\src{T}$ of a literal determines the witnesses of the transl
 \trans{\rn{Sub}\,h\,d}_a & = & \ev{cast}\,\trans{h}_a\,\trans{d}
 \end{array}
 \]
-\caption{Translation of subtyping derivations to inclusion evidence, $\trans{d}$, and of variable typings to atoms, $\trans{h}_a$. $\mathit{idMor}_k\,\tel$ is the morphism of identity templates whose holes name the propositions of $\tel$ at positions $k, k+1, \ldots$ of the source, a bound among them copied by $\ev{bnd}$ over $\ev{bound}$. $\mathit{into}_{\src{T}}$ is the identity when $\src{T}$ is an object shape, and otherwise $\ev{intoBnd}$ on evidence and $\ev{cast}\,a\,(\ev{intoBnd}\,(\ev{refl}\,\trans{T}))$ on an atom $a$. $\mathit{out}_{\src{T}}$ is the identity when $\src{T}$ is an object shape, and otherwise $\ev{cast}\,a\,(\ev{bound}\,(\mathit{tel}\,\src{T})\,0)$ on an atom $a$.}
+\caption{Translation of subtyping derivations to inclusion evidence, $\trans{d}$, and of variable typings to atoms, $\trans{h}_a$. $\mathit{idMor}$, $\mathit{litCo}$, $\mathit{into}$, and $\mathit{out}$ are defined in Figure~\ref{fig:trans-aux}.}
 \label{fig:trans-evidence}
 \end{figure}
 
