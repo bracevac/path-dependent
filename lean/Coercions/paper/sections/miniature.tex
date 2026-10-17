@@ -3,14 +3,40 @@
 
 This section develops the whole proof on a fragment with functions and type members only. The fragment has no fields, no recursive types, and no intersections. It is enough to express bad bounds and to make application the one rule of the machine that can get stuck, and it is small enough to state every definition. Sections~\ref{sec:target} to~\ref{sec:metatheory} add the rest of DOT one feature at a time.
 
-The section is not mechanized on its own. Its target is a fragment of \FCdot, its definitions are the full definitions restricted to that fragment, with one simplification in composition that Section~\ref{sec:mini-normalizer} points out, and its statements are special cases of the mechanized ones up to that simplification. On the source side the fragment drops recursion: an object cannot refer to itself, and it is typed at a declaration rather than at a recursive type.
+The section is not mechanized on its own. Its target is a fragment of \FCdot, its definitions are the full definitions restricted to that fragment, and its statements are special cases of the mechanized ones, up to one simplification in composition that Section~\ref{sec:mini-normalizer} points out. On the source side the fragment drops recursion: an object cannot refer to itself, and it is typed at a declaration rather than at a recursive type.
 
-\subsection{Types: block names and telescopes}
+\subsection{Overview}\label{sec:mini-overview}
 
-The source fragment has the types
+Before the definitions, here is the bad-bounds example of Section~\ref{sec:problem} in \FCdot, step by step. The notation is defined in the subsections that follow. The point here is what each piece is for.
+
+\paragraph{Types.}
+A type member declaration becomes an object type: a list of propositions about the object, which the object type calls $\self$. The bad-bounds declaration $\src{\dtyp{A}{\top}{\bot}}$ becomes
 \[
-\src{S, T ::= \top \mid \bot \mid \dtyp{A}{S}{T} \mid x.A \mid \dall{x}{S}{T}} .
+D = \obj{[\,\ple{\top}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\bot}\,]} ,
 \]
+which says that the member $A$ of the object lies between $\top$ and $\bot$.
+
+\paragraph{Evidence.}
+Every use of subtyping is a proof term. In the body of $\src{\lambda(x : \dtyp{A}{\top}{\bot}).\ t}$, DOT derives $\src{\top \sub x.A \sub \bot}$. In \FCdot that derivation is the evidence
+\[
+\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,0)\ (\ev{member}\,x\,(\ev{refl}\,D)\,1)\ :\ \top \le \bot ,
+\]
+where $\ev{member}\,x\,(\ev{refl}\,D)\,i$ reads proposition $i$ of the type of $x$, with $x$ for $\self$. This evidence is well typed. Nothing rules it out, and nothing has to, because it is evidence under an assumption, the binder $x : D$.
+
+\paragraph{Stores.}
+Now apply the lambda. Its argument is a location $z$ of the store, and the store holds a literal at $z$ that defines $A$ as some type $W$. The store types $z$ at the literal's own type, $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$, which says only that $A$ is $W$. To be passed at the type $D$, the argument has to be the location under a cast, $\ev{cast}\,z\,c$, for some evidence
+\[
+c : \obj{[\,\peq{\sel{\self}{A}}{W}\,]} \le D .
+\]
+
+\paragraph{Normal forms.}
+The evidence $c$ mentions only locations of the store, and every location is defined by its literal. Such evidence can be normalized. The normalizer returns a typed head form, which says how an inclusion holds at its head. Between two object types the head form proves each proposition of the target from the propositions of the source. Here it proves $\ple{\top}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\bot}$ from $\peq{\sel{\self}{A}}{W}$, so it contains a typed head form for $\top \le W$ and one for $W \le \bot$. Typed head forms compose, and the composite is a typed head form for $\top \le \bot$. There is none, since $\top$ is not $\bot$. So $c$ does not exist, and the lambda is never applied. Its body, with its proof of $\top \le \bot$, never runs.
+
+\paragraph{Roadmap.}
+The argument needs four definitions and one theorem. Section~\ref{sec:mini-types} defines types, Section~\ref{sec:mini-terms} atoms, terms, and contexts, Section~\ref{sec:mini-evidence} evidence, and Section~\ref{sec:mini-machine} stores and the machine. Section~\ref{sec:mini-normalizer} defines the normalizer and its head forms, and Section~\ref{sec:mini-typed} says when a head form is typed. Section~\ref{sec:mini-theorem} proves the theorem, that over a typed store every piece of evidence normalizes to a typed head form, and ends with this example again, every step justified. Section~\ref{sec:mini-safety} derives preservation and progress from it, and Section~\ref{sec:mini-translation} shows how the DOT fragment translates into \FCdot.
+
+\subsection{Types: block names and telescopes}\label{sec:mini-types}
+
 The first design decision of \FCdot is how a type refers to a term. In \FCdot every term binder $x$ owns a block of type names, one name $\sel{x}{\ell}$ for every label $\ell$, and a type mentions a term only through such a name. The name $\sel{x}{A}$ does not depend on the type of $x$. Whatever type $x$ is viewed at, $\sel{x}{A}$ is the same name, and the type of $x$ only says what is known about it. Section~\ref{sec:counterexample} shows why this matters.
 
 The second decision is how an object type says what is known. An object type is a telescope of propositions about a self binder:
@@ -28,21 +54,30 @@ Bound variables can be renamed. In rules and examples the self is named $\self$ 
 \tgt{\top} \mathrel{:=} \obj{\tnil} .
 \]
 
-A type member declaration becomes the object type with two propositions, one per bound:
+A type member declaration $\src{\dtyp{A}{S}{T}}$ corresponds to the object type with one proposition per bound,
 \[
-\trans{\dtyp{A}{S}{T}} = \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} .
-\]
-The bounds are weakened under the self binder, since they cannot mention the self in this fragment. The other types translate homomorphically: $\trans{\src{\top}} = \tgt{\top}$, $\trans{\src{\bot}} = \tgt{\bot}$, $\trans{\dsel{x}{A}} = \sel{x}{A}$, and $\trans{\dall{x}{S}{T}} = \pit{\trans{S}}{\trans{T}}$. In examples we leave the weakening of closed types implicit.
+\obj{[\,\ple{S}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T}\,]} .
+\] In this fragment the bounds cannot mention the self. Formally they are weakened under the self binder, $\weak{S}$ and $\weak{T}$, and in examples we leave that weakening implicit. The type $D$ of the overview is the case of the bounds $\top$ and $\bot$. It is a well-formed type, and nothing about it is checked. Section~\ref{sec:mini-translation} gives the translation of the source fragment.
 
-\begin{example}
-The bad-bounds declaration becomes
+\subsection{Atoms, terms, and contexts}\label{sec:mini-terms}
+
+Terms are in let-normal form over atoms:
 \[
-D = \trans{\dtyp{A}{\top}{\bot}} = \obj{[\,\ple{\top}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\bot}\,]} ,
+\begin{array}{@{}lrcl@{}}
+\text{Atoms} & a, b & ::= & x \mid \ev{cast}\,a\,e \\
+\text{Terms} & t, u & ::= & a \mid v \mid a\,b \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
+\text{Values} & v & ::= & \lambda(x : S).\,t \mid \tgt{\nu(x.\,W)} \mid \ev{cast}\,v\,e \\
+\text{Witnesses} & W & ::= & \tnil \mid W, A = T \\
+\text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W
+\end{array}
 \]
-an object type asserting that its own member $A$ lies between $\top$ and $\bot$. It is a well-formed type. Nothing about it is checked.
-\end{example}
+An atom is a variable under casts, and its root is the variable underneath: $\rt{x} = x$ and $\rt{\ev{cast}\,a\,e} = \rt{a}$. A cast erases to nothing, so an atom is a variable at run time. Every change of type is a cast with explicit evidence $e$, which Section~\ref{sec:mini-evidence} introduces. There is no subsumption rule.
 
-\subsection{Evidence}
+A literal $\tgt{\nu(x.\,W)}$ in the fragment has only type members, given by its witness list $W$. It binds its self $x$ in $W$, as an object type does. A witness list assigns $\top$ to every label it does not mention, and $W(A)$ is the witness at $A$. The precise type of a literal, $\obj{\tgt{\mathit{tel}(W)}}$, has one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness and nothing else. It says what the literal defines and no more.
+
+A context has two kinds of binder. An opaque binder $x : T$ is what a lambda parameter or a let introduces, and its block is abstract. A transparent binder $x : T \mathrel{:=} W$ comes with a witness list $W$ that defines its block, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that the witness at $\ell$ is $W$. Transparent binders arise in the store, where every location is bound transparently by the literal stored there.
+
+\subsection{Evidence}\label{sec:mini-evidence}
 
 Evidence is a proof term for an inclusion or an equality. The fragment has
 \[
@@ -54,12 +89,16 @@ Evidence is a proof term for an inclusion or an equality. The fragment has
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e
 \end{array}
 \]
-where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{fig:mini-evidence} gives the typing. An inclusion judgment $\lej{\Gamma}{e}{S}{T}$ says that $e$ proves $S \le T$ in $\Gamma$. The endpoints are determined by the evidence and the context.
+Figure~\ref{fig:mini-evidence} gives the typing. It includes the typing of atoms, which is mutual with that of evidence, because a cast atom carries evidence and $\ev{member}$ takes an atom. An inclusion judgment $\lej{\Gamma}{e}{S}{T}$ says that $e$ proves $S \le T$ in $\Gamma$. The endpoints are determined by the evidence and the context.
 
 \begin{figure}
 \small
 \color{tgtcol}
 \begin{mathpar}
+\inferrule{ }{\atomj{\Gamma}{x}{\Gamma(x)}}
+\and
+\inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{T}}{\atomj{\Gamma}{\ev{cast}\,a\,e}{T}}
+\\
 \inferrule{ }{\lej{\Gamma}{\ev{refl}\,T}{T}{T}}
 \and
 \inferrule{\lej{\Gamma}{e}{S}{M} \\ \lej{\Gamma}{f}{M}{T}}{\lej{\Gamma}{\ev{trans}\,e\,f}{S}{T}}
@@ -72,11 +111,26 @@ where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{f
 \and
 \inferrule{\lej{\Gamma}{e}{S_2}{S_1} \\ \lej{\Gamma, x : S_2}{f}{T_1}{T_2}}{\lej{\Gamma}{\ev{pi}\,e\,f}{\pit{S_1}{T_1}}{\pit{S_2}{T_2}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'}}{\lej{\Gamma}{\ev{obj}\,\tel\,m}{\obj{\tel}}{\obj{\tel'}}}
-\and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
   {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
 \and
+\inferrule{\morj{\Gamma}{m}{\tel}{\tel'}}{\lej{\Gamma}{\ev{obj}\,\tel\,m}{\obj{\tel}}{\obj{\tel'}}}
+\\
+\inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
+\and
+\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
+  {\morj{\Gamma}{\ev{le}\,m\,q\,H\,q'}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
+\\
+\inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}{\holej{\tel}{\ev{eq}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{Y}{X}}}{\holej{\tel}{\ev{eqSym}\,j}{X}{Y}}
+\and
+\inferrule{ }{\Gamma \vdash \ev{none} : X \le X}
+\and
+\inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
+\\
 \inferrule{ }{\eqj{\Gamma}{\ev{refl}\,T}{T}{T}}
 \and
 \inferrule{\eqj{\Gamma}{\varphi}{S}{T}}{\eqj{\Gamma}{\ev{symm}\,\varphi}{T}{S}}
@@ -84,69 +138,61 @@ where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{f
 \inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
 \and
 \inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
-\\
-\inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
-\and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
-  {\morj{\Gamma}{\ev{le}\,m\,q\,H\,q'}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
-\and
-\inferrule{ }{\Gamma \vdash \ev{none} : X \le X}
-\and
-\inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
-\\
-\inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
-\and
-\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}{\holej{\tel}{\ev{eq}\,j}{X}{Y}}
-\and
-\inferrule{\tat{\tel}{j}{\peq{Y}{X}}}{\holej{\tel}{\ev{eqSym}\,j}{X}{Y}}
 \end{mathpar}
 \color{black}
-\caption{Evidence typing in the fragment. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
+\caption{Typing of atoms and evidence in the fragment. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
 \label{fig:mini-evidence}
 \end{figure}
 
 Most rules are what one expects. $\ev{refl}$ and $\ev{trans}$ make inclusion a preorder, $\ev{top}$ and $\ev{bot}$ give its extremes, and $\ev{pi}$ is the rule for function types, contravariant in the domain, with the codomains compared under a parameter of the smaller domain. There is no symmetry for inclusions. Three rules need explanation.
 
 \paragraph{Elimination at an atom.}
-The rule $\ev{member}$ is the one rule that connects the type of a term to the block of that term. Given an atom $a$ of type $S$, which is a variable possibly under casts, and evidence $e$ that $S$ is included in an object type $\obj{\tel}$, the $i$-th proposition of $\tel$ holds of the root of $a$, the variable underneath. The proposition mentions the self, and the rule instantiates the self by the root, written $\inst{S'}{\rt{a}}$. With $e = \ev{refl}$ the rule reads the declared type of a variable, and this is how the two selection rules of DOT translate. If $h$ is a derivation of $\src{x : \dtyp{A}{S}{T}}$ and $\trans{h}_a$ is its atom, then
+The rule $\ev{member}$ is the one rule that connects the type of a term to the block of that term. Given an atom $a$ of type $S$ and evidence $e$ that $S$ is included in an object type $\obj{\tel}$, the $i$-th proposition of $\tel$ holds of the root of $a$. The proposition mentions the self, and the rule instantiates the self by the root, written $\inst{S'}{\rt{a}}$. With $e = \ev{refl}$ the rule reads the declared type of a variable, as the overview did with $\ev{member}\,x\,(\ev{refl}\,D)\,0 : \top \le \sel{x}{A}$. The rule takes an atom and arbitrary evidence, and the next example needs both.
+
+\begin{example}[Elimination at a cast atom]\label{ex:mini-cast}
+Let
 \[
-\begin{array}{@{}rcl@{}}
-\trans{\rn{<:-Sel}\,h} & = & \ev{member}\ \trans{h}_a\ (\ev{refl}\,\trans{\dtyp{A}{S}{T}})\ 0 \ :\ \trans{S} \le \sel{x}{A} \\
-\trans{\rn{Sel-<:}\,h} & = & \ev{member}\ \trans{h}_a\ (\ev{refl}\,\trans{\dtyp{A}{S}{T}})\ 1 \ :\ \sel{x}{A} \le \trans{T} .
+\begin{array}{@{}lcl@{}}
+S & = & \obj{[\,\ple{\bot}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\top}\,]} \\
+T & = & \obj{[\,\ple{\mathit{Int}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\top}\,]} \\
+X & = & \obj{[\,\ple{S}{\sel{\self}{B}},\ \ple{\sel{\self}{B}}{T}\,]}
 \end{array}
 \]
-The rule takes arbitrary evidence $e$ and not only $\ev{refl}$, and Section~\ref{sec:counterexample} shows a program that needs it.
+and $\Gamma = x : X,\ w : S$. The evidence
+\[
+e_{ST} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0)\ (\ev{member}\,x\,(\ev{refl}\,X)\,1) \ :\ S \le T
+\]
+goes through the two bounds of $x$, so the atom $\ev{cast}\,w\,e_{ST}$ has type $T$. Its root is $w$, and eliminating the lower bound of $T$ there gives
+\[
+\ev{member}\ (\ev{cast}\,w\,e_{ST})\ (\ev{refl}\,T)\ 0 \ :\ \mathit{Int} \le \sel{w}{A} .
+\]
+The proposition $\ple{\mathit{Int}}{\sel{\self}{A}}$ of $T$ is instantiated at the root $w$, and the result is about the name $\sel{w}{A}$, the same name that the declared type $S$ of $w$ talks about. In DOT this is the derivation of $\src{\mathit{Int} \sub w.A}$ from $\src{w : T}$, which subsumption gets from $\src{w : S}$ and $\src{S \sub x.B \sub T}$. This example is why $\ev{member}$ takes an atom and not a variable. Section~\ref{sec:counterexample} shows that a design without block names cannot express it.
+\end{example}
 
 \paragraph{Object coercions are morphisms of templates.}
-Evidence between two object types, $\ev{obj}\,\tel\,m$, carries its source telescope $\tel$ and a morphism $m$ that proves each proposition of the target telescope, oldest first. Each target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$. Its hole $H$ names a proposition of the source by position and reads it as an inclusion $X \le Y$. The sides $q$ and $q'$ adjust the two endpoints: $q$ proves $S \le X$ and $q'$ proves $Y \le T$, for the target proposition $\ple{S}{T}$. A side is absent, $\ev{none}$, when the endpoints coincide. A present side $\ev{some}\,e$ is evidence typed outside the object type, weakened under the self binder, so it cannot mention the self. This is the property everything else relies on: a template reads source propositions and adjusts them by closed evidence, and it never proves anything about the self by evidence of its own. The source rule \rn{Typ} becomes an object coercion with two templates,
+Evidence between two object types, $\ev{obj}\,\tel\,m$, carries its source telescope $\tel$ and a morphism $m$ that proves each proposition of the target telescope, oldest first. Each target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$. Its hole $H$ names a proposition of the source by position and reads it as an inclusion $X \le Y$. The sides $q$ and $q'$ adjust the two endpoints: $q$ proves $S \le X$ and $q'$ proves $Y \le T$, for the target proposition $\ple{S}{T}$. A side is absent, $\ev{none}$, when the endpoints coincide. A present side $\ev{some}\,e$ is evidence typed outside the object type, weakened under the self binder, so it cannot mention the self. This is the property everything else relies on: a template reads source propositions and adjusts them by closed evidence, and it never proves anything about the self by evidence of its own. A morphism is written as a list in examples.
+
+For example, if $d_1 : S_2 \le S_1$ and $d_2 : T_1 \le T_2$, then
 \[
-\trans{\rn{Typ}\,d_1\,d_2} = \ev{obj}\,(\mathit{tel}\,\dtyp{A}{S_1}{T_1})\,[\,\ev{le}\,(\ev{some}\,\trans{d_1})\,(\ev{le}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{le}\,1)\,(\ev{some}\,\trans{d_2})\,] ,
+\ev{obj}\,[\,\ple{S_1}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_1}\,]\,[\,\ev{le}\,(\ev{some}\,d_1)\,(\ev{le}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{le}\,1)\,(\ev{some}\,d_2)\,]
 \]
-whose first template proves the new lower bound $\ple{S_2}{\sel{\self}{A}}$ from the old one by the side $\trans{d_1} : S_2 \le S_1$, and whose second proves the new upper bound from the old one by $\trans{d_2} : T_1 \le T_2$. A morphism is written as a list here, and $\mathit{tel}\,\src{T}$ is the telescope of the translation of $\src{T}$.
+proves $\obj{[\,\ple{S_1}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_1}\,]} \le \obj{[\,\ple{S_2}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_2}\,]}$. Its first template proves the new lower bound $\ple{S_2}{\sel{\self}{A}}$ from the old one through $d_1$, and its second proves the new upper bound from the old one through $d_2$. A hole can also read an equality, in either direction. The coercion from the precise type of a literal that defines $A$ as $T$ to the declaration with the exact bounds $T$ reads both bounds off the one equality:
+\[
+\mathit{litCo}_T = \ev{obj}\,[\,\peq{\sel{\self}{A}}{T}\,]\,[\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,0)\,\ev{none}\,] .
+\]
+It proves $\obj{[\,\peq{\sel{\self}{A}}{T}\,]} \le \obj{[\,\ple{T}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T}\,]}$. The first template reads the equality backwards as $T \le \sel{\self}{A}$, the lower bound, and the second reads it forwards as the upper bound.
 
 \paragraph{Definitions.}
-The rule $\ev{def}$ reads the definition of a name off the context. A context has two kinds of binder. An opaque binder $x : T$ is what a lambda parameter or a let introduces, and its block is abstract. A transparent binder $x : T \mathrel{:=} W$ comes with a witness list $W$ that defines its block, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that the witness at $\ell$ is $W$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in the store, where every location is bound transparently by the literal stored there.
+The rule $\ev{def}$ reads the definition of a name off a transparent binder of the context. Over a store, where every location is transparent, it is how evidence learns what a literal defines.
 
-\subsection{Atoms, terms, values, and the machine}\label{sec:mini-machine}
+\subsection{Typing terms, stores, and the machine}\label{sec:mini-machine}
 
-Terms are in let-normal form over atoms:
-\[
-\begin{array}{@{}lrcl@{}}
-\text{Atoms} & a, b & ::= & x \mid \ev{cast}\,a\,e \\
-\text{Terms} & t, u & ::= & a \mid v \mid a\,b \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
-\text{Values} & v & ::= & \lambda(x : S).\,t \mid \tgt{\nu(x.\,W)} \mid \ev{cast}\,v\,e
-\end{array}
-\]
-An atom is a variable under casts, and its root is the variable underneath: $\rt{x} = x$ and $\rt{\ev{cast}\,a\,e} = \rt{a}$. A cast erases to nothing, so an atom is a variable at run time. A literal $\tgt{\nu(x.\,W)}$ in the fragment has only type members, given by its witness list $W$. It binds its self $x$ in $W$, as an object type does. Figure~\ref{fig:mini-terms} gives the typing. There is no subsumption rule. Every change of type is a cast with explicit evidence.
+Figure~\ref{fig:mini-terms} gives the typing of terms and values. Application instantiates the codomain at the root of the argument, as the source rule \rn{All-E} does. A let requires the type of the body not to mention the bound variable, as in the source. A literal has its precise type, and a literal used at another type is a literal under a cast.
 
 \begin{figure}
 \small
 \color{tgtcol}
 \begin{mathpar}
-\inferrule{ }{\atomj{\Gamma}{x}{\Gamma(x)}}
-\and
-\inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{T}}{\atomj{\Gamma}{\ev{cast}\,a\,e}{T}}
-\\
 \inferrule{\atomj{\Gamma}{a}{T}}{\tmj{\Gamma}{a}{T}}
 \and
 \inferrule{\valj{\Gamma}{v}{T}}{\tmj{\Gamma}{v}{T}}
@@ -164,17 +210,9 @@ An atom is a variable under casts, and its root is the variable underneath: $\rt
 \inferrule{\valj{\Gamma}{v}{S} \\ \lej{\Gamma}{e}{S}{T}}{\valj{\Gamma}{\ev{cast}\,v\,e}{T}}
 \end{mathpar}
 \color{black}
-\caption{Typing of atoms, terms, and values in the fragment. The precise type of a literal, $\obj{\tgt{\mathit{tel}(W)}}$, has one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness.}
+\caption{Typing of terms and values in the fragment. The precise type of a literal, $\obj{\tgt{\mathit{tel}(W)}}$, has one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness.}
 \label{fig:mini-terms}
 \end{figure}
-
-A literal has its precise type $\obj{\tgt{\mathit{tel}(W)}}$, the telescope with one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness, and nothing else. A literal typed at a declaration is a literal under a cast. The cast that the translation inserts for a literal $\dnew{x}{\ddeftyp{A}{T}}$ typed at $\src{\dtyp{A}{T}{T}}$ reads both bounds off the one equality, once flipped:
-\[
-\mathit{litCo} = \ev{obj}\,[\,\peq{\sel{\self}{A}}{\weak{\trans{T}}}\,]\,[\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,0)\,\ev{none}\,] .
-\]
-The first template reads $\peq{\sel{\self}{A}}{\weak{\trans{T}}}$ backwards as $\weak{\trans{T}} \le \sel{\self}{A}$, the lower bound, and the second reads it forwards as the upper bound.
-
-Application instantiates the codomain at the root of the argument, as the source rule \rn{All-E} does. A let requires the type of the body not to mention the bound variable, as in the source.
 
 \paragraph{Stores.}
 A store holds one value per location, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal without casts, typed in the context of the entries before it, at its own type, with the location bound transparently. The self of a stored literal becomes the location, so the witnesses of $\tgt{\nu(\self.\,W)}$ stored at $x$ are $W$ with $x$ for $\self$:
@@ -184,12 +222,29 @@ A store holds one value per location, and store typing $\storej{\sigma}{\Gamma}$
 \and
 \inferrule{\storej{\sigma}{\Gamma} \\ v \text{ has no casts} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v)}}
 \end{mathpar}
-Here $\mathit{witnesses}(\tgt{\nu(\self.\,W)}) = W$ and $\mathit{witnesses}(\lambda(x : S).\,t) = \tnil$, so every block name of a lambda is defined as $\top$. The store is inert: a location's type is the precise type of its value and asserts nothing beyond its definitions. Every further fact about a location is established by a cast in the program.
+Here $\mathit{witnesses}(\tgt{\nu(\self.\,W)}) = W$ and $\mathit{witnesses}(\lambda(x : S).\,t) = \tnil$, so every block name of a lambda is defined as $\top$. The store is inert: a location's type is the precise type of its value and asserts nothing beyond its definitions. Every further fact about a location is established by a cast in the program, as $c$ was in the overview.
 
 \paragraph{The machine.}
-A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames and cast frames, and a term. The steps of the fragment are
+A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames and cast frames, and a term. Figure~\ref{fig:mini-machine} gives all the steps, the typing of continuations and states, and the two functions that allocation uses. Most steps push and pop frames. Allocation keeps the store inert: a value that reaches a let frame may carry casts, and the machine stores the value underneath, $\mathit{core}(v)$, at its own type, while the body uses the new variable through the composite of the stripped casts, $\mathit{adjust}(u, v)$. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, including the atoms that $\ev{member}$ eliminates at, and puts the root of the atom into types and into $\ev{def}$, which only ever see variables.
+
+The steps that matter are the three for application:
 \[
-\begin{array}{@{}lcll@{}}
+\begin{array}{@{}lcl@{}}
+\mst{\sigma}{K}{x\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} \\
+& & \quad \text{if } \sigma(x) = \lambda(z : S_0).\,t_0 \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} \\
+& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{id} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} \\
+& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{pi}\,d\,c
+\end{array}
+\]
+where the last two apply when $a$ is not a variable. Application through a bare variable is $\beta$. Application through a wrapped atom is where evidence meets execution. The machine normalizes the chain of casts on the atom, $\mathit{chain}_\sigma(a)$, which Section~\ref{sec:mini-normalizer} defines. If the chain is the identity, the closure is applied directly. If it is a function coercion $\form{pi}\,d\,c$, the argument is cast by the domain evidence $d$ and the result by the codomain evidence $c$. This is the usual way a coercion between function types acts on a function, except that here the machine computes the coercion from the evidence at run time. Progress therefore has to show that the normalizer succeeds and returns one of these two forms whenever an atom of function type is applied.
+
+\begin{figure}
+\small
+\color{tgtcol}
+\[
+\begin{array}{@{}lcl@{}}
 \mst{\sigma}{K}{\klet x = t \kin u} &\step& \mst{\sigma}{K \triangleright \ev{let}\,u}{t} \\
 \mst{\sigma}{K}{\ev{cast}\,t\,e} &\step& \mst{\sigma}{K \triangleright \ev{cast}\,e}{t} \\
 \mst{\sigma}{K \triangleright \ev{cast}\,e}{v} &\step& \mst{\sigma}{K}{\ev{cast}\,v\,e} \\
@@ -201,23 +256,14 @@ A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames and cast 
 \mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} \\
 & & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{id} \\
 \mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} \\
-& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{pi}\,d\,c
-\end{array}
-\]
-where the last two rules apply when $a$ is not a variable. Allocation keeps the store inert. The value that reaches a let frame may carry casts. The machine stores the value underneath at its own type, and the body uses the new variable $x$ through the composite of the stripped casts:
-\[
-\begin{array}{@{}lcl@{}}
+& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0 \text{ and } \mathit{chain}_\sigma(a) = \form{pi}\,d\,c \\[4pt]
 \mathit{core}(\ev{cast}\,v\,e) & = & \mathit{core}(v) \\
 \mathit{core}(v) & = & v \quad \text{if } v \text{ is not a cast} \\
 \mathit{adjust}(u, v) & = & u \quad \text{if } v \text{ is not a cast} \\
 \mathit{adjust}(u, \ev{cast}\,(\cdots(\ev{cast}\,v_0\,e_1)\cdots)\,e_n) & = & u[x \mapsto \ev{cast}\,x\,\weak{E}]
 \end{array}
 \]
-for a value $v_0$ that is not a cast, where $E = \ev{trans}\,(\cdots(\ev{trans}\,e_1\,e_2)\cdots)\,e_n$ is the composite of the casts. The variable is still used at the type the program expects, through a cast, and the store holds the literal at its precise type. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, including the atoms that $\ev{member}$ eliminates at, and puts the root of the atom into types and into $\ev{def}$, which only ever see variables.
-
-Continuations and states are typed by the rules
 \begin{mathpar}
-\color{tgtcol}
 \inferrule{ }{\contj{\Gamma}{\cdot}{T}{T}}
 \and
 \inferrule{\tmj{\Gamma, x : T}{u}{\weak{U}} \\ \contj{\Gamma}{K}{U}{V}}{\contj{\Gamma}{K \triangleright \ev{let}\,u}{T}{V}}
@@ -226,9 +272,10 @@ Continuations and states are typed by the rules
 \and
 \inferrule{\storej{\sigma}{\Gamma} \\ \tmj{\Gamma}{t}{T} \\ \contj{\Gamma}{K}{T}{U}}{\vdash \mst{\sigma}{K}{t} : U}
 \end{mathpar}
-where $\contj{\Gamma}{K}{T}{U}$ says that $K$ accepts a value of type $T$ and produces one of type $U$, and $u$ in a let frame binds $x$. A state is final when its continuation is empty and its term is a value or an atom.
-
-Application through a bare variable is $\beta$. Application through a wrapped atom is where evidence meets execution. The machine normalizes the chain of casts on the atom, $\mathit{chain}_\sigma(a)$, which is defined in the next subsection. If the chain is the identity, the closure is applied directly. If it is a function coercion $\form{pi}\,d\,c$, the argument is cast by the domain evidence $d$ and the result by the codomain evidence $c$. This is the usual way a coercion between function types acts on a function, except that here the machine computes the coercion from the evidence at run time. Progress therefore has to show that the normalizer succeeds and returns one of these two forms whenever an atom of function type is applied.
+\color{black}
+\caption{The machine of the fragment. The last two application steps apply when $a$ is not a variable. In $\mathit{adjust}$ the value $v_0$ is not a cast and $E = \ev{trans}\,(\cdots(\ev{trans}\,e_1\,e_2)\cdots)\,e_n$ is the composite of the casts. The body $u$ of a let frame binds the new variable $x$. $\contj{\Gamma}{K}{T}{U}$ says that $K$ accepts a value of type $T$ and produces one of type $U$. A state is final when its continuation is empty and its term is a value or an atom.}
+\label{fig:mini-machine}
+\end{figure}
 
 \subsection{Head forms and the normalizer}\label{sec:mini-normalizer}
 
@@ -242,7 +289,9 @@ Over a store, every variable is a location, every location is bound transparentl
 \text{Views} & V & ::= & \tnil \mid \tcons{V}{Q}
 \end{array}
 \]
-Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}$. A head form says how an inclusion holds at its head. $\form{bot}$ and $\form{top}$ say that the source is $\bot$ or the target is $\top$. $\form{id}$ says that the two sides are equal after following definitions. $\form{pi}\,d\,c$ is a function coercion with domain evidence $d$ and codomain evidence $c$, kept as evidence, since the machine uses them as casts. $\form{obj}\,\mathit{Es}$ is an object coercion with one entry per target proposition. An entry $\form{le}\,F\,H\,G$ is a normalized template: the two sides have become head forms, with $\form{id}$ for an absent side, and the hole still names a source proposition. A view $V$ lists one proposition form per proposition of an atom's object type: the head form that proves an inclusion, or $\form{eq}$ for an equality.
+Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}$. A head form says how an inclusion holds at its head. $\form{bot}$ and $\form{top}$ say that the source is $\bot$ or the target is $\top$. $\form{id}$ says that the two sides are equal after following definitions. $\form{pi}\,d\,c$ is a function coercion with domain evidence $d$ and codomain evidence $c$, kept as evidence, since the machine uses them as casts. $\form{obj}\,\mathit{Es}$ is an object coercion with one entry per target proposition. An entry $\form{le}\,F\,H\,G$ is a normalized template: the two sides have become head forms, with $\form{id}$ for an absent side, and the hole still names a source proposition.
+
+Head forms alone are not enough, because $\ev{member}$ reads a proposition of an atom's type, and the normalizer has to know how that proposition holds. A view $V$ of an atom lists one proposition form per proposition of the atom's object type: the head form that proves an inclusion, or $\form{eq}$ for an equality.
 
 \begin{figure}
 \small
@@ -273,9 +322,21 @@ Head forms wear a hat, to tell the form $\form{obj}$ from the evidence $\ev{obj}
 \label{fig:mini-normalizer}
 \end{figure}
 
-Figure~\ref{fig:mini-normalizer} gives the normalizer, a family of mutually recursive functions over a fixed store. Each is partial: it fails when a lookup finds the wrong kind of thing, which the theorem below shows does not happen for typed evidence. In the mechanization they take fuel and return an option, and since the results are monotone in the fuel, the fuel is bookkeeping. Every recursive call is on a subterm.
+Figure~\ref{fig:mini-normalizer} gives the normalizer, a family of mutually recursive functions over a fixed store. Each is partial: it fails when a lookup finds the wrong kind of thing, which Section~\ref{sec:mini-theorem} shows does not happen for typed evidence. In the mechanization they take fuel and return an option, and since the results are monotone in the fuel, the fuel is bookkeeping. Every recursive call is on a subterm.
 
 Reflexivity, and inclusion read off an equality, normalize to the identity. Transitivity composes, which is defined below. $\ev{member}\,a\,e\,i$ computes the view of the atom $a$ through the head form of $e$ and returns the $i$-th entry. The view of a location is read off the literal stored there: one $\form{eq}$ per witness, since the precise type of a literal has one equality per witness. The view of a cast atom is the view of the atom underneath pushed through the head form of the cast. Pushing a view through an object form applies each entry to the view: the hole of the entry is filled by the view's form at that position and composed with the two sides. The chain of casts of an atom composes the head forms of its casts, from the root outwards. It is the form the machine consults at an application.
+
+\begin{example}[A selection through a literal]\label{ex:mini-sel}
+Let the store hold $\sigma(x) = \tgt{\nu(\self.\,A = \mathit{Int})}$, so $\Gamma(x) = \obj{[\,\peq{\sel{\self}{A}}{\mathit{Int}}\,]}$. The atom $a = \ev{cast}\,x\,\mathit{litCo}_{\mathit{Int}}$ has the declaration type $R = \obj{[\,\ple{\mathit{Int}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\mathit{Int}}\,]}$, and
+\[
+\ev{member}\ a\ (\ev{refl}\,R)\ 1 \ :\ \sel{x}{A} \le \mathit{Int}
+\]
+reads its upper bound. The normalizer computes the view of $a$ through $\form{id}$, which is the view of $x$ through the head form of $\mathit{litCo}_{\mathit{Int}}$. That head form is
+\[
+\form{obj}\,[\,\form{le}\,\form{id}\,(\ev{eqSym}\,0)\,\form{id},\ \form{le}\,\form{id}\,(\ev{eq}\,0)\,\form{id}\,] .
+\]
+The view of $x$ is $[\,\form{eq}\,]$. Applying the entries fills both holes with $\form{id}$, so the view of $a$ is $[\,\form{le}\,\form{id},\ \form{le}\,\form{id}\,]$, and the evidence normalizes to $\form{id}$: the selection $\sel{x}{A}$ is its definition.
+\end{example}
 
 \paragraph{Composition.}
 Composition $F \circ G$ is defined by the first equation that applies:
@@ -295,9 +356,9 @@ Two function forms compose contravariantly in the domain. The first codomain evi
 \]
 an entry whose hole names a source proposition. A hole that reads an equality of the middle telescope would need an entry for that equality in the first form. The full calculus has such entries, as Section~\ref{sec:canonical} shows, and the fragment has none. Its composite is undefined. No typed composition reaches that case, because the fragment has no typed object form into a telescope with an equality. Every recursive call is on a subterm, and no view is consulted. This is where templates pay off: the entries of an object form do not depend on the atom they will be applied to, so object forms compose by syntax.
 
-All other pairs are not composable between typed forms, and the normalizer returns the first form for them, with one exception: $\form{top} \circ \form{obj}\,\mathit{Es}$, where the second form starts at $\top$. A typed object form out of $\top$ has no entries, since $\top$ has no propositions for a hole to name, and its target is $\top$ again. The composite is $\form{top}$. This is the simplification announced at the start of the section. In the full calculus an object form can have entries that name no source proposition, and the full composition returns a different form there, with the same endpoints.
+All other pairs are not composable between typed forms, and the normalizer returns the first form for them, with one exception: $\form{top} \circ \form{obj}\,\mathit{Es}$, where the second form starts at $\top$. A typed object form out of $\top$ has no entries, since $\top$ has no propositions for a hole to name, and its target is $\top$ again. The composite is $\form{top}$. This is the simplification of the fragment. In the full calculus an object form can have entries that name no source proposition, and the full composition returns a different form there, with the same endpoints.
 
-\subsection{Typed forms}
+\subsection{Typed forms}\label{sec:mini-typed}
 
 A head form is typed syntactically. Typedness reads the endpoints of a form only after following definitions. Resolution $\resolve{\Gamma}{T}$ follows a name $\sel{x}{\ell}$ of a transparent binder to its witness, and repeats. A name of an opaque binder, and any type that is not a name, resolves to itself. Definitions may be cyclic, as in a literal $\tgt{\nu(\self.\,A = \sel{\self}{A})}$, and a cycle resolves to $\top$. Section~\ref{sec:resolution} explains this and proves the two facts used below: resolution of a defined name is resolution of its definition, and resolution is idempotent.
 
@@ -322,6 +383,10 @@ A head form is typed syntactically. Typedness reads the endpoints of a form only
 \inferrule{\entj{\Gamma}{\mathit{Es}}{\tel_1}{\tel_2} \\ \holej{\tel_1}{H}{X}{Y} \\ \Gamma \models F : S \le X \text{ (side)} \\ \Gamma \models G : Y \le T \text{ (side)}}
   {\entj{\Gamma}{\tcons{\mathit{Es}}{\form{le}\,F\,H\,G}}{\tel_1}{\tcons{\tel_2}{\ple{S}{T}}}}
 \\
+\inferrule{ }{\Gamma \models \form{id} : X \le X \text{ (side)}}
+\and
+\inferrule{\formj{\Gamma}{F}{A}{B}}{\Gamma \models F : \weak{A} \le \weak{B} \text{ (side)}}
+\\
 \inferrule{ }{\viewj{\Gamma}{r}{\sigma}{\tnil}{\tnil}}
 \and
 \inferrule{\viewj{\Gamma}{r}{\sigma}{V}{\tel} \\ \formj{\Gamma}{F}{\inst{S}{r}}{\inst{T}{r}}}
@@ -331,7 +396,7 @@ A head form is typed syntactically. Typedness reads the endpoints of a form only
   {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{eq}}}{\tcons{\tel}{\peq{S}{T}}}}
 \end{mathpar}
 \color{black}
-\caption{Typed forms, typed entries, and typed views in the fragment. A side is typed as $\form{id}$ between identical types, or as a typed form $\formj{\Gamma}{F}{A}{B}$ between closed types weakened under the self, $\weak{A}$ and $\weak{B}$. A view is typed against a telescope instantiated at a root $r$.}
+\caption{Typed forms, typed entries, typed sides, and typed views in the fragment. A view is typed against a telescope instantiated at a root $r$.}
 \label{fig:mini-formtyped}
 \end{figure}
 
@@ -343,7 +408,7 @@ If $\formj{\Gamma}{F}{S}{T}$ then $S$ resolves to $\bot$, or $T$ resolves to $\t
 
 The proof is a look at Figure~\ref{fig:mini-formtyped}. For $\top \le \bot$: $\top$ is $\obj{\tnil}$, which is neither $\bot$ nor a name, so it resolves to itself, and $\bot$ resolves to $\bot$. $\form{bot}$ would need $\top$ to resolve to $\bot$, $\form{top}$ would need $\bot$ to resolve to $\top$, $\form{id}$ would need them to be equal, and $\form{pi}$ and $\form{obj}$ would need both to be function types or both object types.
 
-\subsection{The normalization theorem}
+\subsection{The normalization theorem}\label{sec:mini-theorem}
 
 Two lemmas carry the theorem. Both are inductions on the size of forms.
 
@@ -415,7 +480,15 @@ Let $\storej{\sigma}{\Gamma}$.
 The first item is Theorem~\ref{thm:mini-canon} and Lemma~\ref{lem:mini-shapes}. For the second, Theorem~\ref{thm:mini-chain} gives a form typed from $\Gamma(\rt{a})$ to $\pit{S}{T}$. The type of a location is the type of its stored value, a function type for a lambda and an object type for a literal. By Lemma~\ref{lem:mini-shapes} there is no form from an object type to a function type, so the stored value is a lambda. Its type is a function type, and the forms between two function types are $\form{id}$ and $\form{pi}$, since $\form{bot}$, $\form{top}$, and $\form{obj}$ need an endpoint of another shape.
 \end{proof}
 
-\subsection{Preservation and progress}
+\begin{example}[Bad bounds, revisited]\label{ex:mini-bad}
+Here is the overview again, with every step justified. Let $\lambda(x : D).\,t$ be applied to an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(\self.\,A = W)}$, where we take $W$ closed. The atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
+\[
+\form{obj}\,[\,\form{le}\,F_1\,(\ev{eqSym}\,0)\,\form{id},\ \ \form{le}\,\form{id}\,(\ev{eq}\,0)\,G_2\,] \qquad \text{with } \formj{\Gamma}{F_1}{\top}{W} \text{ and } \formj{\Gamma}{G_2}{W}{\bot} .
+\]
+By Lemma~\ref{lem:mini-combine}, $F_1 \circ G_2$ is typed from $\top$ to $\bot$, which Lemma~\ref{lem:mini-shapes} excludes. So no such $c$ exists, and the lambda is never applied in a typed state. If it were, the normalizer would meet $\ev{member}\,(\ev{cast}\,z\,c)\,(\ev{refl}\,D)\,0$ in the body and compute exactly $F_1$, and $G_2$ for the other read, and their composite.
+\end{example}
+
+\subsection{Preservation and progress}\label{sec:mini-safety}
 
 With the corollary, preservation and progress have the textbook shape.
 
@@ -433,22 +506,36 @@ The cases that are not about application are the usual lemmas: weakening, substi
 
 Neither proof inverts evidence. Where the textbook proof inverts subtyping, this one normalizes evidence and reads the shape off the normal form.
 
-\subsection{Three examples}
+\subsection{Translating the fragment}\label{sec:mini-translation}
 
-\begin{example}[A selection through a literal]\label{ex:mini-sel}
-Let the store hold $\sigma(x) = \tgt{\nu(\self.\,A = \mathit{Int})}$, so $\Gamma(x) = \obj{[\,\peq{\sel{\self}{A}}{\mathit{Int}}\,]}$. The program uses $x$ at its declared type through the atom $a = \ev{cast}\,x\,\mathit{litCo}$, of type $\trans{\dtyp{A}{\mathit{Int}}{\mathit{Int}}}$, and the source rule \rn{Sel-<:} becomes
+The source fragment has the types
 \[
-\ev{member}\ a\ (\ev{refl}\,\trans{\dtyp{A}{\mathit{Int}}{\mathit{Int}}})\ 1 \ :\ \sel{x}{A} \le \mathit{Int} .
+\src{S, T ::= \top \mid \bot \mid \dtyp{A}{S}{T} \mid x.A \mid \dall{x}{S}{T}} .
 \]
-The normalizer computes the view of $a$ through $\form{id}$, which is the view of $x$ through the head form of $\mathit{litCo}$. That head form is
+They translate homomorphically, except that a declaration becomes an object type:
 \[
-\form{obj}\,[\,\form{le}\,\form{id}\,(\ev{eqSym}\,0)\,\form{id},\ \form{le}\,\form{id}\,(\ev{eq}\,0)\,\form{id}\,] .
+\begin{array}{@{}rcl@{}}
+\trans{\src{\top}} & = & \tgt{\top} \\
+\trans{\src{\bot}} & = & \tgt{\bot} \\
+\trans{\dsel{x}{A}} & = & \sel{x}{A} \\
+\trans{\dall{x}{S}{T}} & = & \pit{\trans{S}}{\trans{T}} \\
+\trans{\dtyp{A}{S}{T}} & = & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]}
+\end{array}
 \]
-The view of $x$ is $[\,\form{eq}\,]$. Applying the entries fills both holes with $\form{id}$, so the view of $a$ is $[\,\form{le}\,\form{id},\ \form{le}\,\form{id}\,]$, and the evidence normalizes to $\form{id}$: the selection $\sel{x}{A}$ is its definition.
-\end{example}
+A subtyping derivation becomes evidence, and a typing of a variable becomes an atom rooted at that variable. Most rules map to the evidence of the same name, and subsumption becomes a cast. The rules that read declarations are the interesting ones. If $h$ derives $\src{x : \dtyp{A}{S}{T}}$ and $\trans{h}_a$ is its atom, the two selection rules eliminate at that atom:
+\[
+\begin{array}{@{}rcl@{}}
+\trans{\rn{<:-Sel}\,h} & = & \ev{member}\ \trans{h}_a\ (\ev{refl}\,\trans{\dtyp{A}{S}{T}})\ 0 \ :\ \trans{S} \le \sel{x}{A} \\
+\trans{\rn{Sel-<:}\,h} & = & \ev{member}\ \trans{h}_a\ (\ev{refl}\,\trans{\dtyp{A}{S}{T}})\ 1 \ :\ \sel{x}{A} \le \trans{T}
+\end{array}
+\]
+The rule \rn{Typ}, which relates two declarations of $A$, becomes the object coercion of Section~\ref{sec:mini-evidence} with the translated premises as sides:
+\[
+\trans{\rn{Typ}\,d_1\,d_2} = \ev{obj}\,(\mathit{tel}\,\dtyp{A}{S_1}{T_1})\,[\,\ev{le}\,(\ev{some}\,\trans{d_1})\,(\ev{le}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{le}\,1)\,(\ev{some}\,\trans{d_2})\,] ,
+\]
+where $\mathit{tel}\,\src{T}$ is the telescope of $\trans{T}$. A literal $\dnew{x}{\ddeftyp{A}{T}}$ typed at $\src{\dtyp{A}{T}{T}}$ becomes the literal $\tgt{\nu(\self.\,A = \trans{T})}$ under the cast $\mathit{litCo}_{\trans{T}}$.
 
-\begin{example}[Bad bounds]\label{ex:mini-bad}
-The program $\src{\lambda(x : \dtyp{A}{\top}{\bot}).\ \klet y = x \kin y}$, typed at an unrelated declaration $\src{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$, retypes $x$ by
+The bad-bounds program of the overview, $\src{\lambda(x : \dtyp{A}{\top}{\bot}).\ \klet y = x \kin y}$, typed at an unrelated declaration $\src{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$, retypes $x$ by
 \[
 \src{\dtyp{A}{\top}{\bot} \sub \top \sub x.A \sub \bot \sub \dtyp{B}{\mathit{Int}}{\mathit{Int}}} .
 \]
@@ -456,30 +543,7 @@ It translates to $\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y$ with
 \[
 \tgt{e} = \ev{trans}\ (\ev{top}\,D)\ (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,0)\ (\ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,D)\,1)\ (\ev{bot}\,R))) ,
 \]
-where $D = \trans{\dtyp{A}{\top}{\bot}}$ and $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps eliminate the two propositions of $x$'s own type. No absurdity rule is involved, and the program type checks in \FCdot without subsumption.
-
-Now suppose the lambda is applied. Its argument is an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(\self.\,A = W)}$, where we take $W$ closed, so the atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
-\[
-\form{obj}\,[\,\form{le}\,F_1\,(\ev{eqSym}\,0)\,\form{id},\ \ \form{le}\,\form{id}\,(\ev{eq}\,0)\,G_2\,] \qquad \text{with } \formj{\Gamma}{F_1}{\top}{W} \text{ and } \formj{\Gamma}{G_2}{W}{\bot} .
-\]
-By Lemma~\ref{lem:mini-combine}, $F_1 \circ G_2$ is typed from $\top$ to $\bot$, which Lemma~\ref{lem:mini-shapes} excludes. So no such $c$ exists, and the lambda is never applied in a typed state. If it were, the normalizer would meet $\ev{member}\,(\ev{cast}\,z\,c)\,(\ev{refl}\,D)\,0$ in the body and compute exactly $F_1$, and $G_2$ for the other read, and their composite.
-\end{example}
-
-\begin{example}[Elimination at a cast atom]\label{ex:mini-cast}
-Let
-\[
-\src{S = \dtyp{A}{\bot}{\top}, \qquad T = \dtyp{A}{\mathit{Int}}{\top}, \qquad \Gamma = x : \dtyp{B}{S}{T},\ w : S .}
-\]
-DOT derives $\src{S \sub x.B \sub T}$, hence $\src{w : T}$ by subsumption, hence $\src{\mathit{Int} \sub w.A}$ by \rn{<:-Sel}. In the target the retyping of $w$ is the atom $\ev{cast}\,w\,e_{ST}$, where
-\[
-\tgt{e_{ST}} = \ev{trans}\ (\ev{member}\,x\,(\ev{refl}\,X)\,0)\ (\ev{member}\,x\,(\ev{refl}\,X)\,1) \ :\ \trans{S} \le \trans{T}
-\]
-goes through the two bounds of $x$, with $X = \trans{\dtyp{B}{S}{T}}$. The fact $\mathit{Int} \le \sel{w}{A}$ is
-\[
-\ev{member}\ (\ev{cast}\,w\,e_{ST})\ (\ev{refl}\,\trans{T})\ 0 ,
-\]
-an elimination at the cast atom. The root of the cast atom is $w$, so the proposition $\ple{\mathit{Int}}{\sel{\self}{A}}$ of $\trans{T}$ is instantiated at $w$, and the result is about the name $\sel{w}{A}$, the same name that $w$'s declared type $\trans{S}$ talks about. This example is why $\ev{member}$ takes an atom and not a variable. Section~\ref{sec:counterexample} shows that a design without block names cannot translate it.
-\end{example}
+where $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps are the evidence of the overview, which eliminates the two propositions of the type of $x$. No absurdity rule is involved, and the program type checks in \FCdot without subsumption. Section~\ref{sec:translation} gives the whole translation.
 
 \subsection{What the miniature leaves out}
 
