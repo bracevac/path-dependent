@@ -37,17 +37,17 @@ The argument needs four definitions and one theorem. Section~\ref{sec:mini-types
 
 \subsection{Types: block names and telescopes}\label{sec:mini-types}
 
-The first design decision of \FCdot is how a type refers to a term. In \FCdot every term binder $x$ owns a block of type names, one name $\sel{x}{\ell}$ for every label $\ell$, and a type mentions a term only through such a name. The name $\sel{x}{A}$ does not depend on the type of $x$. Whatever type $x$ is viewed at, $\sel{x}{A}$ is the same name, and the type of $x$ only says what is known about it. Section~\ref{sec:counterexample} shows why this matters.
+The first design decision of \FCdot is how a type refers to a term. We write $A$ and $B$ for the names of type members, which DOT calls labels. In \FCdot every term binder $x$ owns a block of type names, one name $\sel{x}{A}$ for every member name $A$, and a type mentions a term only through such a name. The name $\sel{x}{A}$ does not depend on the type of $x$. Whatever type $x$ is viewed at, $\sel{x}{A}$ is the same name, and the type of $x$ only says what is known about it. Section~\ref{sec:counterexample} shows why this matters.
 
 The second decision is how an object type says what is known. An object type is a telescope of propositions about a self binder:
 \[
 \begin{array}{@{}lrcl@{}}
-\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \\
+\text{Types} & S,T & ::= & \bot \mid \sel{x}{A} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \\
 \text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P}
 \end{array}
 \]
-The object type $\obj[x]{\tel}$ binds the variable $x$ in $\tel$, the way $\lambda(x : S).\,t$ binds $x$ in $t$. We call $x$ the self of the object type. The propositions of $\tel$ mention it only through its block names $\sel{x}{\ell}$, like any other variable. The dependent function type $\pit[x]{S}{T}$ binds its parameter $x$ in $T$, and $T$ may mention the block of $x$. An inclusion $\ple{S}{T}$ says that $S$ is included in $T$, and an equality $\peq{S}{T}$ that they are equal. Propositions do not bind, so a telescope is a list. It is written oldest first, $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$, and positions count from $0$.
+The object type $\obj[x]{\tel}$ binds the variable $x$ in $\tel$, the way $\lambda(x : S).\,t$ binds $x$ in $t$. We call $x$ the self of the object type. The propositions of $\tel$ mention it only through its block names $\sel{x}{A}$, like any other variable. The dependent function type $\pit[x]{S}{T}$ binds its parameter $x$ in $T$, and $T$ may mention the block of $x$. An inclusion $\ple{S}{T}$ says that $S$ is included in $T$, and an equality $\peq{S}{T}$ that they are equal. Propositions do not bind, so a telescope is a list. It is written oldest first, $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$, and positions count from $0$.
 
 Bound variables can be renamed. In rules and examples the self is named $\self$ and the parameter of a function type $x$, unless a binder of that name is already in scope. A telescope written on its own, as evidence carries it, is the body of an object type, and its self is $\self$. An object type nested inside another renames its self, say to $\self'$, when its propositions mention the outer self. The empty object type asserts nothing, so every type is included in it, and it serves as $\top$:
 \[
@@ -73,9 +73,9 @@ Terms are in let-normal form over atoms:
 \]
 An atom is a variable under casts, and its root is the variable underneath: $\rt{x} = x$ and $\rt{\ev{cast}\,a\,e} = \rt{a}$. A cast erases to nothing, so an atom is a variable at run time. Every change of type is a cast with explicit evidence $e$, which Section~\ref{sec:mini-evidence} introduces. There is no subsumption rule.
 
-A literal $\tgt{\nu(x.\,W)}$ in the fragment has only type members, given by its witness list $W$. It binds its self $x$ in $W$, as an object type does. A witness list assigns $\top$ to every label it does not mention, and $W(A)$ is the witness at $A$. The precise type of a literal, $\obj{\tgt{\mathit{tel}(W)}}$, has one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness and nothing else. It says what the literal defines and no more.
+A literal $\tgt{\nu(x.\,W)}$ in the fragment has only type members, given by its witness list $W$. It binds its self $x$ in $W$, as an object type does. A witness list assigns $\top$ to every name it does not mention, and $W(A)$ is the witness at $A$. The precise type of a literal, $\obj{\tgt{\mathit{tel}(W)}}$, has one equality $\peq{\sel{\self}{A}}{W(A)}$ per witness and nothing else. It says what the literal defines and no more.
 
-A context has two kinds of binder. An opaque binder $x : T$ is what a lambda parameter or a let introduces, and its block is abstract. A transparent binder $x : T \mathrel{:=} W$ comes with a witness list $W$ that defines its block, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that the witness at $\ell$ is $W$. Transparent binders arise in the store, where every location is bound transparently by the literal stored there.
+A context has two kinds of binder. An opaque binder $x : T$ is what a lambda parameter or a let introduces, and its block is abstract. A transparent binder $x : T \mathrel{:=} W$ comes with a witness list $W$ that defines its block, and $\Gamma(x) \ni A \mathrel{:=} T$ says that the witness at $A$ is $T$. Transparent binders arise in the store, where every location is bound transparently by the literal stored there.
 
 \subsection{Evidence}\label{sec:mini-evidence}
 
@@ -83,7 +83,7 @@ Evidence is a proof term for an inclusion or an equality. The fragment has
 \[
 \begin{array}{@{}lrcl@{}}
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \mid \ev{obj}\,\tel\,m \mid \ev{member}\,a\,e\,i \\
-\text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,\ell \\
+\text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,A \\
 \text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e
@@ -137,7 +137,7 @@ Figure~\ref{fig:mini-evidence} gives the typing. It includes the typing of atoms
 \and
 \inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
 \and
-\inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
+\inferrule{\Gamma(x) \ni A \mathrel{:=} T}{\eqj{\Gamma}{\ev{def}\,x\,A}{\sel{x}{A}}{T}}
 \end{mathpar}
 \color{black}
 \caption{Typing of atoms and evidence in the fragment. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
@@ -360,7 +360,7 @@ All other pairs are not composable between typed forms, and the normalizer retur
 
 \subsection{Typed forms}\label{sec:mini-typed}
 
-A head form is typed syntactically. Typedness reads the endpoints of a form only after following definitions. Resolution $\resolve{\Gamma}{T}$ follows a name $\sel{x}{\ell}$ of a transparent binder to its witness, and repeats. A name of an opaque binder, and any type that is not a name, resolves to itself. Definitions may be cyclic, as in a literal $\tgt{\nu(\self.\,A = \sel{\self}{A})}$, and a cycle resolves to $\top$. Section~\ref{sec:resolution} explains this and proves the two facts used below: resolution of a defined name is resolution of its definition, and resolution is idempotent.
+A head form is typed syntactically. Typedness reads the endpoints of a form only after following definitions. Resolution $\resolve{\Gamma}{T}$ follows a name $\sel{x}{A}$ of a transparent binder to its witness, and repeats. A name of an opaque binder, and any type that is not a name, resolves to itself. Definitions may be cyclic, as in a literal $\tgt{\nu(\self.\,A = \sel{\self}{A})}$, and a cycle resolves to $\top$. Section~\ref{sec:resolution} explains this and proves the two facts used below: resolution of a defined name is resolution of its definition, and resolution is idempotent.
 
 \begin{figure}
 \small
@@ -452,7 +452,7 @@ By mutual induction on the typing derivations.
 \item $\ev{refl}$, $\ev{top}$, $\ev{bot}$: the form is typed directly. $\ev{eqToLe}\,\varphi$ gives $\form{id}$, typed by item 2. $\ev{pi}\,d\,c$ gives $\form{pi}\,d\,c$, whose pieces are the typed premises.
 \item $\ev{obj}\,\tel\,m$: item 3 types the entries. The sides of a template are typed closed evidence, so item 1 applies to them.
 \item $\ev{trans}\,e\,f$: item 1 for both premises and Lemma~\ref{lem:mini-combine}.
-\item $\ev{def}\,x\,\ell$: resolution of a defined name is resolution of its definition. The other equality rules are immediate.
+\item $\ev{def}\,x\,A$: resolution of a defined name is resolution of its definition. The other equality rules are immediate.
 \item $\ev{member}\,a\,e\,i$, with $a : S_a$ and $e : S_a \le \obj{\tel}$. Item 4 gives a view of $a$, and item 1 a typed form $F$ for $e$. The form $F$ is $\form{id}$ or $\form{obj}$. It is not $\form{bot}$, because $S_a$ does not resolve to $\bot$ by item 4. It is not $\form{top}$, because $\tel$ has an $i$-th proposition and is not empty. It is not $\form{pi}$, because $\obj{\tel}$ is not a function type. If $F = \form{id}$, the view of $a$ is typed at $\tel$ by item 4. If $F = \form{obj}\,\mathit{Es}$, it is typed at $\tel$ by Lemma~\ref{lem:mini-apply}. Its $i$-th entry is a form typed from $\inst{S'}{\rt{a}}$ to $\inst{T'}{\rt{a}}$, which is the conclusion of the rule.
 \item A variable $x$: the store holds a literal or a lambda at $x$, and $\Gamma(x)$ is its type, an object type or a function type, so it does not resolve to $\bot$. For a literal, the view lists $\form{eq}$ for each equality $\peq{\sel{\self}{A}}{W(A)}$, and it is typed because $\sel{x}{A}$ resolves like its definition.
 \item A cast atom $\ev{cast}\,a\,e$ with $e : S_a \le T$: item 1 gives a typed form $F$ for $e$, and $T$ does not resolve to $\bot$. If it did, $F$ would be $\form{bot}$ or $\form{id}$, and both would make $S_a$ resolve to $\bot$, which item 4 excludes for $a$. The view through $F$ is typed as in the case of $\ev{member}$, and through $\form{top}$ it is empty, which is typed at the empty telescope of $\top$. \qedhere
@@ -549,7 +549,7 @@ where $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps a
 
 The rest of DOT adds the following to the fragment, and Sections~\ref{sec:target} and~\ref{sec:canonical} explain each.
 \begin{itemize}
-\item Fields add a third kind of proposition, presence $\phas{\ell}$, presence evidence, a projection term, and a presence entry in views. Their block names are the field types: the name $\sel{x}{a}$ is the type of the field $a$ of $x$.
+\item Fields add a second kind of member name, a third kind of proposition, presence $\phas{a}$, presence evidence, a projection term, and a presence entry in views. Their block names are the field types: the name $\sel{x}{a}$ is the type of the field $a$ of $x$.
 \item Recursive types make the self of an object type the self of the object, and add atoms that fold and unfold an object type at its root. Typedness of the chain of casts then needs a second mode, at a root.
 \item Intersections concatenate telescopes and add a pairing of two coercions and of two typings of one variable.
 \item A type that is not a declaration, such as $x.A$ or a function type, enters a telescope as a self-bound $\pbnd{T}$, which says that the object itself is included in $T$. Bounds add two head forms and the routed entries of Section~\ref{sec:canonical}. They are the reason the composition of $\form{top}$ with an object form differs in the full calculus.

@@ -36,6 +36,8 @@ Figure~\ref{fig:target-syntax} gives the syntax. As in the source, everything is
 
 \subsection{Fields and presence}
 
+Fields bring a second kind of member name. As in the source, $A$ and $B$ name type members and $a$ and $b$ name fields, and the two share one name space of labels. From here on $\ell$ ranges over all labels, and every binder $x$ has a name $\sel{x}{\ell}$ for each of them. For a field $a$ the name $\sel{x}{a}$ is a type as well, and this subsection says what it stands for.
+
 A term member $a$ of an object needs two facts: that the member exists, and what its type is. \FCdot keeps them apart. Presence, $\phas{a}$, is a proposition of its own. The type of the field is the block name $\sel{x}{a}$, which exists for every label like every other name, and what is known about it is stated by the other propositions. A field declaration translates to
 \[
 \trans{\dfld{a}{T}} = \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} ,
@@ -134,7 +136,7 @@ A morphism may also prove a target inclusion by a composition template $\ev{leTr
 \and
 \inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
 \and
-\inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
+\inferrule{\Gamma(x) \ni \ell \mathrel{:=} T}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{T}}
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\peq{S'}{T'}}}
   {\eqj{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
