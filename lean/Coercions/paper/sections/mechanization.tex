@@ -1,7 +1,7 @@
 \mathplain
 \section{Mechanization}\label{sec:mechanization}
 
-Everything in this report is mechanized in \Lean \cite{demoura2021lean}, except the miniature of Section~\ref{sec:miniature}, which is a fragment of the mechanized calculus. The development has no library dependencies: the core language and its standard library only, no Mathlib. This section is a guide for a reader who wants to check a claim against the code. Table~\ref{tab:sizes} gives the size of the development, and Table~\ref{tab:names} maps each result of the report to the declarations that prove it.
+Every theorem and lemma of Sections~\ref{sec:target} to~\ref{sec:safety} is mechanized in \Lean \cite{demoura2021lean}. The miniature of Section~\ref{sec:miniature} works on a fragment of the mechanized calculus and differs from it in the three places that Section~\ref{sec:mini-omitted} lists. Its source rule for literals is not mechanized. The development has no library dependencies: the core language and its standard library only, no Mathlib. This section is a guide for a reader who wants to check a claim against the code. Table~\ref{tab:sizes} gives the size of the development, and Table~\ref{tab:names} maps each result of the report to the declarations that prove it.
 
 \subsection{Where things are}
 

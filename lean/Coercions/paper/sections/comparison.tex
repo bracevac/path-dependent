@@ -21,7 +21,7 @@ Invertible typing separates eliminations from introductions so that induction re
 \toprule
 direct proof & \leavevmode\FCdot and the translation \\
 \midrule
-inert context & typed store, inert by construction: every location holds a literal at its precise type \\
+inert context & typed store, inert by construction: every location holds a lambda or a literal at its precise type \\
 precise typing & the precise view of a stored literal \\
 tight selection rules & the $\ev{member}$ case of the normalizer, which reads the definition of the root through the view \\
 invertible typing & typed head forms, invertible by construction \\
@@ -35,7 +35,7 @@ canonical forms of values & Corollary~\ref{cor:inversion} \\
 \end{center}
 
 \paragraph{Allocation.}
-In the direct proof, a value $v$ reaches a binder $x : T$ and must be stored at an inert type. The proof recovers an inert type $P$ of $v$ with $\src{P \sub T}$, narrows the continuation from $x : T$ to $x : P$, and stores $v$ at $P$. The term does not change. In \FCdot the value is a literal under casts. The machine stores the literal at its precise type and substitutes $\ev{cast}\,x\,E$ for $x$ in the continuation. The term changes, and the typing of the new term is atom substitution, which is proven once, before anything about normal forms.
+In the direct proof, a value $v$ reaches a binder $x : T$ and must be stored at an inert type. The proof recovers an inert type $P$ of $v$ with $\src{P \sub T}$, narrows the continuation from $x : T$ to $x : P$, and stores $v$ at $P$. The term does not change. In \FCdot the value is a literal under casts. The machine stores the literal at its precise type and substitutes $\ev{cast}\,x\,\weak{\bar{e}}$ for $x$ in the continuation. The term changes, and the typing of the new term is atom substitution, which is proven once, before anything about normal forms.
 
 \paragraph{Application.}
 In the direct proof, $f\,y$ with $f : \src{\dall{x}{S}{T}}$ inverts the typing of $f$ to find a lambda $\src{\lambda(x : S_0).\,t_0}$ in the store with $\src{S \sub S_0}$ and a body of type $T_0$ with $\src{T_0 \sub T}$ under $x : S$. It narrows the body to $x : S$, subsumes its result, and substitutes $y$. The proof reconstructs why the body meets the advertised type. In \FCdot the corresponding facts are the domain and codomain evidence of the function form that the chain of casts normalizes to, and the machine uses them: it casts the argument by $d$ and the result by $c$. The body is never narrowed, because the cast on the argument does that work at run time.
@@ -44,7 +44,7 @@ In the direct proof, $f\,y$ with $f : \src{\dall{x}{S}{T}}$ inverts the typing o
 In the direct proof, $x.a$ with $\src{x : \dfld{a}{T}}$ inverts the typing of $x$ to find the field body and a type $S$ of it with $\src{S \sub T}$. In \FCdot a projection carries presence evidence, which canonical forms turn into a field of the literal at the root. The type of the field is the block name $\sel{x}{a}$, the field body is typed at that name, and the cast that the translation put around the projection converts the name to the declared type. No inversion of field subtyping is used.
 
 \paragraph{Transitivity.}
-Both proofs need a composition theorem. In the direct proof it is about tight subtyping derivations. In \FCdot it is Lemma~\ref{lem:combine}, about typed forms, and it is a structural induction because object forms are templates: composing two object forms substitutes entries into entries without consulting any view.
+Both proofs need a composition theorem. In the direct proof it is about tight subtyping derivations. In \FCdot it is Lemma~\ref{lem:combine}, about typed forms. It is an induction on the sizes of the two forms, with no measure on derivations. That works because the entries of object forms are normalized templates: composing two object forms substitutes entries into entries without consulting any view.
 
 \subsection{What each route costs}
 

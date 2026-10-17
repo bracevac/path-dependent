@@ -3,7 +3,7 @@
 
 This section recalls the textbook proof of type safety, shows where it breaks for DOT, and sketches how this report repairs it.
 
-\subsection{The textbook proof}
+\subsection{The textbook proof}\label{sec:textbook}
 
 Type safety is proven by preservation and progress \cite{wright1994syntactic}. Preservation says that a step from a typed state leads to a typed state. Progress says that a typed state is final or can step. The case of progress that needs work is elimination. If the program applies a value $v$ of a function type, progress has to show that $v$ is a lambda, so that the application has a step. This is the canonical forms lemma.
 
@@ -61,7 +61,7 @@ is typed, and in its body $t$ every term has every type. But no object has a mem
 
 So the type system admits bad bounds, and the safety proof has to show that they never reach run time: in every context that comes from a store, subtyping can be inverted.
 
-\subsection{How the published proofs do it}
+\subsection{How the published proofs do it}\label{sec:published}
 
 Each published proof of DOT safety has to show, in some form, that bad bounds never meet a value. They differ in how.
 \begin{itemize}
@@ -72,7 +72,7 @@ Each published proof of DOT safety has to show, in some form, that bad bounds ne
 \end{itemize}
 Each of these is an argument about the derivations of one rule set. When the calculus grows, by paths \cite{rapoport2019path}, by mutation \cite{kabir2018kdot}, or by a new sort of member, the argument has to be extended by hand.
 
-\subsection{The idea of this report}
+\subsection{The idea of this report}\label{sec:idea}
 
 If a declaration is an assumption, a subtyping derivation is a proof under assumptions, and a store discharges the assumptions: every location of a store holds a literal that defines each of its type members. The idea is to make that discharge explicit. The subtyping proof becomes a term, the proof term mentions the binders whose declarations it uses, and running the program instantiates those binders by locations of the store. A proof term that mentions only locations of a typed store is closed in the sense that matters, and it can be normalized. Normalization replaces each use of a declaration by what the store says about it, and composes the results. This is close to cut elimination in logic, with transitivity as the cut.
 

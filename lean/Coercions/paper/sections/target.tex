@@ -1,7 +1,7 @@
 \mathtgt
 \section{The Full Target: \texorpdfstring{\FCdot}{FCdot}}\label{sec:target}
 
-This section gives the whole of \FCdot. It adds four features to the fragment of Section~\ref{sec:miniature}, fields, recursive types, intersections, and self-bounds, and one more kind of template. Each subsection says what the feature adds and why. Figures~\ref{fig:target-syntax}, \ref{fig:evidence}, \ref{fig:terms}, and~\ref{fig:machine} give the complete calculus and can be read on their own.
+This section gives the whole of \FCdot. It adds four features to the fragment of Section~\ref{sec:miniature}, fields, recursive types, intersections, and self-bounds. A last subsection adds composition templates. Each subsection says what the feature adds and why. Figures~\ref{fig:target-syntax}, \ref{fig:evidence}, \ref{fig:terms}, and~\ref{fig:machine} give the complete calculus, together with the allocation functions and the typing of continuations and states in Figure~\ref{fig:mini-machine}.
 
 \begin{figure}
 \small
@@ -37,7 +37,7 @@ Figure~\ref{fig:target-syntax} gives the syntax. As in the source, everything is
 
 \subsection{Fields and presence}
 
-Fields bring a second kind of member name. As in the source, $A$ and $B$ name type members and $a$ and $b$ name fields, and the two share one name space of labels. From here on $\ell$ ranges over all labels, and every binder $x$ has a name $\sel{x}{\ell}$ for each of them. For a field $a$ the name $\sel{x}{a}$ is a type as well, and this subsection says what it stands for.
+Fields bring a second kind of member name. As in the source, $A$ and $B$ name type members. Lower-case labels such as $a$ name fields, and the two kinds share one name space of labels. The letters $a$ and $b$ also stand for atoms, as in Section~\ref{sec:miniature}, and the context tells them apart. From here on $\ell$ ranges over all labels, and every binder $x$ has a name $\sel{x}{\ell}$ for each of them. For a field $a$ the name $\sel{x}{a}$ is a type as well, and this subsection says what it stands for.
 
 A term member $a$ of an object needs two facts: that the member exists, and what its type is. \FCdot keeps them apart. Presence, $\phas{a}$, is a proposition of its own. The type of the field is the block name $\sel{x}{a}$, which exists for every label like every other name, and what is known about it is stated by the other propositions. A field declaration translates to
 \[
@@ -53,7 +53,7 @@ where $\ell_1, \ldots, \ell_k$ are the labels of $W$, oldest first, $\ell'_1, \l
 
 Presence evidence has two forms. $\ev{member}\,a\,e\,i$ eliminates a presence proposition at an atom, like the other elimination rules. $\ev{field}\,\ell$ reads presence off a transparent binder that records the field. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to the declared field type takes a further cast, which the translation reads off the declaration. There are two more templates. $\ev{has}\,j$ proves a target presence from the source presence at position $j$, and $\ev{eq}\,j\,b$ proves a target equality from the source equality at $j$, flipped when $b$ is true.
 
-\subsection{Recursive types}
+\subsection{Recursive types}\label{sec:target-rec}
 
 In the fragment the bounds of a declaration could not mention the self. A recursive type $\dmu{x}{T}$ of DOT binds its own self, and that self is identified with the self of the object type. The type of Example~\ref{ex:hide}, with the intersection of the next subsection, becomes
 \[
@@ -92,15 +92,15 @@ Not every type is a declaration. An intersection $x.A \wedge \dfld{a}{T}$ has an
 \]
 A bound has one elimination, one introduction, and one template.
 \begin{itemize}
-\item The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound, $\obj{\tel} \le T$, when that bound is closed, $\pbnd{\weak{T}}$.
+\item The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound, $\obj{\tel} \le T$, when that bound is self-free, $\pbnd{\weak{T}}$.
 \item The evidence $\ev{intoBnd}\,e$ turns $S \le T$ into $S \le \obj{[\,\pbnd{\weak{T}}\,]}$, the object type with that one bound.
-\item The template $\ev{bnd}\,e$ proves a target bound, where $e$ is closed evidence out of the source object type as a whole. This is the one template that reads the whole source rather than one of its propositions. It still eliminates nothing through the self, because $e$ is closed.
+\item The template $\ev{bnd}\,e$ proves a target bound, where $e$ is self-free evidence out of the source object type as a whole. This is the one template that reads the whole source rather than one of its propositions. It still eliminates nothing through the self, because $e$ is self-free.
 \end{itemize}
-A bound may mention the self. That is what the body of $\dmu{x}{x.A}$ becomes: $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A cast through a bound reads only a bound whose type is closed, and the rules that prove a bound prove only such bounds. A bound that mentions the self is used by unfolding an atom of its type first, which instantiates the self at the root and makes every bound of the telescope closed.
+A bound may mention the self. That is what the body of $\dmu{x}{x.A}$ becomes: $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A cast through a bound reads only a self-free bound, and the rules that prove a bound prove only such bounds. A bound that mentions the self is used by unfolding an atom of its type first, which instantiates the self at the root and makes every bound of the telescope self-free.
 
 \subsection{Composition templates}
 
-A target inclusion may also be proven by a composition template $\ev{leTrans}\,\tau_1\,\tau_2$, which chains two templates over the same source, $\tau_1$ for $\ple{S}{M}$ and $\tau_2$ for $\ple{M}{T}$. The middle type $M$ may mention the self, so a composition template can chain facts that the source asserts about its own members, such as $\ple{\sel{\self}{a}}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\sel{\self}{B}}$. The translation of this report produces no composition templates. They are there for recursive subtyping, to which Section~\ref{sec:related} returns, and the metatheory covers them.
+We call the template $\ev{le}\,q\,H\,q'$ of Section~\ref{sec:mini-evidence} a basic template. A target inclusion may also be proven by a composition template $\ev{leTrans}\,\tau_1\,\tau_2$, which chains two templates over the same source, $\tau_1$ for $\ple{S}{M}$ and $\tau_2$ for $\ple{M}{T}$. The middle type $M$ may mention the self, so a composition template can chain facts that the source asserts about its own members, such as $\ple{\sel{\self}{a}}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\sel{\self}{B}}$. The translation of this report produces no composition templates. They are there for recursive subtyping, to which Section~\ref{sec:related} returns, and the metatheory covers them.
 
 \subsection{Evidence}
 
@@ -149,7 +149,7 @@ A target inclusion may also be proven by a composition template $\ev{leTrans}\,\
 \\
 \inferrule{ }{\Gamma \vdash \ev{none} : X \le X}
 \and
-\inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
+\inferrule{\lej{\Gamma}{e}{U_1}{U_2}}{\Gamma \vdash \ev{some}\,e : \weak{U_1} \le \weak{U_2}}
 \and
 \inferrule{\morj{\Gamma}{\tau_i}{\tel}{P_i} \text{ for each } i < n}{\morj{\Gamma}{[\,\tau_0, \ldots, \tau_{n-1}\,]}{\tel}{[\,P_0, \ldots, P_{n-1}\,]}}
 \and
@@ -263,7 +263,7 @@ In the last case $\rt{b}$ is the same variable whenever the atom is typed.
 \end{array}
 \]
 \color{black}
-\caption{The store machine of \FCdot. $\mathit{core}$ and $\mathit{adjust}$ are defined in Section~\ref{sec:mini-machine}. $\chn{\sigma}{a}{n}{F}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
+\caption{The store machine of \FCdot. $\mathit{core}$ and $\mathit{adjust}$ are defined in Figure~\ref{fig:mini-machine}. $\chn{\sigma}{a}{n}{F}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
 \label{fig:machine}
 \end{figure}
 
@@ -272,22 +272,27 @@ A store holds one value per binder of its signature. Store typing $\storej{\sigm
 \color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}
 \and
-\inferrule{\storej{\sigma}{\Gamma} \\ v \text{ has no casts} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}
+\inferrule{\storej{\sigma}{\Gamma} \\ v \text{ is not a cast} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}
 \end{mathpar}
-Here $\mathit{witnesses}(\lit[x]{W}{F}) = W$ and $\mathit{fields}(\lit[x]{W}{F}) = \dom F$, and both are empty for a lambda. Continuations and states are typed by the rules of Section~\ref{sec:mini-machine}, and a state is final when its continuation is empty and its term is a value or an atom.
+Here $\mathit{witnesses}(\lit[x]{W}{F}) = W$ and $\mathit{fields}(\lit[x]{W}{F}) = \dom F$, and both are empty for a lambda. Continuations and states are typed by the rules of Figure~\ref{fig:mini-machine}, and a state is final when its continuation is empty and its term is a value or an atom.
 
 Figure~\ref{fig:machine} gives the steps. They are those of the fragment, plus projection, which reads the field off the literal at the root and instantiates the field's self binder by the root. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, in terms and inside the evidence that eliminates at an atom. It puts the root of the atom into types and into the evidence that names a binder, $\ev{def}\,x\,\ell$, since those only ever see variables.
 
 \subsection{Erasure}
 
-Erasure into the runtime of Figure~\ref{fig:runtime} maps an atom to its root, drops every cast and every piece of evidence, keeps the fields of a literal, and drops cast frames:
+Erasure into the runtime of Figure~\ref{fig:runtime} maps an atom to its root and drops every cast and every piece of evidence:
 \[
 \begin{array}{@{}lcl@{}}
 \erase{a} & = & \run{\rt{a}} \\
 \erase{a\,b} & = & \run{\rt{a}\,\rt{b}} \\
 \erase{\ev{proj}\,a\,\ell\,h} & = & \run{\rt{a}.\ell} \\
 \erase{\klet x = t \kin u} & = & \run{\klet x = \erase{t} \kin \erase{u}} \\
-\erase{\ev{cast}\,t\,e} & = & \erase{t} \\
+\erase{\ev{cast}\,t\,e} & = & \erase{t}
+\end{array}
+\]
+It keeps the fields of a literal and drops cast frames:
+\[
+\begin{array}{@{}lcl@{}}
 \erase{\lambda(x : S).\,t} & = & \run{\lambda x.\,\erase{t}} \\
 \erase{\lit[x]{W}{F}} & = & \run{\nu(x.\,\erase{F})} \\
 \erase{\ev{cast}\,v\,e} & = & \erase{v} \\
