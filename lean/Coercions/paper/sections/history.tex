@@ -21,7 +21,7 @@ The conclusion was that the identity of a member must be attached to the binder,
 
 The second design let an object coercion prove a target proposition by arbitrary evidence under the self binder:
 \[
-\tgt{\Gamma, z : \obj{\tel} \vdash k : S \le T} .
+\tgt{\Gamma, z : \obj[z]{\tel} \vdash k : S \le T} .
 \]
 This is more expressive than templates. A morphism body $k$ may eliminate at $z$, compose the results, and eliminate again. Its normal forms are closures. To use such a morphism at an atom $a$, the normalizer has to substitute, $k[z \mapsto a]$, and normalize the result. But $k[z \mapsto a]$ is not a subterm of anything, and the normalization theorem has no induction hypothesis for it. It may perform further eliminations through the atom, whose views come from further morphisms. Composition of two such morphisms needs an environment of views, and the typedness of a form needs a step index with an account of the eliminations performed.
 

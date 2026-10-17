@@ -8,7 +8,7 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
-\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
+\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
 \text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \mid \phas{\ell} \mid \pbnd{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P} \\[2pt]
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \\
@@ -20,13 +20,13 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \mid \ev{leTrans}\,m\,m\,m \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
-\text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit{W}{F} \mid \ev{cast}\,v\,e \\
+\text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit[x]{W}{F} \mid \ev{cast}\,v\,e \\
 \text{Witnesses} & W & ::= & \tnil \mid W, \ell = T \qquad \text{Fields} \quad F ::= \tnil \mid F, \ell = t \\
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W ; \vec{\ell}
 \end{array}
 \]
 \color{black}
-\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$ the second component lives under one more binder. In $\obj{\tel}$, and in the telescopes carried by evidence and atoms, the propositions live under one more binder, the self.}
+\caption{Syntax of \FCdot. The binders are those of the fragment: $\pit[x]{S}{T}$ binds $x$ in $T$, $\obj[x]{\tel}$ binds the self $x$ in $\tel$, and $\lit[x]{W}{F}$ binds the self $x$ in $W$ and $F$. A telescope carried by evidence or an atom has the self $\self$. In $\ev{pi}\,e\,e'$ the second component lives under the parameter.}
 \label{fig:target-syntax}
 \end{figure}
 
@@ -40,7 +40,7 @@ A term member $a$ of an object needs two facts: that the member exists, and what
 \]
 which says that the field exists and that its type is included in $\trans{T}$.
 
-A literal $\lit{W}{F}$ now has fields $F$ besides its witnesses $W$. Its precise type is the telescope $\ofLit{W}{F}$ with one equality $\peq{\sel{\self}{\ell}}{W(\ell)}$ per witness, followed by one presence $\phas{\ell}$ per field. The translation gives each field label a witness too, its declared type, so the name $\sel{x}{a}$ of a stored literal is defined as the type of the field. The fields are typed under the self binder of the literal, bound transparently, and the body of field $\ell$ has the block name $\sel{x}{\ell}$ as its type, where $x$ is the self. A context binder records the field labels of a transparent binder, written $x : T \mathrel{:=} W ; \vec\ell$.
+A literal $\lit[x]{W}{F}$ now has fields $F$ besides its witnesses $W$, and binds its self $x$ in both. Its precise type is $\obj[x]{\ofLit{W}{F}}$, with one equality $\peq{\sel{x}{\ell}}{W(\ell)}$ per witness, followed by one presence $\phas{\ell}$ per field. The translation gives each field label a witness too, its declared type, so the name $\sel{x}{a}$ of a stored literal is defined as the type of the field. The fields are typed under the self binder $x$, bound transparently, and the body of field $\ell$ has the block name $\sel{x}{\ell}$ as its type. A context binder records the field labels of a transparent binder, written $x : T \mathrel{:=} W ; \vec\ell$.
 
 Presence evidence has two forms. $\ev{member}\,a\,e\,i$ eliminates a presence proposition at an atom, like the other elimination rules. $\ev{field}\,\ell$ reads presence off a transparent binder that records the field. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to the declared field type takes a further cast, which the translation reads off the declaration. Morphisms gain an entry $\ev{has}\,m\,j$ that proves a target presence from the source presence at position $j$, and an entry $\ev{eq}\,m\,j\,b$ that proves a target equality from the source equality at $j$, flipped when $b$ is true.
 
@@ -50,7 +50,14 @@ In the fragment the bounds of a declaration could not mention the self. A recurs
 \[
 \trans{\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}} = \obj{[\,\ple{\bot}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\top},\ \phas{a},\ \ple{\sel{\self}{a}}{\sel{\self}{A}}\,]} ,
 \]
-where the last proposition relates two names of the self's own block. Opening a recursive type at a variable $x$, which is what \rn{Rec-E} does, replaces the self by $x$. In \FCdot this is an atom, $\ev{unfold}\,a$, which instantiates the self of $a$'s object type at the root of $a$ and weakens the result under a fresh self that nothing mentions:
+where the last proposition relates two names of the self's own block. A declaration nested in the body may mention the outer self, and then the nested object type renames its own:
+\[
+\begin{array}{@{}l@{}}
+\trans{\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dtyp{B}{\bot}{\dtyp{C}{x.A}{x.A}}}} \\
+\quad = \obj{[\,\ldots,\ \ple{\sel{\self}{B}}{\obj[\self']{[\,\ple{\sel{\self}{A}}{\sel{\self'}{C}},\ \ple{\sel{\self'}{C}}{\sel{\self}{A}}\,]}}\,]} .
+\end{array}
+\]
+With one fixed name for every self, the inner propositions could not mention the outer one. Opening a recursive type at a variable $x$, which is what \rn{Rec-E} does, replaces the self by $x$. In \FCdot this is an atom, $\ev{unfold}\,a$, which instantiates the self of $a$'s object type at the root of $a$ and weakens the result under a fresh self that nothing mentions:
 \[
 \inferrule{\atomj{\Gamma}{a}{\obj{\tel}}}{\atomj{\Gamma}{\ev{unfold}\,a}{\obj{\weak{(\inst{\tel}{\rt{a}})}}}}
 \qquad
@@ -64,9 +71,9 @@ Folding and unfolding change the type of an atom without evidence, so the chain 
 
 An intersection of two object types is the concatenation of their telescopes:
 \[
-\trans{\src{S \wedge T}} = \obj{(\mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T})} .
+\trans{\src{S \wedge T}} = \obj{\mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T}} .
 \]
-An intersection is therefore never an operation on types, only on lists of propositions. The projections \rn{And}$_1$ and \rn{And}$_2$ are object coercions whose templates copy one half of the source. The source rule \rn{And}, which pairs two subtypings out of one type, becomes $\ev{pair}\,\tel_1\,\tel_2\,e\,f$: from $e : S \le \obj{\tel_1}$ and $f : S \le \obj{\tel_2}$ it concludes $S \le \obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}$. The source rule \rn{And-I}, which pairs two typings of one variable, becomes the atom $\ev{both}\,\tel_1\,\tel_2\,a\,b$, which requires $a$ and $b$ to have the same root. The telescope annotations make the endpoints computable from the arguments.
+An intersection is therefore never an operation on types, only on lists of propositions. The projections \rn{And}$_1$ and \rn{And}$_2$ are object coercions whose templates copy one half of the source. The source rule \rn{And}, which pairs two subtypings out of one type, becomes $\ev{pair}\,\tel_1\,\tel_2\,e\,f$: from $e : S \le \obj{\tel_1}$ and $f : S \le \obj{\tel_2}$ it concludes $S \le \obj{\tel_1 \mathbin{+\!\!+} \tel_2}$. The source rule \rn{And-I}, which pairs two typings of one variable, becomes the atom $\ev{both}\,\tel_1\,\tel_2\,a\,b$, which requires $a$ and $b$ to have the same root. The telescope annotations make the endpoints computable from the arguments.
 
 \subsection{Self-bounds}
 
@@ -106,7 +113,7 @@ A morphism may also prove a target inclusion by a composition template $\ev{leTr
 \and
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'}}{\lej{\Gamma}{\ev{obj}\,\tel\,m}{\obj{\tel}}{\obj{\tel'}}}
 \and
-\inferrule{\lej{\Gamma}{e}{S}{\obj{\tel_1}} \\ \lej{\Gamma}{f}{S}{\obj{\tel_2}}}{\lej{\Gamma}{\ev{pair}\,\tel_1\,\tel_2\,e\,f}{S}{\obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}}}
+\inferrule{\lej{\Gamma}{e}{S}{\obj{\tel_1}} \\ \lej{\Gamma}{f}{S}{\obj{\tel_2}}}{\lej{\Gamma}{\ev{pair}\,\tel_1\,\tel_2\,e\,f}{S}{\obj{\tel_1 \mathbin{+\!\!+} \tel_2}}}
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
   {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
@@ -170,7 +177,7 @@ Figure~\ref{fig:evidence} gives the typing of all evidence. There are three fami
 \and
 \inferrule{\atomj{\Gamma}{a}{\obj{\weak{(\inst{\tel}{\rt{a}})}}}}{\atomj{\Gamma}{\ev{fold}\,\tel\,a}{\obj{\tel}}}
 \and
-\inferrule{\atomj{\Gamma}{a}{\obj{\tel_1}} \\ \atomj{\Gamma}{b}{\obj{\tel_2}} \\ \rt{b} = \rt{a}}{\atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}}}
+\inferrule{\atomj{\Gamma}{a}{\obj{\tel_1}} \\ \atomj{\Gamma}{b}{\obj{\tel_2}} \\ \rt{b} = \rt{a}}{\atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\obj{\tel_1 \mathbin{+\!\!+} \tel_2}}}
 \\
 \inferrule{\atomj{\Gamma}{a}{T}}{\tmj{\Gamma}{a}{T}}
 \and
@@ -186,7 +193,7 @@ Figure~\ref{fig:evidence} gives the typing of all evidence. There are three fami
 \\
 \inferrule{\tmj{\Gamma, x : S}{t}{T}}{\valj{\Gamma}{\lambda(x : S).\,t}{\pit{S}{T}}}
 \and
-\inferrule{\fldj{\Gamma, x : \obj{\ofLit{W}{F}} \mathrel{:=} W ; \dom F}{F}}{\valj{\Gamma}{\lit{W}{F}}{\obj{\ofLit{W}{F}}}}
+\inferrule{\fldj{\Gamma, x : \obj[x]{\ofLit{W}{F}} \mathrel{:=} W ; \dom F}{F}}{\valj{\Gamma}{\lit[x]{W}{F}}{\obj[x]{\ofLit{W}{F}}}}
 \and
 \inferrule{\valj{\Gamma}{v}{S} \\ \lej{\Gamma}{e}{S}{T}}{\valj{\Gamma}{\ev{cast}\,v\,e}{T}}
 \and
@@ -236,7 +243,7 @@ In the last case $\rt{b}$ is the same variable whenever the atom is typed.
 \label{fig:machine}
 \end{figure}
 
-A store holds one value per binder of its signature. Store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels:
+A store holds one value per binder of its signature. Store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels. The self of a stored literal becomes its location:
 \begin{mathpar}
 \color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}

@@ -32,8 +32,8 @@
 
 %% FCdot types
 \newcommand{\sel}[2]{\tgt{#1\mathbin{\cdot}#2}}
-\newcommand{\pit}[2]{\tgt{\Pi(#1)\,#2}}
-\newcommand{\obj}[1]{\tgt{\mu\,#1}}
+\newcommand{\pit}[3][x]{\tgt{\Pi(#1 : #2)\,#3}}
+\newcommand{\obj}[2][\self]{\tgt{\mu(#1.\,#2)}}
 \newcommand{\ple}[2]{\tgt{#1 \sqsubseteq #2}}
 \newcommand{\peq}[2]{\tgt{#1 \doteq #2}}
 \newcommand{\phas}[1]{\tgt{\ni #1}}
@@ -81,7 +81,7 @@
 \newcommand{\Decl}{\src{\mathit{Decl}}}
 \newcommand{\Wf}{\src{\mathit{Wf}}}
 \newcommand{\Distinct}{\src{\mathit{Distinct}}}
-\newcommand{\lit}[2]{\tgt{\nu(#1;\,#2)}}
+\newcommand{\lit}[3][\self]{\tgt{\nu(#1.\,#2;\,#3)}}
 \newcommand{\ofLit}[2]{\tgt{\mathit{tel}(#1, #2)}}
 \newcommand{\dom}{\mathit{dom}}
 

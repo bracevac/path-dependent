@@ -227,7 +227,7 @@ The proof is an induction on the sum of the sizes of the two forms, mutually wit
 \begin{lemma}[Pairing and application]\label{lem:pair-apply}
 Let $\tel_1$ and $\tel_2$ be open in the mode $\rho$, and let $\tel'_1$ and $\tel'_2$ have the kinds of propositions of $\tel_1$ and $\tel_2$, in the same order. If
 \[ \chainj{\Gamma}{\rho}{F}{S}{\obj{\tel_1}} \quad\text{and}\quad \chainj{\Gamma}{\rho}{G}{S}{\obj{\tel_2}} \]
-then $\mathit{pair}_{\tel'_1,\tel'_2}\,F\,G$ is defined and typed at $S \le \obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}$ in the same mode. Let $a$ be an atom with root $r$. If
+then $\mathit{pair}_{\tel'_1,\tel'_2}\,F\,G$ is defined and typed at $S \le \obj{\tel_1 \mathbin{+\!\!+} \tel_2}$ in the same mode. Let $a$ be an atom with root $r$. If
 \[ \entjm{\Gamma}{r}{\mathit{Es}}{\tel_1}{\tel_2}, \qquad \viewj{\Gamma}{r}{\sigma}{V}{\tel_1}, \qquad \chainj{\Gamma}{r}{C}{\Gamma(r)}{S} \]
 for a type $S$ with $\resolveAt{\Gamma}{r}{S} = \obj{\tel_1}$, then $\mathit{entriesAt}_\sigma(a, C, V, \mathit{Es})$ is defined and is a view typed at $\tel_2$.
 \end{lemma}

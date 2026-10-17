@@ -16,16 +16,17 @@ The first design decision of \FCdot is how a type refers to a term. In \FCdot ev
 The second decision is how an object type says what is known. An object type is a telescope of propositions about a self binder:
 \[
 \begin{array}{@{}lrcl@{}}
-\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \\
+\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \\
 \text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P}
 \end{array}
 \]
-The object type $\obj{\tel}$ binds a self in $\tel$, and $\self$ names it. An inclusion $\ple{S}{T}$ says that $S$ is included in $T$, and an equality $\peq{S}{T}$ that they are equal. Propositions do not bind, so a telescope is a list. It is written oldest first, $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$, and positions count from $0$. The empty object type asserts nothing, so every type is included in it, and it serves as $\top$:
+The object type $\obj[x]{\tel}$ binds the variable $x$ in $\tel$, the way $\lambda(x : S).\,t$ binds $x$ in $t$. We call $x$ the self of the object type. The propositions of $\tel$ mention it only through its block names $\sel{x}{\ell}$, like any other variable. The dependent function type $\pit[x]{S}{T}$ binds its parameter $x$ in $T$, and $T$ may mention the block of $x$. An inclusion $\ple{S}{T}$ says that $S$ is included in $T$, and an equality $\peq{S}{T}$ that they are equal. Propositions do not bind, so a telescope is a list. It is written oldest first, $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$, and positions count from $0$.
+
+Bound variables can be renamed. In rules and examples the self is named $\self$ and the parameter of a function type $x$, unless a binder of that name is already in scope. A telescope written on its own, as evidence carries it, is the body of an object type, and its self is $\self$. An object type nested inside another renames its self, say to $\self'$, when its propositions mention the outer self. The empty object type asserts nothing, so every type is included in it, and it serves as $\top$:
 \[
 \tgt{\top} \mathrel{:=} \obj{\tnil} .
 \]
-The dependent function type $\pit{S}{T}$ binds a parameter in $T$, and $T$ may mention the block of the parameter.
 
 A type member declaration becomes the object type with two propositions, one per bound:
 \[
@@ -120,10 +121,10 @@ Terms are in let-normal form over atoms:
 \begin{array}{@{}lrcl@{}}
 \text{Atoms} & a, b & ::= & x \mid \ev{cast}\,a\,e \\
 \text{Terms} & t, u & ::= & a \mid v \mid a\,b \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
-\text{Values} & v & ::= & \lambda(x : S).\,t \mid \tgt{\nu(W)} \mid \ev{cast}\,v\,e
+\text{Values} & v & ::= & \lambda(x : S).\,t \mid \tgt{\nu(x.\,W)} \mid \ev{cast}\,v\,e
 \end{array}
 \]
-An atom is a variable under casts, and its root is the variable underneath: $\rt{x} = x$ and $\rt{\ev{cast}\,a\,e} = \rt{a}$. A cast erases to nothing, so an atom is a variable at run time. A literal $\tgt{\nu(W)}$ in the fragment has only type members, given by its witness list $W$. Figure~\ref{fig:mini-terms} gives the typing. There is no subsumption rule. Every change of type is a cast with explicit evidence.
+An atom is a variable under casts, and its root is the variable underneath: $\rt{x} = x$ and $\rt{\ev{cast}\,a\,e} = \rt{a}$. A cast erases to nothing, so an atom is a variable at run time. A literal $\tgt{\nu(x.\,W)}$ in the fragment has only type members, given by its witness list $W$. It binds its self $x$ in $W$, as an object type does. Figure~\ref{fig:mini-terms} gives the typing. There is no subsumption rule. Every change of type is a cast with explicit evidence.
 
 \begin{figure}
 \small
@@ -145,7 +146,7 @@ An atom is a variable under casts, and its root is the variable underneath: $\rt
 \\
 \inferrule{\tmj{\Gamma, x : S}{t}{T}}{\valj{\Gamma}{\lambda(x : S).\,t}{\pit{S}{T}}}
 \and
-\inferrule{ }{\valj{\Gamma}{\tgt{\nu(W)}}{\obj{\tgt{\mathit{tel}(W)}}}}
+\inferrule{ }{\valj{\Gamma}{\tgt{\nu(\self.\,W)}}{\obj{\tgt{\mathit{tel}(W)}}}}
 \and
 \inferrule{\valj{\Gamma}{v}{S} \\ \lej{\Gamma}{e}{S}{T}}{\valj{\Gamma}{\ev{cast}\,v\,e}{T}}
 \end{mathpar}
@@ -163,7 +164,7 @@ The first template reads $\peq{\sel{\self}{A}}{\weak{\trans{T}}}$ backwards as $
 Application instantiates the codomain at the root of the argument, as the source rule \rn{All-E} does. A let requires the type of the body not to mention the bound variable, as in the source.
 
 \paragraph{Stores.}
-A store holds one value per location, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal without casts, typed in the context of the entries before it, at its own type, with the location bound transparently:
+A store holds one value per location, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal without casts, typed in the context of the entries before it, at its own type, with the location bound transparently. The self of a stored literal becomes the location, so the witnesses of $\tgt{\nu(\self.\,W)}$ stored at $x$ are $W$ with $x$ for $\self$:
 \begin{mathpar}
 \color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}
@@ -257,7 +258,7 @@ All other pairs are not composable between typed forms, and the normalizer retur
 
 \subsection{Typed forms}
 
-A head form is typed syntactically. Typedness reads the endpoints of a form only after following definitions. Resolution $\resolve{\Gamma}{T}$ follows a name $\sel{x}{\ell}$ of a transparent binder to its witness, and repeats. A name of an opaque binder, and any type that is not a name, resolves to itself. Definitions may be cyclic, as in a literal $\tgt{\nu(A = \sel{\self}{A})}$, and a cycle resolves to $\top$. Section~\ref{sec:resolution} explains this and proves the two facts used below: resolution of a defined name is resolution of its definition, and resolution is idempotent.
+A head form is typed syntactically. Typedness reads the endpoints of a form only after following definitions. Resolution $\resolve{\Gamma}{T}$ follows a name $\sel{x}{\ell}$ of a transparent binder to its witness, and repeats. A name of an opaque binder, and any type that is not a name, resolves to itself. Definitions may be cyclic, as in a literal $\tgt{\nu(\self.\,A = \sel{\self}{A})}$, and a cycle resolves to $\top$. Section~\ref{sec:resolution} explains this and proves the two facts used below: resolution of a defined name is resolution of its definition, and resolution is idempotent.
 
 \begin{figure}
 \small
@@ -387,14 +388,14 @@ Every rule of the machine applies to its form of state without a condition, exce
 If a typed state steps, the new state is typed at the same type.
 \end{theorem}
 
-The cases that are not about application are the usual lemmas: weakening, substitution of an atom for a variable, and the typing of stripped casts at allocation. The application through a wrapped atom with chain $\form{pi}\,d\,c$ is the case worth reading. The store holds $\lambda(z : S_0).\,t_0$ at the root, so the root has the type $\pit{S_0}{T_0}$, where $T_0$ is the type of the body. By Theorem~\ref{thm:mini-chain} the chain is a form typed from $\pit{S_0}{T_0}$ to the type $\pit{S}{T}$ of $a$, so $d : S \le S_0$, and $c : T_0 \le T$ under a parameter of type $S$. The argument $b$ has type $S$, so $\ev{cast}\,b\,d$ has type $S_0$ and can be substituted into the body, which gives a term of type $\inst{T_0}{\rt{b}}$. The cast $\inst{c}{b}$ takes that type to $\inst{T}{\rt{b}}$, which is the type of the application. With chain $\form{id}$ the two function types resolve equally, and since neither is a name they are equal, so the body can be used as it is.
+The cases that are not about application are the usual lemmas: weakening, substitution of an atom for a variable, and the typing of stripped casts at allocation. The application through a wrapped atom with chain $\form{pi}\,d\,c$ is the case worth reading. The store holds $\lambda(z : S_0).\,t_0$ at the root, so the root has the type $\pit[z]{S_0}{T_0}$, where $T_0$ is the type of the body. By Theorem~\ref{thm:mini-chain} the chain is a form typed from $\pit[z]{S_0}{T_0}$ to the type $\pit[z]{S}{T}$ of $a$, so $d : S \le S_0$, and $c : T_0 \le T$ under a parameter of type $S$. The argument $b$ has type $S$, so $\ev{cast}\,b\,d$ has type $S_0$ and can be substituted into the body, which gives a term of type $\inst{T_0}{\rt{b}}$. The cast $\inst{c}{b}$ takes that type to $\inst{T}{\rt{b}}$, which is the type of the application. With chain $\form{id}$ the two function types resolve equally, and since neither is a name they are equal, so the body can be used as it is.
 
 Neither proof inverts evidence. Where the textbook proof inverts subtyping, this one normalizes evidence and reads the shape off the normal form.
 
 \subsection{Three examples}
 
 \begin{example}[A selection through a literal]\label{ex:mini-sel}
-Let the store hold $\sigma(x) = \tgt{\nu(A = \mathit{Int})}$, so $\Gamma(x) = \obj{[\,\peq{\sel{\self}{A}}{\mathit{Int}}\,]}$. The program uses $x$ at its declared type through the atom $a = \ev{cast}\,x\,\mathit{litCo}$, of type $\trans{\dtyp{A}{\mathit{Int}}{\mathit{Int}}}$, and the source rule \rn{Sel-<:} becomes
+Let the store hold $\sigma(x) = \tgt{\nu(\self.\,A = \mathit{Int})}$, so $\Gamma(x) = \obj{[\,\peq{\sel{\self}{A}}{\mathit{Int}}\,]}$. The program uses $x$ at its declared type through the atom $a = \ev{cast}\,x\,\mathit{litCo}$, of type $\trans{\dtyp{A}{\mathit{Int}}{\mathit{Int}}}$, and the source rule \rn{Sel-<:} becomes
 \[
 \ev{member}\ a\ (\ev{refl}\,\trans{\dtyp{A}{\mathit{Int}}{\mathit{Int}}})\ 1 \ :\ \sel{x}{A} \le \mathit{Int} .
 \]
@@ -416,7 +417,7 @@ It translates to $\lambda(x : D).\ \klet y = \ev{cast}\,x\,e \kin y$ with
 \]
 where $D = \trans{\dtyp{A}{\top}{\bot}}$ and $R = \trans{\dtyp{B}{\mathit{Int}}{\mathit{Int}}}$. The two middle steps eliminate the two propositions of $x$'s own type. No absurdity rule is involved, and the program type checks in \FCdot without subsumption.
 
-Now suppose the lambda is applied. Its argument is an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(A = W)}$, where we take $W$ closed, so the atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
+Now suppose the lambda is applied. Its argument is an atom of type $D$ whose root $z$ holds a literal $\tgt{\nu(\self.\,A = W)}$, where we take $W$ closed, so the atom is $\ev{cast}\,z\,c$ for some closed evidence $c$ from $\obj{[\,\peq{\sel{\self}{A}}{W}\,]}$ to $D$. By Theorem~\ref{thm:mini-canon}, $c$ has a typed head form. It is an object form, since both endpoints are object types and neither is $\top$, so it has two entries, one per proposition of $D$. Each entry names the one proposition of the source, the equality, and typedness forces their sides:
 \[
 \form{obj}\,[\,\form{le}\,F_1\,(\ev{eqSym}\,0)\,\form{id},\ \ \form{le}\,\form{id}\,(\ev{eq}\,0)\,G_2\,] \qquad \text{with } \formj{\Gamma}{F_1}{\top}{W} \text{ and } \formj{\Gamma}{G_2}{W}{\bot} .
 \]
