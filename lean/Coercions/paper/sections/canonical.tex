@@ -5,11 +5,19 @@ This section scales the normalization theorem of Section~\ref{sec:miniature} up 
 
 \subsection{Shapes and resolution}\label{sec:resolution}
 
-A head form promises a shape for its endpoints, which is $\bot$, $\top$, a function type, or an object type, and shapes are read after following the definitions of the store. Resolution is that of Section~\ref{sec:mini-terms}, with $\ell$ ranging over all labels: one step follows a definition $\Gamma(x) \ni \ell \mathrel{:=} U$, and resolution repeats the step with fuel $|\mathit{defs}(\Gamma)| + 1$. A sequence of definitions may be cyclic, because a witness may itself be a name of the same block, as in the literal
+A head form promises a shape for its endpoints, which is $\bot$, $\top$, a function type, or an object type, and shapes are read after following the definitions of the store. Resolution extends that of Section~\ref{sec:mini-terms} to all labels $\ell$ and adds fuel. One step of resolution, $\mathit{next}_\Gamma(T)$, is $U$ when $T$ is a name $\sel{x}{\ell}$ with $\Gamma(x) \ni \ell \mathrel{:=} U$, and is undefined when $T$ is any other type or the name of an opaque binder. A sequence of definitions may be cyclic, because a witness may itself be a name of the same block, as in the literal
 \[
 \lit{A = \sel{\self}{B},\ B = \sel{\self}{A}}{\tnil} .
 \]
-A name at a label that the witness list does not mention is defined as $\top$ and settles in one step. A sequence that runs out of fuel on a defined name is cyclic, and a cyclic alias resolves to $\top$, the object type that asserts nothing. The only facts known about the names of a cycle are their equalities with each other, and $\top$ asserts nothing more. Resolving to $\bot$ instead would be unsound. A field of the literal above declared at $\sel{\self}{A}$ holds a value. An atom bound to that field has a type that resolves through the cycle. And item 5 of Theorem~\ref{thm:canon} says that the type of a well-typed atom never resolves to $\bot$. The fuel is enough. A sequence of definitions either settles within $|\mathit{defs}(\Gamma)| + 1$ steps, at a shape or at an undefined name, or it visits a defined name twice and is periodic from then on. This is a pigeonhole argument on the finitely many defined names. It gives the two facts used everywhere below, with no side condition on the context.
+Resolution therefore runs with fuel:
+\[
+\begin{array}{@{}lcl@{}}
+\resolven{\Gamma}{0}{T} & = & \top \text{ if } \mathit{next}_\Gamma(T) \text{ is defined, else } T \\
+\resolven{\Gamma}{n+1}{T} & = & \resolven{\Gamma}{n}{U} \text{ if } \mathit{next}_\Gamma(T) = U, \text{ else } T \\
+\resolve{\Gamma}{T} & = & \resolven{\Gamma}{|\mathit{defs}(\Gamma)| + 1}{T}
+\end{array}
+\]
+where $\mathit{defs}(\Gamma)$ lists the pairs of a transparent binder and a label its witness list mentions. A name at a label that the witness list does not mention is defined as $\top$ and settles in one step. A sequence that runs out of fuel on a defined name is cyclic, and a cyclic alias resolves to $\top$, the object type that asserts nothing. The only facts known about the names of a cycle are their equalities with each other, and $\top$ asserts nothing more. Resolving to $\bot$ instead would be unsound. A field of the literal above declared at $\sel{\self}{A}$ holds a value. An atom bound to that field has a type that resolves through the cycle. And item 5 of Theorem~\ref{thm:canon} says that the type of a well-typed atom never resolves to $\bot$. The fuel is enough. A sequence of definitions either settles within $|\mathit{defs}(\Gamma)| + 1$ steps, at a shape or at an undefined name, or it visits a defined name twice and is periodic from then on. This is a pigeonhole argument on the finitely many defined names. It gives the two facts used everywhere below, with no side condition on the context.
 
 \begin{lemma}[Resolution]\label{lem:resolve}
 \begin{enumerate}

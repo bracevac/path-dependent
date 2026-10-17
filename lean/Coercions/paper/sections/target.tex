@@ -74,7 +74,7 @@ With one fixed name for every self, the inner propositions could not mention the
 \]
 The atom $\ev{fold}\,\tel\,a$ is the inverse, the atom form of \rn{Rec-I}. Both erase to nothing and keep the root. The unfolded type is an object type whose propositions talk about the root instead of the self. A recursive type therefore needs no subtyping rule of its own in the target either, as it does not in the source.
 
-Folding and unfolding change the type of an atom without evidence, so the chain of casts of an atom, which composes the head forms of its casts, cannot be typed between the plain types any more. Section~\ref{sec:canonical} types it in a mode at the root, in which object types are read with the self opened at the root, so that folding and unfolding are invisible.
+Folding and unfolding change the type of an atom without evidence, so the chain of casts of an atom, which composes the head forms of its casts, cannot be typed between the plain types any more. Section~\ref{sec:canonical} types it in a mode at the root, in which object types are read with the self opened at the root, so that folding and unfolding are invisible. They are also why $\ev{member}$ takes an atom. In the fragment of Section~\ref{sec:miniature} the casts on an atom could be merged into the evidence argument of $\ev{member}$. Folding and unfolding carry no evidence to merge.
 
 \subsection{Intersections}
 
