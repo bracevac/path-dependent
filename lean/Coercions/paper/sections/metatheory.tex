@@ -1,0 +1,50 @@
+\mathtgt
+\section{Preservation, Progress, and Erasure}\label{sec:metatheory}
+
+With the canonical forms theorem in hand, the metatheory of \FCdot has the textbook shape. This section states the three theorems and points out the cases that use the store. Everything else is renaming, weakening, and substitution.
+
+\subsection{Structural lemmas}
+
+Three structural lemmas are proven before anything about normal forms.
+\begin{itemize}
+\item \emph{Renaming.} Every judgment is stable under renaming of variables. Weakening and instantiation of a binder by a variable are renamings, so this one lemma covers both.
+\item \emph{Atom substitution.} If $u$ is typed under a binder $x : T$ and $a$ is an atom of type $T$, then $\inst{u}{a}$ is typed, at the type of $u$ with $x$ renamed to $\rt{a}$. Types and the evidence that names binders see only the root of the atom, and the evidence that eliminates at an atom sees the atom itself, at its own type.
+\item \emph{Transparency.} A term typed with a binder opaque is typed with it transparent. Making a binder transparent only adds definitions, and no rule requires a binder to be opaque.
+\end{itemize}
+DOT proofs also need a narrowing lemma: a judgment under $x : T$ still holds under $x : T'$ for $T' \sub T$. \FCdot needs none. Its role is played by atom substitution: replacing $x$ by $\ev{cast}\,x\,e$ for $e : T' \le T$ retypes a term under a binder of type $T'$, and since the root of the cast atom is $x$, no type changes. Section~\ref{sec:comparison} returns to this.
+
+\subsection{Preservation}
+
+\begin{theorem}[Preservation]
+If a state is typed at $U$ and steps to a state over a possibly larger signature, the new state is typed at $U$ renamed into that signature.
+\end{theorem}
+
+Two cases need comment.
+
+\paragraph{Allocation.}
+A value $v$ reaches a let frame $\ev{let}\,u$, where $u$ is typed under a binder $x : T$ and $v$ has type $T$. The value may carry casts, $v = \ev{cast}\,(\cdots(\ev{cast}\,v_0\,e_1)\cdots)\,e_n$, where $v_0$ is a lambda or a literal of some type $T_0$. The machine stores $v_0$ and continues with $\mathit{adjust}(u, v)$, which is $u$ with $x$ replaced by $\ev{cast}\,x\,\weak{\bar{e}}$, where $\bar{e}$ is the composite of $e_1, \ldots, e_n$ and $\weak{\bar{e}}$ is $\bar{e}$ weakened under the new binder. Stripping the casts of a typed value leaves a typed value $v_0 : T_0$ and a typed composite $\bar{e} : T_0 \le T$. The new binder has type $T_0$, and $\ev{cast}\,x\,\weak{\bar{e}}$ has type $T$ under it, so atom substitution types $\mathit{adjust}(u, v)$. The new binder is transparent in the store, and the transparency lemma moves the continuation from the opaque binder to the transparent one. This is what keeps stores inert: the store only ever receives a value at its own precise type, and the casts move into the program.
+
+\paragraph{Application through a wrapped atom.}
+This is the one case that needs the store. The machine reads the normal form of the chain of casts of the atom, and Theorem~\ref{thm:chain} types that form at the root, from the type of the root to the function type of the atom. The store holds a lambda at the root, so the type of the root is syntactically a function type. When the form is $\form{id}$, the two function types resolve equally, and since neither is a name they are equal, so the closure applies as it is. When the form is $\form{pi}\,d\,c$, its shapes give $d$ and $c$ the endpoints that the cast on the argument and the cast on the result need, as in Section~\ref{sec:mini-safety}.
+
+\subsection{Progress}
+
+\begin{theorem}[Progress]
+A typed state is final or steps.
+\end{theorem}
+
+The rules that consult the store are application and projection. For an application through an atom of function type, Corollary~\ref{cor:inversion} supplies a lambda at the root and a chain of casts that normalizes to $\form{id}$ or to a function form. For a projection with presence evidence $h$ at the root of the receiver, the same corollary supplies a literal at the root with the field. Every other rule applies to its form of state unconditionally.
+
+\subsection{Erasure}
+
+\begin{theorem}[Erasure simulation]
+A step of the machine either moves a cast frame and leaves the erasure unchanged, or erases to one runtime step. Conversely, if $\storej{\sigma}{\Gamma}$, the term of the state is typed, and the erased state takes a runtime step to $r$, then the state takes a run to a state whose erasure is $r$.
+\end{theorem}
+
+The forward direction is a computation on each rule. The backward direction is the one that safety by translation needs, and it is not a computation: it has to realize a runtime step in the target. A runtime application is realized by first moving the pending cast frames, then applying through the atom, which Corollary~\ref{cor:inversion} makes possible. A runtime projection is realized the same way, with the field supplied by the corollary.
+
+\begin{corollary}[Consistency of reachable states]
+Along any run from a typed state, the store stays typed. Hence no reachable store admits closed evidence for $\top \le \bot$, and every block name of every reachable store is defined by closed equality evidence.
+\end{corollary}
+
+Bad bounds remain expressible under a lambda, as in the overview of Section~\ref{sec:mini-overview} and Example~\ref{ex:mini-bad}. They never reach the store.

@@ -1,0 +1,81 @@
+\mathsrc
+\section{Why Type Safety Is Hard for DOT}\label{sec:problem}
+
+This section recalls the textbook proof of type safety, shows where it breaks for DOT, and sketches how this report repairs it.
+
+\subsection{The textbook proof}\label{sec:textbook}
+
+Type safety is proven by preservation and progress \cite{wright1994syntactic}. Preservation says that a step from a typed state leads to a typed state. Progress says that a typed state is final or can step. The case of progress that needs work is elimination. If the program applies a value $v$ of a function type, progress has to show that $v$ is a lambda, so that the application has a step. This is the canonical forms lemma.
+
+\begin{lemma}[Canonical forms, textbook version]
+If $v$ is a closed value and $\vdash v : S \to T$, then $v$ is a lambda.
+\end{lemma}
+
+In a calculus with subtyping, the derivation of $\vdash v : S \to T$ may end with subsumption. Say $v$ is a record. Then its derivation has the form
+\[
+\inferrule*[right=Sub]{\vdash v : R \\ \vdash R \sub S \to T}{\vdash v : S \to T}
+\]
+for a record type $R$, and the proof has to show that the subtyping premise cannot hold. That is an inversion lemma for subtyping: if $\vdash U \sub S \to T$ then $U$ is $\bot$ or a function type. It is proven by induction on the subtyping derivation. The case that needs care is transitivity,
+\[
+\inferrule*[right=Trans]{\vdash U \sub M \\ \vdash M \sub S \to T}{\vdash U \sub S \to T}
+\]
+where the induction hypothesis applied to the right premise says that $M$ is $\bot$ or a function type, and the induction hypothesis applied to the left premise then says the same about $U$. In System $F_{<:}$ the lemma also holds in a context with type variables, with one more case: $U$ may be a type variable \cite{pierce2002tapl}. It survives type variables because a type variable of $F_{<:}$ has only an upper bound. An assumption $X \sub S \to T$ says something about $X$ and nothing about any other type, so it cannot make a record type a subtype of a function type.
+
+\subsection{What changes in DOT}
+
+Two things change in DOT, and together they break the lemma.
+
+\paragraph{The run-time context is not empty.}
+In System F a value is closed, and canonical forms speak about the empty context. In DOT a value cannot always be substituted into the term that uses it, because types mention variables. If $x$ is bound to an object and the program has the type $x.A$, then substituting the object for $x$ would put a term into a type. Values therefore stay in a store, under their names, which is what the machine of Section~\ref{sec:dot} does. The running term mentions the locations of the store, and it is typed in the context that types those locations. So canonical forms have to speak about that context. For example, after
+\[
+\klet x = \dnew{z}{\ddeftyp{A}{\mathit{Int}}} \kin \ldots
+\]
+the rest of the program is typed with $x : \dmu{z}{\dtyp{A}{\mathit{Int}}{\mathit{Int}}}$ in the context, and with it the subtyping facts $\mathit{Int} \sub x.A$ and $x.A \sub \mathit{Int}$.
+
+\paragraph{A declaration is an assumption.}
+A binder $x : \dtyp{A}{S}{T}$ makes $S \sub x.A$ and $x.A \sub T$ available, and by transitivity $S \sub T$. So a type member declaration in the context acts as an assumption that $S$ is a subtype of $T$, for whatever $S$ and $T$ it names. An assumption can be false. Under
+\[
+x : \dtyp{A}{\top}{\bot}
+\]
+DOT derives $\top \sub x.A \sub \bot$, and with \rn{Top} and \rn{Bot} every type is a subtype of every other. The inversion lemma is false in such a context: a record type is a subtype of $\top$, hence of $\bot$, hence of every function type. This is called bad bounds.
+
+\subsection{Bad bounds cannot be ruled out}
+
+The first fix to try is to reject declarations whose bounds are not ordered. It does not work, for two reasons.
+
+First, ordered bounds are not a local property. The context
+\[
+x : \dtyp{A}{\top}{\top} \wedge \dtyp{A}{\bot}{\bot}
+\]
+has two declarations of $A$, each with ordered bounds. Together they give $\top \sub x.A \sub \bot$. The bounds may also mention other variables, as in
+\[
+y : \dtyp{B}{\top}{\bot},\ x : \dtyp{A}{y.B}{y.B} ,
+\]
+where the declaration of $x$ has exact bounds and is still bad.
+
+Second, bad bounds are harmless where they occur. The program
+\[
+\lambda(x : \dtyp{A}{\top}{\bot}).\ t
+\]
+is typed, and in its body $t$ every term has every type. But no object has a member $A$ with these bounds, since a literal defines $A$ as some type $W$ and so declares it with the exact bounds $W..W$, and deriving $\top \sub W$ and $W \sub \bot$ would need a bad binder in the first place. So the lambda can never be applied, and its body never runs.
+
+So the type system admits bad bounds, and the safety proof has to show that they never reach run time: in every context that comes from a store, subtyping can be inverted.
+
+\subsection{How the published proofs do it}\label{sec:published}
+
+Each published proof of DOT safety has to show, in some form, that bad bounds never meet a value. They differ in how.
+\begin{itemize}
+\item The WadlerFest proof \cite{amin2016essence} defines the possible types of a value, a set of types closed under the rules that apply to a stored object, and shows that every type a store variable can be given is a possible type of its value.
+\item Rapoport et al.\ \cite{rapoport2017simple} restrict run-time contexts to inert ones, in which every binder has a type of the shape a value can have, with exact type members. They introduce tight typing, whose selection rules may only read the declared type of a variable, and invertible typing, whose rules are syntax directed. In an inert context general typing can be replaced by tight typing and tight typing by invertible typing, and invertible typing can be inverted.
+\item Rompf and Amin \cite{rompf2016soundness} push uses of transitivity back through subtyping derivations, with a measure on derivations.
+\item Amin and Rompf \cite{amin2017definitional} and Giarrusso et al.\ \cite{giarrusso2020scala} avoid inversion altogether with a semantic model, over a definitional interpreter and in Iris respectively.
+\end{itemize}
+Each of these is an argument about the derivations of one rule set. When the calculus grows, by paths \cite{rapoport2019path}, by mutation \cite{kabir2018kdot}, or by a new sort of member, the argument has to be extended by hand.
+
+\subsection{The idea of this report}\label{sec:idea}
+
+If a declaration is an assumption, a subtyping derivation is a proof under assumptions, and a store discharges the assumptions: every location of a store holds a literal that defines each of its type members. The idea is to make that discharge explicit. The subtyping proof becomes a term, the proof term mentions the binders whose declarations it uses, and running the program instantiates those binders by locations of the store. A proof term that mentions only locations of a typed store is closed in the sense that matters, and it can be normalized. Normalization replaces each use of a declaration by what the store says about it, and composes the results. This is close to cut elimination in logic, with transitivity as the cut.
+
+Here is how the bad-bounds example comes apart. Suppose the lambda above were applied to a location $y$ of the store. Then $y$ holds a literal that defines $A$ as some $W$, and the argument is passed at the declared type through a coercion $c$ from the literal's own type to $\dtyp{A}{\top}{\bot}$. The coercion has to prove both bounds from the definition, so it contains a proof of $\top \sub W$ and a proof of $W \sub \bot$. The two proofs are parts of $c$ and they compose to a proof of $\top \sub \bot$. Normalization gives each part a head form, the composite of the two head forms is a head form for $\top \le \bot$, and there is no such head form. So $c$ cannot exist, and the lambda cannot be applied. This is also what the normalizer computes when it meets the bad-bounds proof $\top \sub y.A \sub \bot$ in the body at run time: it reads the two bounds of $y$ through $c$ and composes them. Nothing in the argument looks at the derivation in the body, and nothing needs the context of the body to be consistent.
+
+To make this precise the calculus has to be designed so that the normalization is a structural induction on proof terms. That is what \FCdot is for. Section~\ref{sec:miniature} develops it on a fragment small enough to state everything.

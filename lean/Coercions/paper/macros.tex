@@ -3,6 +3,7 @@
 \definecolor{tgtcol}{RGB}{160,40,30}
 \newcommand{\src}[1]{{\color{srccol}#1}}
 \newcommand{\tgt}[1]{{\color{tgtcol}#1}}
+\newcommand{\run}[1]{{\color{black}#1}}
 \newcommand{\mathsrc}{\everymath{\color{srccol}}\everydisplay{\color{srccol}}}
 \newcommand{\mathtgt}{\everymath{\color{tgtcol}}\everydisplay{\color{tgtcol}}}
 \newcommand{\mathplain}{\everymath{}\everydisplay{}}
@@ -28,12 +29,12 @@
 \newcommand{\dnew}[2]{\src{\nu(#1.\,#2)}}
 \newcommand{\ddeftyp}[2]{\src{\{#1 = #2\}}}
 \newcommand{\ddeftrm}[2]{\src{\{#1 = #2\}}}
-\newcommand{\sub}{\src{<:}}
+\newcommand{\sub}{\mathrel{\src{<:}}}
 
 %% FCdot types
 \newcommand{\sel}[2]{\tgt{#1\mathbin{\cdot}#2}}
-\newcommand{\pit}[2]{\tgt{\Pi(#1)\,#2}}
-\newcommand{\obj}[1]{\tgt{\mu\,#1}}
+\newcommand{\pit}[3][x]{\tgt{\Pi(#1 : #2)\,#3}}
+\newcommand{\obj}[2][\self]{\tgt{\mu(#1.\,#2)}}
 \newcommand{\ple}[2]{\tgt{#1 \sqsubseteq #2}}
 \newcommand{\peq}[2]{\tgt{#1 \doteq #2}}
 \newcommand{\phas}[1]{\tgt{\ni #1}}
@@ -63,6 +64,7 @@
 \newcommand{\entj}[4]{\tgt{#1 \models #2 : #3 \Rightarrow #4}}
 \newcommand{\entjm}[5]{\tgt{#1 \models_{#2} #3 : #4 \Rightarrow #5}}
 \newcommand{\viewj}[5]{\tgt{#1 \models_{#2,#3} #4 : #5}}
+\newcommand{\viewjr}[4]{\tgt{#1 \models_{#2} #3 : #4}}
 \newcommand{\holej}[4]{\tgt{#1 \vdash #2 : \ple{#3}{#4}}}
 \newcommand{\subj}[3]{\src{#1 \vdash #2 \sub #3}}
 \newcommand{\dtyj}[3]{\src{#1 \vdash #2 : #3}}
@@ -81,7 +83,7 @@
 \newcommand{\Decl}{\src{\mathit{Decl}}}
 \newcommand{\Wf}{\src{\mathit{Wf}}}
 \newcommand{\Distinct}{\src{\mathit{Distinct}}}
-\newcommand{\lit}[2]{\tgt{\nu(#1;\,#2)}}
+\newcommand{\lit}[3][\self]{\tgt{\nu(#1.\,#2;\,#3)}}
 \newcommand{\ofLit}[2]{\tgt{\mathit{tel}(#1, #2)}}
 \newcommand{\dom}{\mathit{dom}}
 

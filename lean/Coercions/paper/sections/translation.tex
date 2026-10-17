@@ -1,41 +1,93 @@
 \mathtgt
 \section{The Translation}\label{sec:translation}
 
-The translation is a function on derivations. Types translate homomorphically, subtyping derivations become closed inclusion evidence, typings of variables become atoms rooted at the variable, and typings of terms become terms with the same erasure.
+The translation is a function on derivations, not on terms. A term can have many derivations, and the translation of each derivation records the uses of subtyping that the derivation makes. Types translate homomorphically, subtyping derivations become inclusion evidence, typings of variables become atoms rooted at the variable, and typings of terms become terms with the same erasure. Section~\ref{sec:miniature} showed the translation of the selection rules, of \rn{Typ}, and of a literal with one type member. This section gives all of it.
 
 \subsection{Types and contexts}
 
-\begin{figure*}
+\begin{figure}
 \small
 \[
 \begin{array}{@{}rcl@{}}
-\trans{\src{\top}} & = & \obj{\tnil} \qquad\qquad \trans{\src{\bot}} \ =\ \tgt{\bot} \qquad\qquad \trans{\dsel{x}{A}} \ =\ \sel{x}{A} \\
+\trans{\src{\top}} & = & \obj{\tnil} \\
+\trans{\src{\bot}} & = & \tgt{\bot} \\
+\trans{\dsel{x}{A}} & = & \sel{x}{A} \\
 \trans{\dall{x}{S}{T}} & = & \pit{\trans{S}}{\trans{T}} \\
 \trans{\dtyp{A}{S}{T}} & = & \obj{[\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,]} \\
 \trans{\dfld{a}{T}} & = & \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} \\
-\trans{\src{S \wedge T}} & = & \obj{(\mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T})} \\
-\trans{\dmu{x}{T}} & = & \obj{(\mathit{tel}_{\self}\,\src{T})} \\[4pt]
-\mathit{tel}\,\src{\top} & = & \tnil \qquad\qquad \mathit{tel}\,\src{(S \wedge T)} \ =\ \mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T} \\
-\mathit{tel}\,\dtyp{A}{S}{T} & = & [\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,] \qquad\qquad \mathit{tel}\,\dfld{a}{T} \ =\ [\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,] \\
-\mathit{tel}\,\dmu{x}{T} & = & \mathit{tel}_{\self}\,\src{T} \quad \text{if } \Decl\,\src{T} \\
-\mathit{tel}\,\src{B} & = & [\,\pbnd{\weak{\trans{B}}}\,] \quad \text{for every other } \src{B}
+\trans{\src{S \wedge T}} & = & \obj{\mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T}} \\
+\trans{\dmu{x}{T}} & = & \obj{\mathit{tel}_{x}\,\src{T}} \\[4pt]
+\mathit{tel}\,\src{\top} & = & \tnil \\
+\mathit{tel}\,\dtyp{A}{S}{T} & = & [\,\ple{\weak{\trans{S}}}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\weak{\trans{T}}}\,] \\
+\mathit{tel}\,\dfld{a}{T} & = & [\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,] \\
+\mathit{tel}\,\src{(S \wedge T)} & = & \mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T} \\
+\mathit{tel}\,\dmu{x}{T} & = & \mathit{tel}_{x}\,\src{T} \quad \text{if } \Decl\,\src{T} \\
+\mathit{tel}\,\src{B} & = & [\,\pbnd{\weak{\trans{B}}}\,] \quad \text{for every other } \src{B} \\[4pt]
+\mathit{tel}_{x}\,\src{\top} & = & \tnil \\
+\mathit{tel}_{x}\,\dtyp{A}{S}{T} & = & [\,\ple{\trans{S}_x}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\trans{T}_x}\,] \\
+\mathit{tel}_{x}\,\dfld{a}{T} & = & [\,\phas{a},\ \ple{\sel{\self}{a}}{\trans{T}_x}\,] \\
+\mathit{tel}_{x}\,\src{(S \wedge T)} & = & \mathit{tel}_{x}\,\src{S} \mathbin{+\!\!+} \mathit{tel}_{x}\,\src{T} \\
+\mathit{tel}_{x}\,\dmu{y}{T} & = & \mathit{tel}_{x}\,\src{\inst{T}{x}} \quad \text{if } \Decl\,\src{T} \\
+\mathit{tel}_{x}\,\src{B} & = & [\,\pbnd{\trans{B}_x}\,] \quad \text{for every other } \src{B}
 \end{array}
 \]
-\caption{Translation of types. $\mathit{tel}\,\src{T}$ is the telescope of a type over a fresh self, and $\mathit{tel}_{\self}\,\src{T}$ reads a body whose self is the innermost binder as propositions about that binder, so that the self of $\dmu{x}{T}$ becomes the self block of the object type. A type that is not an object shape enters a telescope as one self-bound.}
+\caption{Translation of types. $\mathit{tel}\,\src{T}$ is the telescope of a type over a fresh self, which $\src{T}$ does not mention. $\mathit{tel}_{x}\,\src{T}$ reads a body whose self is $\src{x}$ as propositions about $\self$, so that the self of $\dmu{x}{T}$ becomes the self of the object type. $\trans{T}_x$ is $\trans{T}$ with $\self$ for $\src{x}$. A type that is not an object shape becomes a bound that may mention the self. $\Decl\,\src{T}$ holds when $\src{T}$ is $\src{\top}$, a declaration, an intersection of such, or a recursive type whose body is such.}
 \label{fig:trans-types}
-\end{figure*}
+\end{figure}
 
-Figure~\ref{fig:trans-types} gives the translation of types. Call $\src{T}$ an object shape when $\trans{T} = \obj{\mathit{tel}\,\src{T}}$: that is $\src{\top}$, a declaration, an intersection, or a recursive type with a declaration-shaped body. Every other type enters a telescope as one self-bound, so an intersection is a concatenation of telescopes whatever its operands are, and $\trans{x.A \wedge \dfld{a}{T}}$ is the object type with the bound $\pbnd{\weak{\sel{x}{A}}}$ followed by the two propositions of the field. Every bound the translation produces is closed. A recursive type binds its own self, which is identified with the self block of the object type, so $\dmu{x}{T}$ and its opening at a variable $\src{x}$ translate to an object type and its unfolding at $x$. The two telescope readings agree on weakened types. A recursive type whose body is not declaration-shaped is not well formed, but it is a type, and its telescope is the single bound $\pbnd{\weak{\trans{\dmu{x}{T}}}}$, so that $\mathit{tel}$ is total and never produces a bound that mentions the self.
+Figure~\ref{fig:trans-types} gives the translation of types. Call $\src{T}$ an object shape when $\trans{T} = \obj{\mathit{tel}\,\src{T}}$: that is $\src{\top}$, a declaration, an intersection, or a recursive type with a declaration-shaped body. Every other type enters a telescope as one self-bound, so an intersection is a concatenation of telescopes whatever its operands are, and $\trans{x.A \wedge \dfld{a}{T}}$ is the object type with the bound $\pbnd{\weak{\sel{x}{A}}}$ followed by the two propositions of the field. A recursive type binds its own self, which is identified with the self block of the object type, so $\dmu{x}{T}$ and its opening at a variable $\src{x}$ translate to an object type and its unfolding at $x$. The two telescope readings agree on weakened types and differ on a body that is not an object shape. Read over a fresh self, such a body is the single self-free bound $\pbnd{\weak{\trans{B}}}$. Read over its own self, it is the bound $\pbnd{\trans{B}}$ with $\self$ for $\src{x}$, which mentions the self wherever $\src{B}$ mentions $\src{x}$. So $\trans{\dmu{x}{x.A}}$ is $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A recursive type whose body is not a declaration is itself not an object shape, and $\mathit{tel}$ gives it the single self-free bound $\pbnd{\weak{\trans{\dmu{x}{T}}}}$. Every bound that $\mathit{tel}$ produces is therefore self-free.
 
-A declaration type $\src{T}$ of a literal determines the witnesses of the translated literal: the exact bound of each type member and the declared type of each field. Its precise type $\tgt{\mathit{litTy}(\src{T})}$ is the object type of the telescope generated from those witnesses and the field labels of $\src{T}$. Contexts translate binder by binder: an ordinary binder $\src{x : T}$ becomes an opaque binder at $\trans{T}$, and a literal's self binder $\src{x : \dmu{x}{T} \mathrel{:=} d}$ becomes a transparent binder at $\tgt{\mathit{litTy}(\src{T})}$ with the witnesses and field labels of $\src{T}$.
+A declaration type $\src{T}$ of a literal determines the witnesses of the translated literal: the exact bound of each type member and the declared type of each field. Its precise type $\tgt{\mathit{litTy}}\,\src{T}$ is $\obj{\ofLit{W}{F}}$ for those witnesses $W$ and the field labels $F$ of $\src{T}$, as in Section~\ref{sec:target}. Contexts translate binder by binder: an ordinary binder $\src{x : T}$ becomes an opaque binder at $\trans{T}$, and a literal's self binder $\src{x : \dmu{x}{T} \mathrel{:=} d}$ becomes a transparent binder at $\tgt{\mathit{litTy}}\,\src{T}$ with the witnesses and field labels of $\src{T}$. Figure~\ref{fig:trans-aux} gives these definitions, together with the coercions that the translation of evidence uses for literals and intersections.
+
+\begin{figure}
+\small
+\[
+\begin{array}{@{}rcl@{}}
+\mathit{witnesses}\,\dtyp{A}{S}{T} & = & [\,A = \trans{S}\,] \\
+\mathit{witnesses}\,\dfld{a}{T} & = & [\,a = \trans{T}\,] \\
+\mathit{witnesses}\,\src{(S \wedge T)} & = & \mathit{witnesses}\,\src{S} \mathbin{+\!\!+} \mathit{witnesses}\,\src{T} \\[3pt]
+\mathit{fields}\,\dfld{a}{T} & = & [\,a\,] \\
+\mathit{fields}\,\src{(S \wedge T)} & = & \mathit{fields}\,\src{T} \mathbin{+\!\!+} \mathit{fields}\,\src{S} \\[3pt]
+\tgt{\mathit{litTy}}\,\src{T} & = & \obj{\ofLit{\mathit{witnesses}\,\src{T}}{\mathit{fields}\,\src{T}}} \\
+\tgt{\mathit{litCo}}\,\src{T} & = & \ev{obj}\,(\ofLit{\mathit{witnesses}\,\src{T}}{\mathit{fields}\,\src{T}})\,(\mathit{litMor}_{0,k}\,\src{T}) \quad \text{where } k = |\mathit{witnesses}\,\src{T}| \\[3pt]
+\mathit{litMor}_{e,h}\,\dtyp{A}{S}{T} & = & [\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,e)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
+\mathit{litMor}_{e,h}\,\dfld{a}{T} & = & [\,\ev{has}\,h,\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
+\mathit{litMor}_{e,h}\,\src{(S \wedge T)} & = & \mathit{litMor}_{e,\,h + |\mathit{fields}\,\src{T}|}\,\src{S} \mathbin{+\!\!+} \mathit{litMor}_{e + |\mathit{witnesses}\,\src{S}|,\,h}\,\src{T} \\[3pt]
+\mathit{idMor}_k\,[\,P_0, \ldots, P_{n-1}\,] & = & [\,\mathit{idT}_{k}(P_0), \ldots, \mathit{idT}_{k+n-1}(P_{n-1})\,] \\
+\mathit{idT}_j(\ple{S}{T}) & = & \ev{le}\,\ev{none}\,(\ev{le}\,j)\,\ev{none} \\
+\mathit{idT}_j(\peq{S}{T}) & = & \ev{eq}\,j\,\mathit{false} \\
+\mathit{idT}_j(\phas{\ell}) & = & \ev{has}\,j \\
+\mathit{idT}_j(\pbnd{T}) & = & \ev{bnd}\,(\ev{bound}\,\tel_0\,j) \\[3pt]
+\mathit{into}_{\src{T}}\,e & = & \ev{intoBnd}\,e \\
+\mathit{into}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{intoBnd}\,(\ev{refl}\,\trans{T})) \\
+\mathit{out}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{bound}\,(\mathit{tel}\,\src{T})\,0) \\[3pt]
+\trans{\src{\cdot}} & = & \tgt{\cdot} \\
+\trans{\src{\Gamma, x : T}} & = & \trans{\Gamma}, x : \trans{T} \\
+\trans{\src{\Gamma, x : \dmu{x}{T} \mathrel{:=} d}} & = & \trans{\Gamma}, x : \tgt{\mathit{litTy}}\,\src{T} \mathrel{:=} \mathit{witnesses}\,\src{T} ; \mathit{fields}\,\src{T}
+\end{array}
+\]
+\begin{mathpar}
+\inferrule{ }{\src{\cdot\ \mathit{wf}}}
+\and
+\inferrule{\src{\Gamma\ \mathit{wf}}}{\src{\Gamma, x : T\ \mathit{wf}}}
+\and
+\inferrule{\src{\Gamma\ \mathit{wf}} \\ \src{T} \text{ has literal shape} \\ \text{the labels of } \src{T} \text{ are distinct}}{\src{\Gamma, x : \dmu{x}{T} \mathrel{:=} d\ \mathit{wf}}}
+\end{mathpar}
+\caption{Literals and contexts in the translation. $\mathit{witnesses}$, $\mathit{fields}$, and $\mathit{litMor}$ are empty on every other type. $\mathit{fields}$ lists the right operand of an intersection first, because the right operand shadows. In $\mathit{litMor}_{e,h}$ the index $e$ is the position of the next definition equality of the literal's precise telescope and $h$ that of the next presence. $\mathit{idT}_j(P)$ is the identity template on the source proposition at position $j$, and $\tel_0$ is the source telescope of the object coercion the morphism belongs to. $\mathit{into}_{\src{T}}$ and $\mathit{out}_{\src{T}}$ are the identity when $\src{T}$ is an object shape and are given here for the other types. A type has literal shape when it is an intersection of exact type declarations $\dtyp{A}{T}{T}$ and field declarations.}
+\label{fig:trans-aux}
+\end{figure}
+
 
 \subsection{Evidence and atoms}
 
-\begin{figure*}
+\begin{figure}
 \small
 \[
 \begin{array}{@{}lcl@{}}
-\trans{\rn{Top}} = \ev{top}\,\trans{T} & \quad & \trans{\rn{Bot}} = \ev{bot}\,\trans{T} \qquad \trans{\rn{Refl}} = \ev{refl}\,\trans{T} \qquad \trans{\rn{Trans}\,d_1\,d_2} = \ev{trans}\,\trans{d_1}\,\trans{d_2} \\
+\trans{\rn{Top}} & = & \ev{top}\,\trans{T} \\
+\trans{\rn{Bot}} & = & \ev{bot}\,\trans{T} \\
+\trans{\rn{Refl}} & = & \ev{refl}\,\trans{T} \\
+\trans{\rn{Trans}\,d_1\,d_2} & = & \ev{trans}\,\trans{d_1}\,\trans{d_2} \\
 \trans{\rn{And}_1} & = & \begin{cases} \ev{obj}\,(\mathit{tel}(\src{S \wedge T}))\,(\mathit{idMor}_0\,(\mathit{tel}\,\src{S})) & \src{S} \text{ an object shape} \\ \ev{bound}\,(\mathit{tel}(\src{S \wedge T}))\,0 & \text{otherwise} \end{cases} \\
 \trans{\rn{And}_2} & = & \begin{cases} \ev{obj}\,(\mathit{tel}(\src{S \wedge T}))\,(\mathit{idMor}_{|\mathit{tel}\,\src{S}|}\,(\mathit{tel}\,\src{T})) & \src{T} \text{ an object shape} \\ \ev{bound}\,(\mathit{tel}(\src{S \wedge T}))\,|\mathit{tel}\,\src{S}| & \text{otherwise} \end{cases} \\
 \trans{\rn{And}\,d_1\,d_2} & = & \ev{pair}\,(\mathit{tel}\,\src{T})\,(\mathit{tel}\,\src{U})\,(\mathit{into}_{\src{T}}\,\trans{d_1})\,(\mathit{into}_{\src{U}}\,\trans{d_2}) \\
@@ -45,40 +97,54 @@ A declaration type $\src{T}$ of a literal determines the witnesses of the transl
 \trans{\rn{<:-Sel}\,h} & = & \ev{member}\,\trans{h}_a\,(\ev{refl}\,\trans{\dtyp{A}{S}{T}})\,0 \\
 \trans{\rn{All}\,d_1\,d_2} & = & \ev{pi}\,\trans{d_1}\,\trans{d_2} \\[4pt]
 \trans{\rn{Var}}_a & = & x, \text{ or } \ev{cast}\,x\,\weak{(\mathit{litCo}\,\src{T})} \text{ when } \src{x : \dmu{x}{T} \mathrel{:=} d} \text{ in } \src{\Gamma} \\
-\trans{\rn{Rec-I}\,h}_a & = & \ev{fold}\,(\mathit{tel}_{\self}\,\src{T})\,(\ev{unfold}\,\trans{h}_a) \\
-\trans{\rn{Rec-E}\,h}_a & = & \ev{fold}\,(\mathit{tel}\,\src{(\inst{T}{x})})\,(\ev{unfold}\,\trans{h}_a) \\
+\trans{\rn{Rec-I}\,h}_a & = & \ev{fold}\,(\mathit{tel}_{x}\,\src{T})\,(\ev{unfold}\,(\mathit{into}_{\src{\inst{T}{x}}}\,\trans{h}_a)) \\
+\trans{\rn{Rec-E}\,h}_a & = & \mathit{out}_{\src{\inst{T}{x}}}\,(\ev{fold}\,(\mathit{tel}\,\src{(\inst{T}{x})})\,(\ev{unfold}\,\trans{h}_a)) \\
 \trans{\rn{And-I}\,h_1\,h_2}_a & = & \ev{both}\,(\mathit{tel}\,\src{T})\,(\mathit{tel}\,\src{U})\,(\mathit{into}_{\src{T}}\,\trans{h_1}_a)\,(\mathit{into}_{\src{U}}\,\trans{h_2}_a) \\
 \trans{\rn{Sub}\,h\,d}_a & = & \ev{cast}\,\trans{h}_a\,\trans{d}
 \end{array}
 \]
-\caption{Translation of subtyping derivations to inclusion evidence, $\trans{d}$, and of variable typings to atoms, $\trans{h}_a$. $\mathit{idMor}_k\,\tel$ is the morphism of identity templates whose holes name the propositions of $\tel$ at positions $k, k+1, \ldots$ of the source, a bound among them copied by $\ev{bnd}$ over $\ev{bound}$. $\mathit{into}_{\src{T}}$ is the identity when $\src{T}$ is an object shape, and otherwise $\ev{intoBnd}$ on evidence and $\ev{cast}\,a\,(\ev{intoBnd}\,(\ev{refl}\,\trans{T}))$ on an atom $a$.}
+\caption{Translation of subtyping derivations to inclusion evidence, $\trans{d}$, and of variable typings to atoms, $\trans{h}_a$. $\mathit{idMor}$, $\mathit{litCo}$, $\mathit{into}$, and $\mathit{out}$ are defined in Figure~\ref{fig:trans-aux}.}
 \label{fig:trans-evidence}
-\end{figure*}
+\end{figure}
 
 Figure~\ref{fig:trans-evidence} gives the translation of subtyping derivations and of variable typings, which are mutual because \rn{Sel-<:} and \rn{<:-Sel} have typing premises and a variable typing may go through subsumption. The structural rules go to the corresponding evidence. The projection of an intersection onto an operand that is an object shape is an object coercion whose morphism copies that half of the source by identity templates. The projection onto any other operand is $\ev{bound}$ at the operand's position, since that operand is one bound of the source telescope. Pairing is $\ev{pair}$, after each side is put into its telescope by $\mathit{into}$. The declaration rules \rn{Fld} and \rn{Typ} route each source proposition through the translated bound as a side of a template: the field rule inherits presence and adjusts the upper bound, and the type-member rule adjusts the lower bound contravariantly and the upper bound covariantly. The selection rules are $\ev{member}$ at the atom of the typing premise, on the proposition of the declaration that names the bound, and this is where the root of the atom matters: the atom of $\src{h : x : \dtyp{A}{S}{T}}$ has root $x$, so the eliminated proposition is about $\sel{x}{A}$. The \rn{All} rule needs no narrowing lemma. The codomain evidence is checked under a binder of the smaller domain, and the two codomains mention only that binder's block, which does not depend on its type.
 
-A variable bound by an object literal is used through a cast from the literal's precise type to its declaration type, $\tgt{\mathit{litCo}\,\src{T}}$. That coercion is an object coercion whose morphism reads both bounds of each type member off the definition equality of the literal, one of them flipped, and inherits the presence of each field and reads its bound off the definition equality as well. The rules \rn{Rec-I} and \rn{Rec-E} unfold the atom at its root and refold it at the other telescope, \rn{And-I} is $\ev{both}$ on the two atoms put into their telescopes by a cast that keeps the root, and subsumption is a cast.
+A variable bound by an object literal is used through a cast from the literal's precise type to its declaration type, $\tgt{\mathit{litCo}\,\src{T}}$. That coercion is an object coercion whose morphism reads both bounds of each type member off the definition equality of the literal, one of them flipped, and inherits the presence of each field and reads its bound off the definition equality as well. The rules \rn{Rec-I} and \rn{Rec-E} unfold the atom at its root and refold it at the other telescope. When the body is not an object shape, \rn{Rec-I} first puts the atom into its one-bound telescope, and \rn{Rec-E} takes the refolded atom out through that bound. Unfolding at the root instantiates the self in the bound of $\mathit{tel}_{x}$, and what results is the self-free bound of $\mathit{tel}$, which is the one a cast through a bound can read. \rn{And-I} is $\ev{both}$ on the two atoms put into their telescopes by a cast that keeps the root, and subsumption is a cast.
+
+\begin{example}[The atom of Example~\ref{ex:hide}]
+The source derivation of Example~\ref{ex:hide} types the variable $\src{y}$, bound at the literal's type $\src{\dmu{x}{\dtyp{A}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{a}{\mathit{Int}}}}$, at the type $\src{\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}}$. Its translation is the atom
+\[
+\ev{fold}\,\tel\ (\ev{unfold}\ (\ev{both}\,\tel_1\,\tel_2\ (\ev{cast}\,a_1\,e_2)\ (\ev{cast}\,a_1\,e_3))) \qquad\text{with}\qquad a_1 = \ev{fold}\,\tel_0\,(\ev{unfold}\,y) .
+\]
+Read from the inside out: $a_1$ opens the recursive type at $y$, which is \rn{Rec-E}. The casts by $e_2$ and $e_3$ are the two uses of subsumption, one through \rn{And}$_1$ and \rn{Typ}, the other through \rn{And}$_2$ and \rn{Fld}, whose side is the evidence $\ev{member}\ (\ev{cast}\,a_1\,e_1)\ (\ev{refl}\,\_)\ 0$ for $\mathit{Int} \le \sel{y}{A}$, with $e_1$ the translation of \rn{And}$_1$. $\ev{both}$ is \rn{And-I}, and the outer fold and unfold are \rn{Rec-I}. Every source rule leaves one wrapper, and every wrapper erases, so the atom erases to $y$.
+\end{example}
 
 \subsection{Terms}
 
 Figure~\ref{fig:trans-terms} gives the translation of terms. A variable is its atom, a lambda translates its body, an application takes the atoms of its two premises, and a let follows the syntax. A projection carries the presence evidence read off the receiver's declaration and is cast from its block name $\sel{x}{a}$ to the declared field type by the declaration's bound. An object literal becomes a literal with the witnesses of its declaration type and the translated fields, each field cast from its translated type to its block name by the literal's own definition equality, and the whole is cast by $\tgt{\mathit{litCo}}$ to $\trans{\dmu{x}{T}}$. Type members translate to nothing.
 
-\begin{figure*}
+\begin{figure}
 \small
 \[
 \begin{array}{@{}lcl@{}}
-\trans{\rn{Var}} & = & \trans{\rn{Var}}_a \qquad\qquad \trans{\rn{All-I}\,h} \ =\ \lambda(x : \trans{S}).\,\trans{h} \qquad\qquad \trans{\rn{All-E}\,h_1\,h_2} \ =\ \trans{h_1}_a\,\trans{h_2}_a \\
+\trans{\rn{Var}} & = & \trans{\rn{Var}}_a \\
+\trans{\rn{All-I}\,h} & = & \lambda(x : \trans{S}).\,\trans{h} \\
+\trans{\rn{All-E}\,h_1\,h_2} & = & \trans{h_1}_a\,\trans{h_2}_a \\
 \trans{\rn{\{\}-I}\,h} & = & \ev{cast}\,(\lit{\mathit{witnesses}(\src{T})}{\trans{h}_f})\,(\mathit{litCo}\,\src{T}) \\
 \trans{\rn{\{\}-E}\,h} & = & \ev{cast}\,(\ev{proj}\,\trans{h}_a\,a\,(\ev{member}\,\trans{h}_a\,(\ev{refl}\,\trans{\dfld{a}{T}})\,0))\,(\ev{member}\,\trans{h}_a\,(\ev{refl}\,\trans{\dfld{a}{T}})\,1) \\
-\trans{\rn{Let}\,h_1\,h_2} & = & \klet x = \trans{h_1} \kin \trans{h_2} \qquad\qquad \trans{\rn{Sub}\,h\,d} \ =\ \ev{cast}\,\trans{h}\,\trans{d} \\
-\trans{\rn{Rec-I}\,h} & = & \trans{\rn{Rec-I}\,h}_a \qquad \text{and likewise for \rn{Rec-E} and \rn{And-I}} \\[4pt]
-\trans{\rn{Def-Typ}}_f & = & \tnil \qquad\qquad \trans{\rn{Def-Trm}\,h}_f \ =\ [\,a = \ev{cast}\,\trans{h}\,(\ev{eqToLe}\,(\ev{symm}\,(\ev{def}\,\self\,a)))\,] \\
+\trans{\rn{Let}\,h_1\,h_2} & = & \klet x = \trans{h_1} \kin \trans{h_2} \\
+\trans{\rn{Sub}\,h\,d} & = & \ev{cast}\,\trans{h}\,\trans{d} \\
+\trans{\rn{Rec-I}\,h} & = & \trans{\rn{Rec-I}\,h}_a \\
+\trans{\rn{Rec-E}\,h} & = & \trans{\rn{Rec-E}\,h}_a \\
+\trans{\rn{And-I}\,h_1\,h_2} & = & \trans{\rn{And-I}\,h_1\,h_2}_a \\[4pt]
+\trans{\rn{Def-Typ}}_f & = & \tnil \\
+\trans{\rn{Def-Trm}\,h}_f & = & [\,a = \ev{cast}\,\trans{h}\,(\ev{eqToLe}\,(\ev{symm}\,(\ev{def}\,\self\,a)))\,] \\
 \trans{\rn{Def-And}\,h_1\,h_2}_f & = & \trans{h_2}_f \mathbin{+\!\!+} \trans{h_1}_f
 \end{array}
 \]
 \caption{Translation of typing derivations to terms, $\trans{h}$, and of definition typings to fields, $\trans{h}_f$.}
 \label{fig:trans-terms}
-\end{figure*}
+\end{figure}
 
 \subsection{Typedness and erasure}
 
@@ -103,33 +169,3 @@ If $\src{h}$ derives $\dtyj{\Gamma}{t}{T}$ then $\erase{\trans{h}} = \erase{\src
 \end{theorem}
 
 The second statement is coherence in the sense of Reynolds and of Curien and Ghelli \cite{curien1992coherence}, obtained without any equational reasoning about coercions, because erasure removes them.
-
-\subsection{Safety}
-
-Nothing is proven about \DOTMNF directly. Its safety is transported from \FCdot through the shared runtime.
-
-\begin{theorem}[Safety of \DOTMNF]\label{thm:dot-safety}
-If $\dtyj{\cdot}{t}{T}$ and the initial state $\src{\mst{\cdot}{\cdot}{t}}$ runs to a state $\src{\mathit{st}}$, then $\src{\mathit{st}}$ is final or steps.
-\end{theorem}
-
-\begin{proof}
-Call a source state simulated when some typed target state over the same signature has the same erasure. The initial state is simulated by the initial state of the translation, by Theorems~\ref{thm:trans-typed} and~\ref{thm:trans-erase}. A source step preserves the invariant: it erases to a runtime step of the common erasure, the target realizes that step by a run, and preservation retypes the endpoint. Signatures agree because erasure is the identity on signatures on both sides and every allocation is matched. A simulated state is final or steps: the target's pending cast-frame steps are run first, which changes no erasure and keeps the state typed, and progress of the target then gives either a final state, which is final under erasure and hence in the source, or a step that is not a cast shuffle, which erases to a runtime step and is reflected to a source step.
-\end{proof}
-
-\begin{corollary}[Consistency of reachable stores]
-Along any run of the translation of a closed well-typed program, the store is typed, its context admits no closed evidence for $\top \le \bot$, and every block name of every store binder is defined by closed equality evidence.
-\end{corollary}
-
-Bad bounds remain expressible under a lambda, as in the examples of Section~\ref{sec:overview}. They never reach the store.
-
-\subsection{What the proofs forced}\label{sec:forced}
-
-Four things about the translation were found while proving it, not while designing it.
-
-The well-formedness of contexts is needed because the typedness of $\tgt{\mathit{litCo}}$ reads witnesses off the declaration type by position, and that is only meaningful when labels are distinct and type members are exact.
-
-The first version of the proof needed a further side condition on \rn{\{\}-I}, the source side of the self-alias restriction of Section~\ref{sec:resolution}: the declared type of a field could not be a bare selection on the object's own self. The reason was on the target side. Resolution followed definitions by a well-founded measure, which required that no witness of a literal be a name of the same block, and a field declared at $\dsel{x}{A}$ inside its own literal makes the witness of $\sel{x}{a}$ the name $\sel{x}{A}$. The condition rejected literals such as $\src{\nu(x.\,\ddeftyp{T}{\mathit{Int}} \wedge \ddeftrm{v}{n})}$ typed at $\src{\dmu{x}{\dtyp{T}{\mathit{Int}}{\mathit{Int}} \wedge \dfld{v}{x.T}}}$, which DOT accepts. The fuel-and-pigeonhole resolution of Section~\ref{sec:resolution} accepts every literal, including the two-element cycle, and the restriction disappeared from the target's literal rule, from the source's \rn{\{\}-I}, and from the translation.
-
-The fields of a translated intersection are ordered with the right conjunct outermost, because the right conjunct shadows in \DOTMNF, and both lookup in the target and erasure into the runtime prefer the outermost field.
-
-The first version of the translation restricted intersections to declaration-shaped operands, because the target had no self-bounds and an intersection with a selection as an operand had no telescope. Self-bounds lifted the restriction on the source side. What they cost on the target side is the routed entries of Section~\ref{sec:canonical}: the pairing of a bound cast with another coercion has entries that name propositions of an object type other than the source, which an $\form{obj}$ form cannot express. The clause of $\mathit{tel}$ for a recursive type consults $\Decl$ for the same reason that the fragment does. Without it, a recursive type whose body is not declaration-shaped, which \rn{And}$_1$ may still project, would produce a bound that mentions the self, and no rule of \FCdot proves or uses such a bound. With it every bound the translation produces is closed, which the typedness of the identity morphisms needs.

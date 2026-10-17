@@ -1,12 +1,15 @@
 \mathtgt
-\section{The Target: \FCdot}\label{sec:target}
+\section{The Full Target: \texorpdfstring{\FCdot}{FCdot}}\label{sec:target}
 
-\begin{figure*}
+This section gives the whole of \FCdot. It adds four features to the fragment of Section~\ref{sec:miniature}, fields, recursive types, intersections, and self-bounds. A last subsection adds composition templates. Each subsection says what the feature adds and why. Figures~\ref{fig:target-syntax}, \ref{fig:evidence}, \ref{fig:terms}, and~\ref{fig:machine} give the complete calculus, together with the allocation functions and the typing of continuations and states in Figure~\ref{fig:mini-machine}.
+
+\begin{figure}
 \small
 \color{tgtcol}
 \[
 \begin{array}{@{}lrcl@{}}
-\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit{S}{T} \mid \obj{\tel} \qquad\quad \top \mathrel{:=} \obj{\tnil} \\
+\text{Types} & S,T & ::= & \bot \mid \sel{x}{\ell} \mid \pit[x]{S}{T} \mid \obj[x]{\tel} \\
+& \top & \mathrel{:=} & \obj{\tnil} \\
 \text{Propositions} & P & ::= & \ple{S}{T} \mid \peq{S}{T} \mid \phas{\ell} \mid \pbnd{T} \\
 \text{Telescopes} & \tel & ::= & \tnil \mid \tcons{\tel}{P} \\[2pt]
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \\
@@ -15,28 +18,93 @@
 \text{Presence} & h & ::= & \ev{member}\,a\,e\,i \mid \ev{field}\,\ell \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
+\text{Morphisms} & m & ::= & [\,\tau, \ldots, \tau\,] \\
+\text{Templates} & \tau & ::= & \ev{le}\,q\,H\,q' \mid \ev{leTrans}\,\tau\,\tau \mid \ev{eq}\,j\,b \mid \ev{has}\,j \mid \ev{bnd}\,e \\[2pt]
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
-\text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit{W}{F} \mid \ev{cast}\,v\,e \\
-\text{Witnesses} & W & ::= & \tnil \mid W, \ell = T \qquad \text{Fields} \quad F ::= \tnil \mid F, \ell = t \\
+\text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit[x]{W}{F} \mid \ev{cast}\,v\,e \\
+\text{Witnesses} & W & ::= & \tnil \mid W, \ell = T \\
+\text{Fields} & F & ::= & \tnil \mid F, \ell = t \\
 \text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : T \mathrel{:=} W ; \vec{\ell}
 \end{array}
 \]
 \color{black}
-\caption{Syntax of \FCdot. In $\ev{pi}\,e\,e'$ the second component lives under one more binder. In $\obj{\tel}$, and in the telescopes carried by evidence and atoms, it is the telescope arguments that live under one more binder.}
+\caption{Syntax of \FCdot. The binders are those of the fragment: $\pit[x]{S}{T}$ binds $x$ in $T$, $\obj[x]{\tel}$ binds the self $x$ in $\tel$, and $\lit[x]{W}{F}$ binds the self $x$ in $W$ and $F$. A telescope carried by evidence or an atom has the self $\self$. In $\ev{pi}\,e\,e'$ the second component lives under the parameter.}
 \label{fig:target-syntax}
-\end{figure*}
+\end{figure}
 
-Figure~\ref{fig:target-syntax} gives the syntax. As in the source, everything is intrinsically scoped, and the two calculi share signatures, variables, renamings, and the label type. The source is built on the target's binder infrastructure, so the translation is the identity on signatures. This is a convenience of the mechanization, and nothing in the evidence design depends on it.
+Figure~\ref{fig:target-syntax} gives the syntax. As in the source, everything is scoped intrinsically, and the two calculi share signatures, variables, renamings, and labels. The source is built on the binder infrastructure of the target, so the translation is the identity on signatures. This is a convenience of the mechanization, and nothing in the design of evidence depends on it.
 
-\subsection{Types}
+\subsection{Fields and presence}
 
-A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{S}{T}$ whose codomain may mention the parameter's block, or an object type $\obj{\tel}$. A telescope is a list of propositions over a self binder, oldest first. Propositions do not bind, so the telescope is a list rather than a dependent context, and $\tat{\tel}{i}{P}$ says that its $i$-th proposition is $P$. The empty object type asserts nothing about its inhabitants and every type is included in it, so $\top$ is defined as $\obj{\tnil}$. The fourth kind of proposition, a self-bound $\pbnd{T}$, says that the object itself is included in $T$. By convention the type of a bound is a closed type weakened under the self binder, so a bound never mentions the self. The rules that prove a bound only ever prove such a bound, and the rule that uses one only reads such a bound. Bounds are what a type that is not a declaration becomes inside a telescope, and Section~\ref{sec:translation} uses them for intersections with a selection, a function type, or $\bot$ as an operand. Types never contain terms: the only way a type refers to a binder is through the names of its block. Every label has a name in every block, and $\sel{x}{a}$ for a term label $a$ is the type of the field $a$ of $x$.
+Fields bring a second kind of member name. As in the source, $A$ and $B$ name type members. Lower-case labels such as $a$ name fields, and the two kinds share one name space of labels. The letters $a$ and $b$ also stand for atoms, as in Section~\ref{sec:miniature}, and the context tells them apart. From here on $\ell$ ranges over all labels, and every binder $x$ has a name $\sel{x}{\ell}$ for each of them. For a field $a$ the name $\sel{x}{a}$ is a type as well, and this subsection says what it stands for.
+
+A term member $a$ of an object needs two facts: that the member exists, and what its type is. \FCdot keeps them apart. Presence, $\phas{a}$, is a proposition of its own. The type of the field is the block name $\sel{x}{a}$, which exists for every label like every other name, and what is known about it is stated by the other propositions. A field declaration translates to
+\[
+\trans{\dfld{a}{T}} = \obj{[\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} ,
+\]
+which says that the field exists and that its type is included in $\trans{T}$.
+
+A literal $\lit[x]{W}{F}$ now has fields $F$ besides its witnesses $W$, and binds its self $x$ in both. Its precise type is $\obj[x]{\ofLit{W}{F}}$, with one equality per witness followed by one presence per field:
+\[
+\ofLit{W}{F} = [\,\peq{\sel{x}{\ell_1}}{W(\ell_1)}, \ldots, \peq{\sel{x}{\ell_k}}{W(\ell_k)},\ \phas{\ell'_1}, \ldots, \phas{\ell'_n}\,] ,
+\]
+where $\ell_1, \ldots, \ell_k$ are the labels of $W$, oldest first, $\ell'_1, \ldots, \ell'_n$ are the labels of $F$, newest first, and $W(\ell)$ is the newest witness at $\ell$. The translation gives each field label a witness too, its declared type, so the name $\sel{x}{a}$ of a stored literal is defined as the type of the field. The fields are typed under the self binder $x$, bound transparently, and the body of field $\ell$ has the block name $\sel{x}{\ell}$ as its type. A context binder records the field labels of a transparent binder, written $x : T \mathrel{:=} W ; \vec\ell$.
+
+Presence evidence has two forms. $\ev{member}\,a\,e\,i$ eliminates a presence proposition at an atom, like the other elimination rules. $\ev{field}\,\ell$ reads presence off a transparent binder that records the field. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to the declared field type takes a further cast, which the translation reads off the declaration. There are two more templates. $\ev{has}\,j$ proves a target presence from the source presence at position $j$, and $\ev{eq}\,j\,b$ proves a target equality from the source equality at $j$, flipped when $b$ is true.
+
+\subsection{Recursive types}\label{sec:target-rec}
+
+In the fragment the bounds of a declaration could not mention the self. A recursive type $\dmu{x}{T}$ of DOT binds its own self, and that self is identified with the self of the object type. The type of Example~\ref{ex:hide}, with the intersection of the next subsection, becomes
+\[
+\trans{\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dfld{a}{x.A}}} = \obj{[\,\ple{\bot}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{\top},\ \phas{a},\ \ple{\sel{\self}{a}}{\sel{\self}{A}}\,]} ,
+\]
+where the last proposition relates two names of the self's own block. A declaration nested in the body may mention the outer self, and then the nested object type renames its own:
+\[
+\begin{array}{@{}l@{}}
+\trans{\dmu{x}{\dtyp{A}{\bot}{\top} \wedge \dtyp{B}{\bot}{\dtyp{C}{x.A}{x.A}}}} \\
+\quad = \obj{[\,\ldots,\ \ple{\sel{\self}{B}}{\obj[\self']{[\,\ple{\sel{\self}{A}}{\sel{\self'}{C}},\ \ple{\sel{\self'}{C}}{\sel{\self}{A}}\,]}}\,]} .
+\end{array}
+\]
+With one fixed name for every self, the inner propositions could not mention the outer one. Opening a recursive type at a variable $x$, which is what \rn{Rec-E} does, replaces the self by $x$. In \FCdot this is an atom, $\ev{unfold}\,a$, which instantiates the self of $a$'s object type at the root of $a$ and weakens the result under a fresh self that nothing mentions:
+\[
+\inferrule{\atomj{\Gamma}{a}{\obj{\tel}}}{\atomj{\Gamma}{\ev{unfold}\,a}{\obj{\weak{(\inst{\tel}{\rt{a}})}}}}
+\qquad
+\inferrule{\atomj{\Gamma}{a}{\obj{\weak{(\inst{\tel}{\rt{a}})}}}}{\atomj{\Gamma}{\ev{fold}\,\tel\,a}{\obj{\tel}}}
+\]
+The atom $\ev{fold}\,\tel\,a$ is the inverse, the atom form of \rn{Rec-I}. Both erase to nothing and keep the root. The unfolded type is an object type whose propositions talk about the root instead of the self. A recursive type therefore needs no subtyping rule of its own in the target either, as it does not in the source.
+
+Folding and unfolding change the type of an atom without evidence, so the chain of casts of an atom, which composes the head forms of its casts, cannot be typed between the plain types any more. Section~\ref{sec:canonical} types it in a mode at the root, in which object types are read with the self opened at the root, so that folding and unfolding are invisible. They are also why $\ev{member}$ takes an atom. In the fragment of Section~\ref{sec:miniature} the casts on an atom could be merged into the evidence argument of $\ev{member}$. Folding and unfolding carry no evidence to merge.
+
+\subsection{Intersections}
+
+An intersection of two object types is the concatenation of their telescopes:
+\[
+\trans{\src{S \wedge T}} = \obj{\mathit{tel}\,\src{S} \mathbin{+\!\!+} \mathit{tel}\,\src{T}} .
+\]
+An intersection is therefore never an operation on types, only on lists of propositions. The projections \rn{And}$_1$ and \rn{And}$_2$ are object coercions whose templates copy one half of the source. The source rule \rn{And}, which pairs two subtypings out of one type, becomes $\ev{pair}\,\tel_1\,\tel_2\,e\,f$: from $e : S \le \obj{\tel_1}$ and $f : S \le \obj{\tel_2}$ it concludes $S \le \obj{\tel_1 \mathbin{+\!\!+} \tel_2}$. The source rule \rn{And-I}, which pairs two typings of one variable, becomes the atom $\ev{both}\,\tel_1\,\tel_2\,a\,b$, which requires $a$ and $b$ to have the same root. The telescope annotations make the endpoints computable from the arguments.
+
+\subsection{Self-bounds}
+
+Not every type is a declaration. An intersection $x.A \wedge \dfld{a}{T}$ has an operand that is a selection, and a recursive type $\dmu{x}{x.A}$ has a body that is one. Such a type cannot be split into propositions about named members. It enters a telescope as one self-bound, $\pbnd{T}$, a fourth kind of proposition, which says that the object itself is included in $T$:
+\[
+\trans{\src{x.A \wedge \dfld{a}{T}}} = \obj{[\,\pbnd{\weak{\sel{x}{A}}},\ \phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} .
+\]
+A bound has one elimination, one introduction, and one template.
+\begin{itemize}
+\item The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound, $\obj{\tel} \le T$, when that bound is self-free, $\pbnd{\weak{T}}$.
+\item The evidence $\ev{intoBnd}\,e$ turns $S \le T$ into $S \le \obj{[\,\pbnd{\weak{T}}\,]}$, the object type with that one bound.
+\item The template $\ev{bnd}\,e$ proves a target bound, where $e$ is self-free evidence out of the source object type as a whole. This is the one template that reads the whole source rather than one of its propositions. It still eliminates nothing through the self, because $e$ is self-free.
+\end{itemize}
+A bound may mention the self. That is what the body of $\dmu{x}{x.A}$ becomes: $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A cast through a bound reads only a self-free bound, and the rules that prove a bound prove only such bounds. A bound that mentions the self is used by unfolding an atom of its type first, which instantiates the self at the root and makes every bound of the telescope self-free.
+
+\subsection{Composition templates}
+
+We call the template $\ev{le}\,q\,H\,q'$ of Section~\ref{sec:mini-evidence} a basic template. A target inclusion may also be proven by a composition template $\ev{leTrans}\,\tau_1\,\tau_2$, which chains two templates over the same source, $\tau_1$ for $\ple{S}{M}$ and $\tau_2$ for $\ple{M}{T}$. The middle type $M$ may mention the self, so a composition template can chain facts that the source asserts about its own members, such as $\ple{\sel{\self}{a}}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\sel{\self}{B}}$. The translation of this report produces no composition templates. They are there for recursive subtyping, to which Section~\ref{sec:related} returns, and the metatheory covers them.
 
 \subsection{Evidence}
 
-\begin{figure*}
+\begin{figure}
 \small
 \color{tgtcol}
 \begin{mathpar}
@@ -54,7 +122,7 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \and
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'}}{\lej{\Gamma}{\ev{obj}\,\tel\,m}{\obj{\tel}}{\obj{\tel'}}}
 \and
-\inferrule{\lej{\Gamma}{e}{S}{\obj{\tel_1}} \\ \lej{\Gamma}{f}{S}{\obj{\tel_2}}}{\lej{\Gamma}{\ev{pair}\,\tel_1\,\tel_2\,e\,f}{S}{\obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}}}
+\inferrule{\lej{\Gamma}{e}{S}{\obj{\tel_1}} \\ \lej{\Gamma}{f}{S}{\obj{\tel_2}}}{\lej{\Gamma}{\ev{pair}\,\tel_1\,\tel_2\,e\,f}{S}{\obj{\tel_1 \mathbin{+\!\!+} \tel_2}}}
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
   {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
@@ -63,7 +131,13 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \and
 \inferrule{\lej{\Gamma}{e}{S}{T}}{\lej{\Gamma}{\ev{intoBnd}\,e}{S}{\obj{[\,\pbnd{\weak{T}}\,]}}}
 \\
-\inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
+\inferrule{ }{\eqj{\Gamma}{\ev{refl}\,T}{T}{T}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{T}}{\eqj{\Gamma}{\ev{symm}\,\varphi}{T}{S}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
+\and
+\inferrule{\Gamma(x) \ni \ell \mathrel{:=} T}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{T}}
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\peq{S'}{T'}}}
   {\eqj{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
@@ -75,41 +149,44 @@ A type is $\bot$, a block name $\sel{x}{\ell}$, a dependent function type $\pit{
 \\
 \inferrule{ }{\Gamma \vdash \ev{none} : X \le X}
 \and
-\inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
+\inferrule{\lej{\Gamma}{e}{U_1}{U_2}}{\Gamma \vdash \ev{some}\,e : \weak{U_1} \le \weak{U_2}}
 \and
-\inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
+\inferrule{\morj{\Gamma}{\tau_i}{\tel}{P_i} \text{ for each } i < n}{\morj{\Gamma}{[\,\tau_0, \ldots, \tau_{n-1}\,]}{\tel}{[\,P_0, \ldots, P_{n-1}\,]}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
-  {\morj{\Gamma}{\ev{le}\,m\,q\,H\,q'}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
+\inferrule{\holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
+  {\morj{\Gamma}{\ev{le}\,q\,H\,q'}{\tel}{\ple{S}{T}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\peq{X}{Y}}}
-  {\morj{\Gamma}{\ev{eq}\,m\,j\,\mathit{false}}{\tel}{\tcons{\tel'}{\peq{X}{Y}}}}
+\inferrule{\morj{\Gamma}{\tau_1}{\tel}{\ple{S}{M}} \\ \morj{\Gamma}{\tau_2}{\tel}{\ple{M}{T}}}
+  {\morj{\Gamma}{\ev{leTrans}\,\tau_1\,\tau_2}{\tel}{\ple{S}{T}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\peq{X}{Y}}}
-  {\morj{\Gamma}{\ev{eq}\,m\,j\,\mathit{true}}{\tel}{\tcons{\tel'}{\peq{Y}{X}}}}
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}
+  {\morj{\Gamma}{\ev{eq}\,j\,\mathit{false}}{\tel}{\peq{X}{Y}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\phas{\ell}}}
-  {\morj{\Gamma}{\ev{has}\,m\,j}{\tel}{\tcons{\tel'}{\phas{\ell}}}}
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}
+  {\morj{\Gamma}{\ev{eq}\,j\,\mathit{true}}{\tel}{\peq{Y}{X}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \lej{\Gamma}{e}{\obj{\tel}}{T}}
-  {\morj{\Gamma}{\ev{bnd}\,m\,e}{\tel}{\tcons{\tel'}{\pbnd{\weak{T}}}}}
+\inferrule{\tat{\tel}{j}{\phas{\ell}}}
+  {\morj{\Gamma}{\ev{has}\,j}{\tel}{\phas{\ell}}}
+\and
+\inferrule{\lej{\Gamma}{e}{\obj{\tel}}{T}}
+  {\morj{\Gamma}{\ev{bnd}\,e}{\tel}{\pbnd{\weak{T}}}}
+\\
+\inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}{\holej{\tel}{\ev{eq}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{Y}{X}}}{\holej{\tel}{\ev{eqSym}\,j}{X}{Y}}
 \end{mathpar}
 \color{black}
-\caption{Evidence typing. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. A hole reads a source proposition as an inclusion: $\holej{\tel}{\ev{le}\,j}{X}{Y}$ when $\tat{\tel}{j}{\ple{X}{Y}}$, $\holej{\tel}{\ev{eq}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{X}{Y}}$, and $\holej{\tel}{\ev{eqSym}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{Y}{X}}$.}
+\caption{Evidence typing. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
 \label{fig:evidence}
-\end{figure*}
+\end{figure}
 
-There are three families of evidence: inclusions $\lej{\Gamma}{e}{S}{T}$, equalities $\eqj{\Gamma}{\varphi}{S}{T}$, and presence $\hasj{\Gamma}{h}{x}{\ell}$, which says that the object bound at $x$ has a field $\ell$. Figure~\ref{fig:evidence} gives their typing. Endpoints are assigned by typing, not carried by the syntax, and there is no symmetry for inclusions.
-
-The elimination rule $\ev{member}$ is the one rule that connects the type of an atom to the block of its root, the variable under its wrappers, defined in Section~\ref{sec:atoms}. From $a : S$ and evidence $e$ for $S \le \obj{\tel}$, the $i$-th proposition of $\tel$ holds at $\rt{a}$, as an inclusion, an equality, or a presence, according to its kind. The rule $\ev{def}$ reads the definition of a block name off a transparent binder, and $\Gamma(x) \ni \ell \mathrel{:=} W$ says that $x$ is transparent in $\Gamma$ with witness $W$ at $\ell$. Contexts have two kinds of binder: an opaque one, $x : T$, whose block is abstract, and a transparent one, $x : T \mathrel{:=} W ; \vec\ell$, whose block is defined by the witnesses $W$ and which is known to have the fields $\vec\ell$. A witness list assigns $\top$ to every label it does not mention. Transparent binders arise in two places: inside an object literal, where the fields are typed under the literal's own self binder, and in store typing, where every allocated binder is transparent.
-
-An object coercion $\ev{obj}\,\tel\,m$ is annotated with its source telescope and carries a morphism $m$ that proves each proposition of the target telescope, oldest first. A target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$: a hole $H$ names a proposition of the source and reads it as an inclusion $X \le Y$, and the two sides $q$ and $q'$ are closed coercions that adjust the endpoints. A side is either absent or a coercion $A \le B$ between closed types weakened under the self binder, so it cannot mention the self block. A target equality is a source equality, possibly flipped. A target presence is inherited from a source presence by index. A morphism therefore never eliminates through the self block, which is the property Section~\ref{sec:why-structural} relies on. Pairing, $\ev{pair}$, combines two coercions into object types into one coercion into the concatenation, and it is how the source's \rn{And} rule is translated.
-
-A self-bound has one elimination, one introduction, and one entry in morphisms. The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound. The evidence $\ev{intoBnd}\,e$ turns $S \le T$ into $S \le \obj{[\,\pbnd{\weak{T}}\,]}$, the object type with that one bound. And a morphism proves a target bound by $\ev{bnd}\,m\,e$, where $e$ is closed evidence out of the source object type as a whole. This is the one entry of a morphism that reads the whole source rather than one of its propositions, and it still eliminates nothing through the self block, since $e$ is closed.
+Figure~\ref{fig:evidence} gives the typing of all evidence. There are three families: inclusions $\lej{\Gamma}{e}{S}{T}$, equalities $\eqj{\Gamma}{\varphi}{S}{T}$, and presence $\hasj{\Gamma}{h}{x}{\ell}$, which says that the object bound at $x$ has a field $\ell$. The elimination $\ev{member}$ has one rule per kind of proposition it eliminates. It eliminates inclusions, equalities, and presence, but not bounds, which are cast through instead.
 
 \subsection{Atoms, terms, and values}\label{sec:atoms}
 
-\begin{figure*}
+\begin{figure}
 \small
 \color{tgtcol}
 \begin{mathpar}
@@ -121,7 +198,7 @@ A self-bound has one elimination, one introduction, and one entry in morphisms. 
 \and
 \inferrule{\atomj{\Gamma}{a}{\obj{\weak{(\inst{\tel}{\rt{a}})}}}}{\atomj{\Gamma}{\ev{fold}\,\tel\,a}{\obj{\tel}}}
 \and
-\inferrule{\atomj{\Gamma}{a}{\obj{\tel_1}} \\ \atomj{\Gamma}{b}{\obj{\tel_2}} \\ \rt{b} = \rt{a}}{\atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\obj{(\tel_1 \mathbin{+\!\!+} \tel_2)}}}
+\inferrule{\atomj{\Gamma}{a}{\obj{\tel_1}} \\ \atomj{\Gamma}{b}{\obj{\tel_2}} \\ \rt{b} = \rt{a}}{\atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\obj{\tel_1 \mathbin{+\!\!+} \tel_2}}}
 \\
 \inferrule{\atomj{\Gamma}{a}{T}}{\tmj{\Gamma}{a}{T}}
 \and
@@ -137,7 +214,7 @@ A self-bound has one elimination, one introduction, and one entry in morphisms. 
 \\
 \inferrule{\tmj{\Gamma, x : S}{t}{T}}{\valj{\Gamma}{\lambda(x : S).\,t}{\pit{S}{T}}}
 \and
-\inferrule{\fldj{\Gamma, x : \obj{\ofLit{W}{F}} \mathrel{:=} W ; \dom F}{F}}{\valj{\Gamma}{\lit{W}{F}}{\obj{\ofLit{W}{F}}}}
+\inferrule{\fldj{\Gamma, x : \obj[x]{\ofLit{W}{F}} \mathrel{:=} W ; \dom F}{F}}{\valj{\Gamma}{\lit[x]{W}{F}}{\obj[x]{\ofLit{W}{F}}}}
 \and
 \inferrule{\valj{\Gamma}{v}{S} \\ \lej{\Gamma}{e}{S}{T}}{\valj{\Gamma}{\ev{cast}\,v\,e}{T}}
 \and
@@ -148,27 +225,23 @@ A self-bound has one elimination, one introduction, and one entry in morphisms. 
 \color{black}
 \caption{Typing of atoms, terms, values, and fields. In the field rules $x$ is the self binder of the literal.}
 \label{fig:terms}
-\end{figure*}
+\end{figure}
 
-An atom is a variable under wrappers that erase to nothing: a cast, the unfolding of a self block at the root, the folding of the root back into a self block, and the pairing of two typings of one variable. The root of an atom is the variable underneath:
+Figure~\ref{fig:terms} gives the typing of atoms, terms, values, and fields. An atom is a variable under wrappers that erase to nothing: casts, folding and unfolding, and pairing. Its root is the variable underneath:
 \[
-\begin{array}{@{}rcl@{}}
+\begin{array}{@{}lcl@{}}
 \rt{x} & = & x \\
 \rt{\ev{cast}\,a\,e} & = & \rt{a} \\
 \rt{\ev{fold}\,\tel\,a} & = & \rt{a} \\
 \rt{\ev{unfold}\,a} & = & \rt{a} \\
-\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a}
+\rt{\ev{both}\,\tel_1\,\tel_2\,a\,b} & = & \rt{a} .
 \end{array}
 \]
-In the last case $\rt{b}$ is the same variable whenever the atom is typed. Figure~\ref{fig:terms} gives the typing. Unfolding instantiates the self binder of the telescope by the atom's root and weakens the result under a fresh, unused self binder, so that $\obj{\weak{(\inst{\tel}{\rt{a}})}}$ is an object type whose propositions are about $\rt{a}$ rather than about the self. Folding is its inverse. These are the atom forms of the source rules \rn{Rec-E} and \rn{Rec-I}, and $\ev{both}$ is \rn{And-I}.
-
-Terms are in monadic normal form over atoms: application and projection take atoms, a let sequences computations, and a cast on a term becomes a cast frame when it runs. There is no subsumption. Application instantiates the codomain at the root of the argument, as \rn{All-E} does in the source, and the result of a let may not mention the block of the let-bound variable. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to a declared field type takes a further cast, which the translation supplies from the declaration.
-
-An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its type is its precise type $\obj{\ofLit{W}{F}}$: the telescope with one equality $\peq{\sel{\self}{\ell}}{W(\ell)}$ per witness, followed by one presence $\phas{\ell}$ per field. Fields are typed under the self binder bound transparently at that type, and each field body has the block name $\sel{x}{\ell}$ of its own label as its type. A literal typed at a declaration type is a literal under a cast. This is the inert-store design of Section~\ref{sec:why-structural}, and it is what makes a witness of a literal free to be a name of the same block: a definition $\ell = \sel{x}{\ell'}$ is an alias, and Section~\ref{sec:resolution} explains how aliases, including cyclic ones, are resolved.
+In the last case $\rt{b}$ is the same variable whenever the atom is typed.
 
 \subsection{Stores and the machine}
 
-\begin{figure*}
+\begin{figure}
 \small
 \color{tgtcol}
 \[
@@ -179,34 +252,61 @@ An object literal $\lit{W}{F}$ has witnesses and fields and nothing else. Its ty
 \mst{\sigma}{K \triangleright \ev{cast}\,e}{a} &\step& \mst{\sigma}{K}{\ev{cast}\,a\,e} \\
 \mst{\sigma}{K \triangleright \ev{let}\,u}{v} &\step& \mst{\sigma, \mathit{core}(v)}{\weak{K}}{\mathit{adjust}(u, v)} \\
 \mst{\sigma}{K \triangleright \ev{let}\,u}{a} &\step& \mst{\sigma}{K}{\inst{u}{a}} \\
-\mst{\sigma}{K}{x\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(x) = \lambda(z : S_0).\,t_0 \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', F)},\ F \in \{\form{id}, \form{eqv}\,\varphi\} \\
-\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} & \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{(a', \form{pi}\,d\,c)} \\
-\mst{\sigma}{K}{\ev{proj}\,a\,\ell\,h} &\step& \mst{\sigma}{K}{\inst{t}{\rt{a}}} & \text{if } \sigma(\rt{a}) = \lit{W}{F} \text{ and } F(\ell) = t
+\mst{\sigma}{K}{x\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} \\
+& & \quad \text{if } \sigma(x) = \lambda(z : S_0).\,t_0 \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\inst{t_0}{b}} \\
+& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{\form{id}} \\
+\mst{\sigma}{K}{a\,b} &\step& \mst{\sigma}{K}{\ev{cast}\,(\inst{t_0}{\ev{cast}\,b\,d})\,(\inst{c}{b})} \\
+& & \quad \text{if } \sigma(\rt{a}) = \lambda(z : S_0).\,t_0,\ a \text{ not a variable},\ \chn{\sigma}{a}{n}{\form{pi}\,d\,c} \\
+\mst{\sigma}{K}{\ev{proj}\,a\,\ell\,h} &\step& \mst{\sigma}{K}{\inst{t}{\rt{a}}} \\
+& & \quad \text{if } \sigma(\rt{a}) = \lit{W}{F} \text{ and } F(\ell) = t
 \end{array}
 \]
 \color{black}
-\caption{The store machine of \FCdot. $\mathit{core}(v)$ is the literal under the cast wrappers of $v$, and $\mathit{adjust}(u, v)$ substitutes $\ev{cast}\,x\,E$ for $x$ in $u$ when $E$ is the composite of those wrappers, and is $u$ when there are none. The judgment $\chn{\sigma}{a}{n}{(a', F)}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
+\caption{The store machine of \FCdot. $\mathit{core}$ and $\mathit{adjust}$ are defined in Figure~\ref{fig:mini-machine}. $\chn{\sigma}{a}{n}{F}$ is the normalization of the chain of casts of $a$ with fuel $n$, defined in Section~\ref{sec:normalizer}.}
 \label{fig:machine}
-\end{figure*}
+\end{figure}
 
-A store holds one value per binder of its signature, and store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels:
+A store holds one value per binder of its signature. Store typing $\storej{\sigma}{\Gamma}$ requires every entry to be a lambda or a literal, typed in the transparent context of the entries before it, with the context recording the literal's witnesses and field labels. The self of a stored literal becomes its location:
 \begin{mathpar}
 \color{tgtcol}
 \inferrule{ }{\storej{\cdot}{\cdot}}
 \and
-\inferrule{\storej{\sigma}{\Gamma} \\ v \text{ is a literal} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}
+\inferrule{\storej{\sigma}{\Gamma} \\ v \text{ is not a cast} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, v}{\Gamma, x : T \mathrel{:=} \mathit{witnesses}(v) ; \mathit{fields}(v)}}
 \end{mathpar}
-A lambda has no witnesses and no fields, so its block names are all defined as $\top$. A continuation is a list of frames, a let frame $\ev{let}\,u$ or a cast frame $\ev{cast}\,e$, and $\contj{\Gamma}{K}{T}{U}$ says that $K$ accepts a value of type $T$ and produces one of type $U$. A state is typed at $U$ when its store is typed in a context in which the term has some type $T$ and the continuation takes $T$ to $U$.
+Here $\mathit{witnesses}(\lit[x]{W}{F}) = W$ and $\mathit{fields}(\lit[x]{W}{F}) = \dom F$, and both are empty for a lambda. Continuations and states are typed by the rules of Figure~\ref{fig:mini-machine}, and a state is final when its continuation is empty and its term is a value or an atom.
 
-Figure~\ref{fig:machine} gives the steps. Allocation is the rule that keeps stores inert: the value that reaches a let frame may carry casts, and the machine stores the literal underneath at its own type and rewrites the continuation so that the new variable is used under the composite of the stripped casts. Application through a bare variable is ordinary $\beta$. Application through a wrapped atom reads the domain and codomain evidence off the normal form of the atom's chain of casts. When that form is the identity or a conversion, the closure is applied directly. When it is a function coercion $\form{pi}\,d\,c$, the argument is cast by $d$ and the result by $c$ instantiated at the argument. The machine thus runs the normalizer of Section~\ref{sec:canonical}, and progress has to show that the normalizer succeeds on a closed atom of function type. Projection reads the field off the literal at the root and instantiates the field's self binder by the root.
-
-Atom substitution $\inst{u}{a}$ replaces the variable by the atom in terms, and renames the variable to $\rt{a}$ in types and evidence, which see nothing of an atom but its root.
+Figure~\ref{fig:machine} gives the steps. They are those of the fragment, plus projection, which reads the field off the literal at the root and instantiates the field's self binder by the root. Substitution of an atom for a variable, $\inst{u}{a}$, puts the atom wherever an atom is expected, in terms and inside the evidence that eliminates at an atom. It puts the root of the atom into types and into the evidence that names a binder, $\ev{def}\,x\,\ell$, since those only ever see variables.
 
 \subsection{Erasure}
 
-Erasure into the runtime maps an atom to its root, drops every cast and every piece of evidence, keeps the fields of a literal, and drops cast frames. A step of the machine either moves a cast frame, in which case the erased state does not change, or erases to exactly one runtime step. Cast-frame steps are bounded by the nesting of casts in the state, so they cannot be taken forever.
+Erasure into the runtime of Figure~\ref{fig:runtime} maps an atom to its root and drops every cast and every piece of evidence:
+\[
+\begin{array}{@{}lcl@{}}
+\erase{a} & = & \run{\rt{a}} \\
+\erase{a\,b} & = & \run{\rt{a}\,\rt{b}} \\
+\erase{\ev{proj}\,a\,\ell\,h} & = & \run{\rt{a}.\ell} \\
+\erase{\klet x = t \kin u} & = & \run{\klet x = \erase{t} \kin \erase{u}} \\
+\erase{\ev{cast}\,t\,e} & = & \erase{t}
+\end{array}
+\]
+It keeps the fields of a literal and drops cast frames:
+\[
+\begin{array}{@{}lcl@{}}
+\erase{\lambda(x : S).\,t} & = & \run{\lambda x.\,\erase{t}} \\
+\erase{\lit[x]{W}{F}} & = & \run{\nu(x.\,\erase{F})} \\
+\erase{\ev{cast}\,v\,e} & = & \erase{v} \\
+\erase{F, \ell = t} & = & \run{\erase{F}, \ell = \erase{t}} \\
+\erase{K \triangleright \ev{let}\,u} & = & \run{\erase{K} \triangleright (x.\,\erase{u})} \\
+\erase{K \triangleright \ev{cast}\,e} & = & \erase{K}
+\end{array}
+\]
+The empty field list and the empty continuation erase to themselves, and stores and states erase pointwise. A step of the machine either moves a cast frame, in which case the erased state does not change, or erases to exactly one runtime step. Cast-frame steps are bounded by the nesting of casts in the state, so they cannot be taken forever.
 
 \subsection{The checker}
 
-Every constructor of evidence and of atoms determines its endpoints from its arguments and the context: object coercions carry their source telescope, pairing and folding carry their target telescopes, and a template is checked from its hole outwards. The checker is therefore a family of synthesizing kernels, one per judgment, each returning the typing derivation it found. Soundness holds by construction, and completeness, that every derivation is found, is a theorem proven by induction on derivations. Its top-level form is $\lean{checkTm}\ \Gamma\ t\ T = \mathit{true} \iff \tmj{\Gamma}{t}{T}$, and all examples of Section~\ref{sec:mechanization} are checked by running it inside the kernel of the proof assistant.
+Every constructor of evidence and of atoms determines its endpoints from its arguments and the context. Object coercions carry their source telescope, pairing and folding carry their target telescopes, a basic template is checked from its hole outwards, and a composition template checks that its two templates prove one inclusion each and meet at the same middle type. The checker is therefore a family of synthesizing functions, one per judgment, each returning the typing derivation it found. Soundness holds by construction, and completeness, that every derivation is found, is a theorem proven by induction on derivations. Its top-level form is
+\[
+\lean{checkTm}\ \Gamma\ t\ T = \mathit{true} \iff \tmj{\Gamma}{t}{T} ,
+\]
+and the examples of Section~\ref{sec:mechanization} are checked by running it inside the kernel of the proof assistant. A checker matters for a calculus of evidence in the way that the Core Lint pass matters for GHC: the output of a translation can be validated independently of the translation.
