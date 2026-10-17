@@ -124,6 +124,12 @@ A morphism may also prove a target inclusion by a composition template $\ev{leTr
 \and
 \inferrule{\lej{\Gamma}{e}{S}{T}}{\lej{\Gamma}{\ev{intoBnd}\,e}{S}{\obj{[\,\pbnd{\weak{T}}\,]}}}
 \\
+\inferrule{ }{\eqj{\Gamma}{\ev{refl}\,T}{T}{T}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{T}}{\eqj{\Gamma}{\ev{symm}\,\varphi}{T}{S}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
+\and
 \inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
 \and
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\peq{S'}{T'}}}
@@ -157,9 +163,15 @@ A morphism may also prove a target inclusion by a composition template $\ev{leTr
 \and
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \lej{\Gamma}{e}{\obj{\tel}}{T}}
   {\morj{\Gamma}{\ev{bnd}\,m\,e}{\tel}{\tcons{\tel'}{\pbnd{\weak{T}}}}}
+\\
+\inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}{\holej{\tel}{\ev{eq}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{Y}{X}}}{\holej{\tel}{\ev{eqSym}\,j}{X}{Y}}
 \end{mathpar}
 \color{black}
-\caption{Evidence typing. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. Holes read source propositions as in Figure~\ref{fig:mini-evidence}.}
+\caption{Evidence typing. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
 \label{fig:evidence}
 \end{figure}
 

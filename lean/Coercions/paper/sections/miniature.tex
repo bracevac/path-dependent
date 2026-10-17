@@ -77,6 +77,12 @@ where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{f
 \inferrule{\atomj{\Gamma}{a}{S} \\ \lej{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\ple{S'}{T'}}}
   {\lej{\Gamma}{\ev{member}\,a\,e\,i}{\inst{S'}{\rt{a}}}{\inst{T'}{\rt{a}}}}
 \and
+\inferrule{ }{\eqj{\Gamma}{\ev{refl}\,T}{T}{T}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{T}}{\eqj{\Gamma}{\ev{symm}\,\varphi}{T}{S}}
+\and
+\inferrule{\eqj{\Gamma}{\varphi}{S}{M} \\ \eqj{\Gamma}{\psi}{M}{T}}{\eqj{\Gamma}{\ev{trans}\,\varphi\,\psi}{S}{T}}
+\and
 \inferrule{\Gamma(x) \ni \ell \mathrel{:=} W}{\eqj{\Gamma}{\ev{def}\,x\,\ell}{\sel{x}{\ell}}{W}}
 \\
 \inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
@@ -87,9 +93,15 @@ where $a$ ranges over atoms, which the next subsection introduces. Figure~\ref{f
 \inferrule{ }{\Gamma \vdash \ev{none} : X \le X}
 \and
 \inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
+\\
+\inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}{\holej{\tel}{\ev{eq}\,j}{X}{Y}}
+\and
+\inferrule{\tat{\tel}{j}{\peq{Y}{X}}}{\holej{\tel}{\ev{eqSym}\,j}{X}{Y}}
 \end{mathpar}
 \color{black}
-\caption{Evidence typing in the fragment. The rules for $\ev{refl}$, $\ev{symm}$, and $\ev{trans}$ on equalities are omitted. A hole reads a proposition of the source telescope as an inclusion: $\holej{\tel}{\ev{le}\,j}{X}{Y}$ when $\tat{\tel}{j}{\ple{X}{Y}}$, $\holej{\tel}{\ev{eq}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{X}{Y}}$, and $\holej{\tel}{\ev{eqSym}\,j}{X}{Y}$ when $\tat{\tel}{j}{\peq{Y}{X}}$.}
+\caption{Evidence typing in the fragment. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
 \label{fig:mini-evidence}
 \end{figure}
 

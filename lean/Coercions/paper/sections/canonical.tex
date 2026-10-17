@@ -82,9 +82,12 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{hnf}_\sigma(\ev{bound}\,\tel\,i) & = & \form{bnd}\,i\,\form{id} \\
 \mathit{hnf}_\sigma(\ev{intoBnd}\,e) & = & \form{into}\,[\,\form{bnd}\,(\mathit{hnf}_\sigma(e))\,] \\
 \mathit{hnf}_\sigma(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
+\mathit{entries}_\sigma(\ev{nil}) & = & \tnil \\
 \mathit{entries}_\sigma(\ev{le}\,m\,q\,H\,q') & = & \tcons{\mathit{entries}_\sigma(m)}{\form{le}\,(\mathit{side}_\sigma(q))\,H\,(\mathit{side}_\sigma(q'))} \\
 \mathit{entries}_\sigma(\ev{leTrans}\,m\,p\,q) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{trans}\,\form{id}\,L_1\,L_2\,\form{id}} \\
 & & \quad \text{where } \mathit{entries}_\sigma(p) = [\,L_1\,] \text{ and } \mathit{entries}_\sigma(q) = [\,L_2\,] \\
+\mathit{entries}_\sigma(\ev{eq}\,m\,j\,b) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{eq}\,j\,b} \\
+\mathit{entries}_\sigma(\ev{has}\,m\,j) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{has}\,j} \\
 \mathit{entries}_\sigma(\ev{bnd}\,m\,e) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{bnd}\,(\mathit{hnf}_\sigma(e))} \\[3pt]
 \mathit{view}_\sigma(x) & = & \text{the precise view of } \sigma(x) \text{ at } x \\
 \mathit{view}_\sigma(\ev{cast}\,a\,e) & = & \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \\
@@ -104,7 +107,7 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \end{array}
 \]
 \color{black}
-\caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel. The entries of $\ev{nil}$ are empty, an equality or presence template keeps its index, and $\mathit{side}_\sigma$ is $\form{id}$ on an absent side and $\mathit{hnf}_\sigma$ on a present one.}
+\caption{The normalizer, with the fuel argument and the failure cases elided. Each recursive call is on a subterm and consumes one unit of fuel. $\mathit{side}_\sigma$ is $\form{id}$ on an absent side and $\mathit{hnf}_\sigma$ on a present one.}
 \label{fig:normalizer}
 \end{figure}
 
@@ -180,6 +183,12 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{F}$, composes the head forms 
 \inferrule{\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2} \\ \Gamma \models F : S \le X \text{ (side)} \\ \entjm{\Gamma}{\rho}{L_1}{\tel_1}{\ple{X}{M}} \\ \entjm{\Gamma}{\rho}{L_2}{\tel_1}{\ple{M}{Y}} \\ \Gamma \models G : Y \le T \text{ (side)}}
   {\entjm{\Gamma}{\rho}{\tcons{\mathit{Es}}{\form{trans}\,F\,L_1\,L_2\,G}}{\tel_1}{\tcons{\tel_2}{\ple{S}{T}}}}
 \and
+\inferrule{\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2} \\ \tat{\tel_1}{j}{\peq{X}{Y}}}
+  {\entjm{\Gamma}{\rho}{\tcons{\mathit{Es}}{\form{eq}\,j\,\mathit{false}}}{\tel_1}{\tcons{\tel_2}{\peq{X}{Y}}}}
+\and
+\inferrule{\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2} \\ \tat{\tel_1}{j}{\peq{X}{Y}}}
+  {\entjm{\Gamma}{\rho}{\tcons{\mathit{Es}}{\form{eq}\,j\,\mathit{true}}}{\tel_1}{\tcons{\tel_2}{\peq{Y}{X}}}}
+\and
 \inferrule{\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2} \\ \tat{\tel_1}{j}{\phas{\ell}}}
   {\entjm{\Gamma}{\rho}{\tcons{\mathit{Es}}{\form{has}\,j}}{\tel_1}{\tcons{\tel_2}{\phas{\ell}}}}
 \and
@@ -212,7 +221,7 @@ The chain of casts of an atom, $\chn{\sigma}{a}{n}{F}$, composes the head forms 
   {\viewj{\Gamma}{r}{\sigma}{\tcons{V}{\form{bnd}\,G}}{\tcons{\tel}{\pbnd{X}}}}
 \end{mathpar}
 \color{black}
-\caption{Typed forms $\chainj{\Gamma}{\rho}{F}{S}{T}$ in a mode $\rho$, typed entries $\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2}$ and free entries $\entjm{\Gamma}{\rho}{\mathit{Ds}}{S}{\tel}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. The entry rules for equalities mirror the morphism rules. A side is typed as $\form{id}$ between equal types, or as a form in the plain mode between closed types weakened under the self binder. The free entries of an $\form{into}$ form are typed from the source type rather than from its telescope, since they never consult the view, and $\entjm{\Gamma}{\rho}{L}{\tel_1}{P}$ types one local entry at one proposition, by the rules for lists with the list left out.}
+\caption{Typed forms $\chainj{\Gamma}{\rho}{F}{S}{T}$ in a mode $\rho$, typed entries $\entjm{\Gamma}{\rho}{\mathit{Es}}{\tel_1}{\tel_2}$ and free entries $\entjm{\Gamma}{\rho}{\mathit{Ds}}{S}{\tel}$, and typed views $\viewj{\Gamma}{r}{\sigma}{V}{\tel}$. A side is typed as $\form{id}$ between equal types, or as a form in the plain mode between closed types weakened under the self binder. The free entries of an $\form{into}$ form are typed from the source type rather than from its telescope, since they never consult the view, and $\entjm{\Gamma}{\rho}{L}{\tel_1}{P}$ types one local entry at one proposition, by the rules for lists with the list left out.}
 \label{fig:formtyped}
 \end{figure}
 
