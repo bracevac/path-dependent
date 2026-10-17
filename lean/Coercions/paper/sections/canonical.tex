@@ -82,13 +82,12 @@ A view is the telescope of forms of the propositions that an atom's resolved obj
 \mathit{hnf}_\sigma(\ev{bound}\,\tel\,i) & = & \form{bnd}\,i\,\form{id} \\
 \mathit{hnf}_\sigma(\ev{intoBnd}\,e) & = & \form{into}\,[\,\form{bnd}\,(\mathit{hnf}_\sigma(e))\,] \\
 \mathit{hnf}_\sigma(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
-\mathit{entries}_\sigma(\ev{nil}) & = & \tnil \\
-\mathit{entries}_\sigma(\ev{le}\,m\,q\,H\,q') & = & \tcons{\mathit{entries}_\sigma(m)}{\form{le}\,(\mathit{side}_\sigma(q))\,H\,(\mathit{side}_\sigma(q'))} \\
-\mathit{entries}_\sigma(\ev{leTrans}\,m\,p\,q) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{trans}\,\form{id}\,L_1\,L_2\,\form{id}} \\
-& & \quad \text{where } \mathit{entries}_\sigma(p) = [\,L_1\,] \text{ and } \mathit{entries}_\sigma(q) = [\,L_2\,] \\
-\mathit{entries}_\sigma(\ev{eq}\,m\,j\,b) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{eq}\,j\,b} \\
-\mathit{entries}_\sigma(\ev{has}\,m\,j) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{has}\,j} \\
-\mathit{entries}_\sigma(\ev{bnd}\,m\,e) & = & \tcons{\mathit{entries}_\sigma(m)}{\form{bnd}\,(\mathit{hnf}_\sigma(e))} \\[3pt]
+\mathit{entries}_\sigma([\,\tau_0, \ldots, \tau_{n-1}\,]) & = & [\,\mathit{entry}_\sigma(\tau_0), \ldots, \mathit{entry}_\sigma(\tau_{n-1})\,] \\
+\mathit{entry}_\sigma(\ev{le}\,q\,H\,q') & = & \form{le}\,(\mathit{side}_\sigma(q))\,H\,(\mathit{side}_\sigma(q')) \\
+\mathit{entry}_\sigma(\ev{leTrans}\,\tau_1\,\tau_2) & = & \form{trans}\,\form{id}\,(\mathit{entry}_\sigma(\tau_1))\,(\mathit{entry}_\sigma(\tau_2))\,\form{id} \\
+\mathit{entry}_\sigma(\ev{eq}\,j\,b) & = & \form{eq}\,j\,b \\
+\mathit{entry}_\sigma(\ev{has}\,j) & = & \form{has}\,j \\
+\mathit{entry}_\sigma(\ev{bnd}\,e) & = & \form{bnd}\,(\mathit{hnf}_\sigma(e)) \\[3pt]
 \mathit{view}_\sigma(x) & = & [\,\form{eq}, \ldots, \form{eq},\ \form{has}\,x\,\ell'_1, \ldots, \form{has}\,x\,\ell'_n\,] \quad \text{if } \sigma(x) = \lit{W}{F} \\
 \mathit{view}_\sigma(x) & = & \tnil \quad \text{if } \sigma(x) \text{ is a lambda} \\
 \mathit{view}_\sigma(\ev{cast}\,a\,e) & = & \mathit{viewThrough}_\sigma(\mathit{hnf}_\sigma(e), a) \\
@@ -186,7 +185,7 @@ F \circ \form{into}\,\mathit{Ds} & = & \form{into}\,(\mathit{pre}_F(\mathit{Ds})
 
 Figure~\ref{fig:normalizer} gives the normalizer, a family of mutually recursive functions indexed by fuel. Each returns an option, and the results are monotone in the fuel and deterministic, so the fuel is bookkeeping: a statement about a normal form holds for some fuel and for every larger one. Normalization of an inclusion is written $\hnf{\sigma}{e}{n}{F}$, the view of an atom $\vw{\sigma}{a}{n}{V}$, and the chain of casts of an atom $\chn{\sigma}{a}{n}{F}$. Presence evidence normalizes to the binder and the field it names. $\ev{field}\,\ell$ at $x$ gives $(x, \ell)$, and $\ev{member}\,a\,e\,i$ reads $\form{has}\,y\,\ell$ at position $i$ of the view of $a$ through the form of $e$ and gives $(y, \ell)$.
 
-A basic template normalizes its sides and keeps its hole. A composition template normalizes its two premise morphisms, each of which proves a single inclusion and so has a single local entry, and keeps them as the two branches of a composition entry with identity sides. No branch is evaluated, because there is no view to evaluate it against yet. The precise view of a stored literal lists $\form{eq}$ for each witness and $\form{has}\,x\,\ell$ for each field, in the order of the literal's precise telescope. The view of a cast atom is the view of the underlying atom pushed through the head form of the cast, and folding, unfolding, and pairing act on views as they act on telescopes.
+A basic template normalizes its sides and keeps its hole. A composition template normalizes its two templates to local entries and keeps them as the two branches of a composition entry with identity sides. No branch is evaluated, because there is no view to evaluate it against yet. The precise view of a stored literal lists $\form{eq}$ for each witness and $\form{has}\,x\,\ell$ for each field, in the order of the literal's precise telescope. The view of a cast atom is the view of the underlying atom pushed through the head form of the cast, and folding, unfolding, and pairing act on views as they act on telescopes.
 
 Composition, $F \circ G$ in Figure~\ref{fig:combine}, is where the design of Section~\ref{sec:why-structural} shows. Two function forms compose contravariantly in the domain and by substituting the domain cast for the parameter in the first codomain. Two object forms compose by substitution, $\mathit{sub}$ in Figure~\ref{fig:form-ops}: every source fact that an entry of the second form names is replaced by the first form's entry for that fact. Consider a basic template $\form{le}\,F\,H\,G$ of the second form whose hole names the inclusion $j$ of the middle telescope. The first form's entry at $j$ is a local inclusion entry, basic or composite, and the substitution keeps it and composes its outer sides with $F$ and $G$. When the hole names an equality, the first form's entry at $j$ is an equality entry, and the hole is redirected to the source equality it names, flipped if the entry flips. A composition entry substitutes into both of its branches. Equality and presence entries follow the index, a copied bound takes the first form's entry at its position as it is, and a bound entry $\form{bnd}\,G$ becomes $\form{bnd}\,(\form{obj}\,\mathit{Es}_1 \circ G)$. Every recursive call is on a strict subterm, and no view is consulted. A composition entry records no middle type at all: its branches meet only when the entry is applied to a view, where each has become a form.
 
@@ -335,7 +334,7 @@ By mutual structural induction on the evidence derivations, together with Theore
 \begin{itemize}
 \item The cases for $\ev{refl}$, $\ev{top}$, $\ev{bot}$, $\ev{eqToLe}$, and $\ev{pi}$ produce their form with one unit of fuel. The case $\ev{bound}$ produces $\form{bnd}\,i\,\form{id}$, and $\ev{intoBnd}$ produces $\form{into}\,[\,\form{bnd}\,F\,]$ from the form $F$ of its premise.
 \item The case $\ev{trans}$ is Lemma~\ref{lem:combine}, $\ev{pair}$ is Lemma~\ref{lem:pair-apply}, and $\ev{obj}$ is item 4 applied to the morphism.
-\item In item 4 a $\ev{bnd}$ template becomes a bound entry by item 1. A composition template $\ev{leTrans}\,m\,p\,q$ becomes a composition entry, because item 4 types the entries of $p$ and of $q$ at a telescope with one inclusion, and such entries are a single typed local entry.
+\item In item 4 a $\ev{bnd}$ template becomes a bound entry by item 1. A composition template $\ev{leTrans}\,\tau_1\,\tau_2$ becomes a composition entry, because item 4 types the entries of $\tau_1$ and of $\tau_2$ as local entries, one inclusion each.
 \item For $\ev{member}\,a\,e\,i$, item 5 gives a typed view of $a$, and item 1 gives a typed form of $e$ whose target is an object type. Hence the source of $e$ resolves to an object type, and the view of $a$ through the form of $e$ is a typed view of the target telescope by Lemma~\ref{lem:pair-apply}. Its entry at $i$ is a typed form, an equality of resolutions, or a field of the object at the root, according to the kind of the proposition.
 \item The case $\ev{def}$ is Lemma~\ref{lem:resolve}.
 \item For an atom that is a variable, the precise view of the stored literal is typed at the literal's telescope. Each definition equality resolves equally by Lemma~\ref{lem:resolve}, and each presence names a field the literal has.

@@ -84,7 +84,8 @@ Evidence is a proof term for an inclusion or an equality. The fragment has
 \begin{array}{@{}lrcl@{}}
 \text{Inclusion} & e & ::= & \ev{refl}\,T \mid \ev{trans}\,e\,e \mid \ev{top}\,T \mid \ev{bot}\,T \mid \ev{eqToLe}\,\varphi \mid \ev{pi}\,e\,e \mid \ev{obj}\,\tel\,m \mid \ev{member}\,a\,e\,i \\
 \text{Equality} & \varphi & ::= & \ev{refl}\,T \mid \ev{symm}\,\varphi \mid \ev{trans}\,\varphi\,\varphi \mid \ev{def}\,x\,A \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \\
+\text{Morphisms} & m & ::= & [\,\tau, \ldots, \tau\,] \\
+\text{Templates} & \tau & ::= & \ev{le}\,q\,H\,q' \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e
 \end{array}
@@ -116,10 +117,10 @@ Figure~\ref{fig:mini-evidence} gives the typing. It includes the typing of atoms
 \and
 \inferrule{\morj{\Gamma}{m}{\tel}{\tel'}}{\lej{\Gamma}{\ev{obj}\,\tel\,m}{\obj{\tel}}{\obj{\tel'}}}
 \\
-\inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
+\inferrule{\morj{\Gamma}{\tau_i}{\tel}{P_i} \text{ for each } i < n}{\morj{\Gamma}{[\,\tau_0, \ldots, \tau_{n-1}\,]}{\tel}{[\,P_0, \ldots, P_{n-1}\,]}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
-  {\morj{\Gamma}{\ev{le}\,m\,q\,H\,q'}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
+\inferrule{\holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
+  {\morj{\Gamma}{\ev{le}\,q\,H\,q'}{\tel}{\ple{S}{T}}}
 \\
 \inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
 \and
@@ -140,7 +141,7 @@ Figure~\ref{fig:mini-evidence} gives the typing. It includes the typing of atoms
 \inferrule{\Gamma(x) \ni A \mathrel{:=} T}{\eqj{\Gamma}{\ev{def}\,x\,A}{\sel{x}{A}}{T}}
 \end{mathpar}
 \color{black}
-\caption{Typing of atoms and evidence in the fragment. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
+\caption{Typing of atoms and evidence in the fragment. A morphism proves a telescope, and a template proves one proposition $P$, from the source telescope $\tel$. A hole $H$ reads the proposition of the source telescope that it names as an inclusion, $\holej{\tel}{H}{X}{Y}$.}
 \label{fig:mini-evidence}
 \end{figure}
 
@@ -169,18 +170,39 @@ goes through the two bounds of $x$, so the atom $\ev{cast}\,w\,e_{ST}$ has type 
 The proposition $\ple{\mathit{Int}}{\sel{\self}{A}}$ of $T$ is instantiated at the root $w$, and the result is about the name $\sel{w}{A}$, the same name that the declared type $S$ of $w$ talks about. In DOT this is the derivation of $\src{\mathit{Int} \sub w.A}$ from $\src{w : T}$, which subsumption gets from $\src{w : S}$ and $\src{S \sub x.B \sub T}$. This example is why $\ev{member}$ takes an atom and not a variable. Section~\ref{sec:counterexample} shows that a design without block names cannot express it.
 \end{example}
 
-\paragraph{Object coercions are morphisms of templates.}
-Evidence between two object types, $\ev{obj}\,\tel\,m$, carries its source telescope $\tel$ and a morphism $m$ that proves each proposition of the target telescope, oldest first. Each target inclusion is proven by a template $\ev{le}\,m\,q\,H\,q'$. Its hole $H$ names a proposition of the source by position and reads it as an inclusion $X \le Y$. The sides $q$ and $q'$ adjust the two endpoints: $q$ proves $S \le X$ and $q'$ proves $Y \le T$, for the target proposition $\ple{S}{T}$. A side is absent, $\ev{none}$, when the endpoints coincide. A present side $\ev{some}\,e$ is evidence typed outside the object type, weakened under the self binder, so it cannot mention the self. This is the property everything else relies on: a template reads source propositions and adjusts them by closed evidence, and it never proves anything about the self by evidence of its own. A morphism is written as a list in examples.
-
-For example, if $d_1 : S_2 \le S_1$ and $d_2 : T_1 \le T_2$, then
+\paragraph{Coercions between object types.}
+An object type is a list of propositions about its self. A coercion from $\obj{\tel}$ to $\obj{\tel'}$ has to prove every proposition of $\tel'$ about the same self, and all it may use about the self is what $\tel$ says. Here is the typical case. Let
 \[
-\ev{obj}\,[\,\ple{S_1}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_1}\,]\,[\,\ev{le}\,(\ev{some}\,d_1)\,(\ev{le}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{le}\,1)\,(\ev{some}\,d_2)\,]
+\tel = [\,\ple{S_1}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_1}\,] , \qquad \tel' = [\,\ple{S_2}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_2}\,] ,
 \]
-proves $\obj{[\,\ple{S_1}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_1}\,]} \le \obj{[\,\ple{S_2}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T_2}\,]}$. Its first template proves the new lower bound $\ple{S_2}{\sel{\self}{A}}$ from the old one through $d_1$, and its second proves the new upper bound from the old one through $d_2$. A hole can also read an equality, in either direction. The coercion from the precise type of a literal that defines $A$ as $T$ to the declaration with the exact bounds $T$ reads both bounds off the one equality:
+with evidence $d_1 : S_2 \le S_1$ and $d_2 : T_1 \le T_2$ about types that do not mention the self. Each proposition of $\tel'$ follows from one proposition of $\tel$ by stretching one of its ends:
+\[
+\begin{array}{@{}l@{\qquad}l@{}}
+S_2 \le S_1 \sqsubseteq \sel{\self}{A} & \text{by } d_1 \text{, then proposition } 0 \text{ of } \tel \\
+\sel{\self}{A} \sqsubseteq T_1 \le T_2 & \text{by proposition } 1 \text{ of } \tel \text{, then } d_2
+\end{array}
+\]
+A template records such a proof. In general a template proves a target inclusion $\ple{S}{T}$ as a chain of three links,
+\[
+S \;\underset{q}{\le}\; X \;\underset{H}{\sqsubseteq}\; Y \;\underset{q'}{\le}\; T ,
+\]
+whose middle link is a proposition of the source and whose outer links are evidence about types outside the object. The template $\ev{le}\,q\,H\,q'$ names the three links.
+\begin{itemize}
+\item The hole $H$ is the middle link. It names a proposition of the source by its position $j$ and says how to read it: $\ev{le}\,j$ reads an inclusion $\ple{X}{Y}$, $\ev{eq}\,j$ reads an equality $\peq{X}{Y}$ forwards as $X \le Y$, and $\ev{eqSym}\,j$ reads it backwards as $Y \le X$. It is called a hole because the normalizer later fills it with what is known about that proposition at a particular object (Section~\ref{sec:mini-normalizer}).
+\item The sides $q$ and $q'$ are the outer links. A side is $\ev{none}$ when its link is trivial, $S = X$ or $Y = T$, and $\ev{some}\,e$ for evidence $e : S \le X$ or $e : Y \le T$.
+\end{itemize}
+A morphism $m$ is the list of templates, one per proposition of the target, in order, and $\ev{obj}\,\tel\,m$ is the coercion. It carries its source telescope so that its source can be read off the evidence. For the example,
+\[
+\ev{obj}\,\tel\,[\,\ev{le}\,(\ev{some}\,d_1)\,(\ev{le}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{le}\,1)\,(\ev{some}\,d_2)\,] \ :\ \obj{\tel} \le \obj{\tel'} .
+\]
+
+The sides are typed outside the object type and weakened under the self binder, so they cannot mention the self. A template therefore never proves anything about the self by evidence of its own. All it knows about the self is the one source proposition in its hole, and it only stretches that proposition at its ends. This restriction is what makes normalization a structural induction, and Section~\ref{sec:why-structural} describes the design without it.
+
+Holes that read an equality matter for literals. The precise type of a literal that defines $A$ as $T$ is $\obj{[\,\peq{\sel{\self}{A}}{T}\,]}$, and the coercion to the declaration with the exact bounds $T$ reads both bounds off the one equality:
 \[
 \mathit{litCo}_T = \ev{obj}\,[\,\peq{\sel{\self}{A}}{T}\,]\,[\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,0)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,0)\,\ev{none}\,] .
 \]
-It proves $\obj{[\,\peq{\sel{\self}{A}}{T}\,]} \le \obj{[\,\ple{T}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T}\,]}$. The first template reads the equality backwards as $T \le \sel{\self}{A}$, the lower bound, and the second reads it forwards as the upper bound.
+It proves $\obj{[\,\peq{\sel{\self}{A}}{T}\,]} \le \obj{[\,\ple{T}{\sel{\self}{A}},\ \ple{\sel{\self}{A}}{T}\,]}$. The first template reads the equality backwards as $T \le \sel{\self}{A}$, the lower bound, and the second reads it forwards as the upper bound. Neither needs a side.
 
 \paragraph{Definitions.}
 The rule $\ev{def}$ reads the definition of a name off a transparent binder of the context. Over a store, where every location is transparent, it is how evidence learns what a literal defines.
@@ -306,8 +328,8 @@ Head forms alone are not enough, because $\ev{member}$ reads a proposition of an
 \mathit{hnf}(\ev{obj}\,\tel\,m) & = & \form{obj}\,(\mathit{entries}(m)) \\
 \mathit{hnf}(\ev{trans}\,e\,f) & = & \mathit{hnf}(e) \circ \mathit{hnf}(f) \\
 \mathit{hnf}(\ev{member}\,a\,e\,i) & = & G \quad \text{where } \mathit{viewThrough}(\mathit{hnf}(e), a) \ni (i \mapsto \form{le}\,G) \\[3pt]
-\mathit{entries}(\ev{nil}) & = & \tnil \\
-\mathit{entries}(\ev{le}\,m\,q\,H\,q') & = & \tcons{\mathit{entries}(m)}{\form{le}\,(\mathit{side}(q))\,H\,(\mathit{side}(q'))} \\[3pt]
+\mathit{entries}([\,\tau_0, \ldots, \tau_{n-1}\,]) & = & [\,\mathit{entry}(\tau_0), \ldots, \mathit{entry}(\tau_{n-1})\,] \\
+\mathit{entry}(\ev{le}\,q\,H\,q') & = & \form{le}\,(\mathit{side}(q))\,H\,(\mathit{side}(q')) \\[3pt]
 \mathit{view}(x) & = & [\,\form{eq}, \ldots, \form{eq}\,] \text{ with one } \form{eq} \text{ per witness of } \sigma(x) \\
 \mathit{view}(\ev{cast}\,a\,e) & = & \mathit{viewThrough}(\mathit{hnf}(e), a) \\[3pt]
 \mathit{viewThrough}(\form{id}, a) & = & \mathit{view}(a) \\

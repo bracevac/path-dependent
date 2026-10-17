@@ -53,11 +53,11 @@ A declaration type $\src{T}$ of a literal determines the witnesses of the transl
 \mathit{litMor}_{e,h}\,\dtyp{A}{S}{T} & = & [\,\ev{le}\,\ev{none}\,(\ev{eqSym}\,e)\,\ev{none},\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
 \mathit{litMor}_{e,h}\,\dfld{a}{T} & = & [\,\ev{has}\,h,\ \ev{le}\,\ev{none}\,(\ev{eq}\,e)\,\ev{none}\,] \\
 \mathit{litMor}_{e,h}\,\src{(S \wedge T)} & = & \mathit{litMor}_{e,\,h + |\mathit{fields}\,\src{T}|}\,\src{S} \mathbin{+\!\!+} \mathit{litMor}_{e + |\mathit{witnesses}\,\src{S}|,\,h}\,\src{T} \\[3pt]
-\mathit{idMor}_k\,\tnil & = & \ev{nil} \\
-\mathit{idMor}_k\,(\tcons{\tel}{\ple{S}{T}}) & = & \ev{le}\,(\mathit{idMor}_k\,\tel)\,\ev{none}\,(\ev{le}\,j)\,\ev{none} \\
-\mathit{idMor}_k\,(\tcons{\tel}{\peq{S}{T}}) & = & \ev{eq}\,(\mathit{idMor}_k\,\tel)\,j\,\mathit{false} \\
-\mathit{idMor}_k\,(\tcons{\tel}{\phas{\ell}}) & = & \ev{has}\,(\mathit{idMor}_k\,\tel)\,j \\
-\mathit{idMor}_k\,(\tcons{\tel}{\pbnd{T}}) & = & \ev{bnd}\,(\mathit{idMor}_k\,\tel)\,(\ev{bound}\,\tel_0\,j) \\[3pt]
+\mathit{idMor}_k\,[\,P_0, \ldots, P_{n-1}\,] & = & [\,\mathit{idT}_{k}(P_0), \ldots, \mathit{idT}_{k+n-1}(P_{n-1})\,] \\
+\mathit{idT}_j(\ple{S}{T}) & = & \ev{le}\,\ev{none}\,(\ev{le}\,j)\,\ev{none} \\
+\mathit{idT}_j(\peq{S}{T}) & = & \ev{eq}\,j\,\mathit{false} \\
+\mathit{idT}_j(\phas{\ell}) & = & \ev{has}\,j \\
+\mathit{idT}_j(\pbnd{T}) & = & \ev{bnd}\,(\ev{bound}\,\tel_0\,j) \\[3pt]
 \mathit{into}_{\src{T}}\,e & = & \ev{intoBnd}\,e \\
 \mathit{into}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{intoBnd}\,(\ev{refl}\,\trans{T})) \\
 \mathit{out}_{\src{T}}\,a & = & \ev{cast}\,a\,(\ev{bound}\,(\mathit{tel}\,\src{T})\,0) \\[3pt]
@@ -73,7 +73,7 @@ A declaration type $\src{T}$ of a literal determines the witnesses of the transl
 \and
 \inferrule{\src{\Gamma\ \mathit{wf}} \\ \src{T} \text{ has literal shape} \\ \text{the labels of } \src{T} \text{ are distinct}}{\src{\Gamma, x : \dmu{x}{T} \mathrel{:=} d\ \mathit{wf}}}
 \end{mathpar}
-\caption{Literals and contexts in the translation. $\mathit{witnesses}$, $\mathit{fields}$, and $\mathit{litMor}$ are empty on every other type. $\mathit{fields}$ lists the right operand of an intersection first, because the right operand shadows. In $\mathit{litMor}_{e,h}$ the index $e$ is the position of the next definition equality of the literal's precise telescope and $h$ that of the next presence. In $\mathit{idMor}_k$ the position $j$ is $k + |\tel|$, and $\tel_0$ is the source telescope of the object coercion the morphism belongs to. $\mathit{into}_{\src{T}}$ and $\mathit{out}_{\src{T}}$ are the identity when $\src{T}$ is an object shape and are given here for the other types. A type has literal shape when it is an intersection of exact type declarations $\dtyp{A}{T}{T}$ and field declarations.}
+\caption{Literals and contexts in the translation. $\mathit{witnesses}$, $\mathit{fields}$, and $\mathit{litMor}$ are empty on every other type. $\mathit{fields}$ lists the right operand of an intersection first, because the right operand shadows. In $\mathit{litMor}_{e,h}$ the index $e$ is the position of the next definition equality of the literal's precise telescope and $h$ that of the next presence. $\mathit{idT}_j(P)$ is the identity template on the source proposition at position $j$, and $\tel_0$ is the source telescope of the object coercion the morphism belongs to. $\mathit{into}_{\src{T}}$ and $\mathit{out}_{\src{T}}$ are the identity when $\src{T}$ is an object shape and are given here for the other types. A type has literal shape when it is an intersection of exact type declarations $\dtyp{A}{T}{T}$ and field declarations.}
 \label{fig:trans-aux}
 \end{figure}
 

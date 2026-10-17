@@ -18,7 +18,8 @@ This section gives the whole of \FCdot. It adds four features to the fragment of
 \text{Presence} & h & ::= & \ev{member}\,a\,e\,i \mid \ev{field}\,\ell \\
 \text{Holes} & H & ::= & \ev{le}\,j \mid \ev{eq}\,j \mid \ev{eqSym}\,j \\
 \text{Sides} & q & ::= & \ev{none} \mid \ev{some}\,e \\
-\text{Morphisms} & m & ::= & \ev{nil} \mid \ev{le}\,m\,q\,H\,q' \mid \ev{leTrans}\,m\,m\,m \mid \ev{eq}\,m\,j\,b \mid \ev{has}\,m\,j \mid \ev{bnd}\,m\,e \\[2pt]
+\text{Morphisms} & m & ::= & [\,\tau, \ldots, \tau\,] \\
+\text{Templates} & \tau & ::= & \ev{le}\,q\,H\,q' \mid \ev{leTrans}\,\tau\,\tau \mid \ev{eq}\,j\,b \mid \ev{has}\,j \mid \ev{bnd}\,e \\[2pt]
 \text{Atoms} & a,b & ::= & x \mid \ev{cast}\,a\,e \mid \ev{fold}\,\tel\,a \mid \ev{unfold}\,a \mid \ev{both}\,\tel\,\tel\,a\,a \\
 \text{Terms} & t,u & ::= & a \mid v \mid a\,b \mid \ev{proj}\,a\,\ell\,h \mid \klet x = t \kin u \mid \ev{cast}\,t\,e \\
 \text{Values} & v & ::= & \lambda(x : S).\,t \mid \lit[x]{W}{F} \mid \ev{cast}\,v\,e \\
@@ -50,7 +51,7 @@ A literal $\lit[x]{W}{F}$ now has fields $F$ besides its witnesses $W$, and bind
 \]
 where $\ell_1, \ldots, \ell_k$ are the labels of $W$, oldest first, $\ell'_1, \ldots, \ell'_n$ are the labels of $F$, newest first, and $W(\ell)$ is the newest witness at $\ell$. The translation gives each field label a witness too, its declared type, so the name $\sel{x}{a}$ of a stored literal is defined as the type of the field. The fields are typed under the self binder $x$, bound transparently, and the body of field $\ell$ has the block name $\sel{x}{\ell}$ as its type. A context binder records the field labels of a transparent binder, written $x : T \mathrel{:=} W ; \vec\ell$.
 
-Presence evidence has two forms. $\ev{member}\,a\,e\,i$ eliminates a presence proposition at an atom, like the other elimination rules. $\ev{field}\,\ell$ reads presence off a transparent binder that records the field. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to the declared field type takes a further cast, which the translation reads off the declaration. Morphisms gain an entry $\ev{has}\,m\,j$ that proves a target presence from the source presence at position $j$, and an entry $\ev{eq}\,m\,j\,b$ that proves a target equality from the source equality at $j$, flipped when $b$ is true.
+Presence evidence has two forms. $\ev{member}\,a\,e\,i$ eliminates a presence proposition at an atom, like the other elimination rules. $\ev{field}\,\ell$ reads presence off a transparent binder that records the field. A projection $\ev{proj}\,a\,\ell\,h$ carries the presence evidence $h$ and has the block name $\sel{\rt{a}}{\ell}$ as its type. Converting that name to the declared field type takes a further cast, which the translation reads off the declaration. There are two more templates. $\ev{has}\,j$ proves a target presence from the source presence at position $j$, and $\ev{eq}\,j\,b$ proves a target equality from the source equality at $j$, flipped when $b$ is true.
 
 \subsection{Recursive types}
 
@@ -89,17 +90,17 @@ Not every type is a declaration. An intersection $x.A \wedge \dfld{a}{T}$ has an
 \[
 \trans{\src{x.A \wedge \dfld{a}{T}}} = \obj{[\,\pbnd{\weak{\sel{x}{A}}},\ \phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{T}}}\,]} .
 \]
-A bound has one elimination, one introduction, and one entry in morphisms.
+A bound has one elimination, one introduction, and one template.
 \begin{itemize}
 \item The cast $\ev{bound}\,\tel\,i$ takes the object type $\obj{\tel}$ through its $i$-th bound, $\obj{\tel} \le T$, when that bound is closed, $\pbnd{\weak{T}}$.
 \item The evidence $\ev{intoBnd}\,e$ turns $S \le T$ into $S \le \obj{[\,\pbnd{\weak{T}}\,]}$, the object type with that one bound.
-\item A morphism proves a target bound by $\ev{bnd}\,m\,e$, where $e$ is closed evidence out of the source object type as a whole. This is the one entry of a morphism that reads the whole source rather than one of its propositions. It still eliminates nothing through the self, because $e$ is closed.
+\item The template $\ev{bnd}\,e$ proves a target bound, where $e$ is closed evidence out of the source object type as a whole. This is the one template that reads the whole source rather than one of its propositions. It still eliminates nothing through the self, because $e$ is closed.
 \end{itemize}
 A bound may mention the self. That is what the body of $\dmu{x}{x.A}$ becomes: $\obj{[\,\pbnd{\sel{\self}{A}}\,]}$, the object type whose one proposition says that the object is included in its own member $A$. A cast through a bound reads only a bound whose type is closed, and the rules that prove a bound prove only such bounds. A bound that mentions the self is used by unfolding an atom of its type first, which instantiates the self at the root and makes every bound of the telescope closed.
 
 \subsection{Composition templates}
 
-A morphism may also prove a target inclusion by a composition template $\ev{leTrans}\,m\,p\,q$, which chains two templates over the same source, $p$ for $\ple{S}{M}$ and $q$ for $\ple{M}{T}$. The middle type $M$ may mention the self, so a composition template can chain facts that the source asserts about its own members, such as $\ple{\sel{\self}{a}}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\sel{\self}{B}}$. The translation of this report produces no composition templates. They are there for recursive subtyping, to which Section~\ref{sec:related} returns, and the metatheory covers them.
+A target inclusion may also be proven by a composition template $\ev{leTrans}\,\tau_1\,\tau_2$, which chains two templates over the same source, $\tau_1$ for $\ple{S}{M}$ and $\tau_2$ for $\ple{M}{T}$. The middle type $M$ may mention the self, so a composition template can chain facts that the source asserts about its own members, such as $\ple{\sel{\self}{a}}{\sel{\self}{A}}$ and $\ple{\sel{\self}{A}}{\sel{\self}{B}}$. The translation of this report produces no composition templates. They are there for recursive subtyping, to which Section~\ref{sec:related} returns, and the metatheory covers them.
 
 \subsection{Evidence}
 
@@ -150,25 +151,25 @@ A morphism may also prove a target inclusion by a composition template $\ev{leTr
 \and
 \inferrule{\lej{\Gamma}{e}{A}{B}}{\Gamma \vdash \ev{some}\,e : \weak{A} \le \weak{B}}
 \and
-\inferrule{ }{\morj{\Gamma}{\ev{nil}}{\tel}{\tnil}}
+\inferrule{\morj{\Gamma}{\tau_i}{\tel}{P_i} \text{ for each } i < n}{\morj{\Gamma}{[\,\tau_0, \ldots, \tau_{n-1}\,]}{\tel}{[\,P_0, \ldots, P_{n-1}\,]}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
-  {\morj{\Gamma}{\ev{le}\,m\,q\,H\,q'}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
+\inferrule{\holej{\tel}{H}{X}{Y} \\ \Gamma \vdash q : S \le X \\ \Gamma \vdash q' : Y \le T}
+  {\morj{\Gamma}{\ev{le}\,q\,H\,q'}{\tel}{\ple{S}{T}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \morj{\Gamma}{p}{\tel}{[\,\ple{S}{M}\,]} \\ \morj{\Gamma}{q}{\tel}{[\,\ple{M}{T}\,]}}
-  {\morj{\Gamma}{\ev{leTrans}\,m\,p\,q}{\tel}{\tcons{\tel'}{\ple{S}{T}}}}
+\inferrule{\morj{\Gamma}{\tau_1}{\tel}{\ple{S}{M}} \\ \morj{\Gamma}{\tau_2}{\tel}{\ple{M}{T}}}
+  {\morj{\Gamma}{\ev{leTrans}\,\tau_1\,\tau_2}{\tel}{\ple{S}{T}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\peq{X}{Y}}}
-  {\morj{\Gamma}{\ev{eq}\,m\,j\,\mathit{false}}{\tel}{\tcons{\tel'}{\peq{X}{Y}}}}
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}
+  {\morj{\Gamma}{\ev{eq}\,j\,\mathit{false}}{\tel}{\peq{X}{Y}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\peq{X}{Y}}}
-  {\morj{\Gamma}{\ev{eq}\,m\,j\,\mathit{true}}{\tel}{\tcons{\tel'}{\peq{Y}{X}}}}
+\inferrule{\tat{\tel}{j}{\peq{X}{Y}}}
+  {\morj{\Gamma}{\ev{eq}\,j\,\mathit{true}}{\tel}{\peq{Y}{X}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \tat{\tel}{j}{\phas{\ell}}}
-  {\morj{\Gamma}{\ev{has}\,m\,j}{\tel}{\tcons{\tel'}{\phas{\ell}}}}
+\inferrule{\tat{\tel}{j}{\phas{\ell}}}
+  {\morj{\Gamma}{\ev{has}\,j}{\tel}{\phas{\ell}}}
 \and
-\inferrule{\morj{\Gamma}{m}{\tel}{\tel'} \\ \lej{\Gamma}{e}{\obj{\tel}}{T}}
-  {\morj{\Gamma}{\ev{bnd}\,m\,e}{\tel}{\tcons{\tel'}{\pbnd{\weak{T}}}}}
+\inferrule{\lej{\Gamma}{e}{\obj{\tel}}{T}}
+  {\morj{\Gamma}{\ev{bnd}\,e}{\tel}{\pbnd{\weak{T}}}}
 \\
 \inferrule{\tat{\tel}{j}{\ple{X}{Y}}}{\holej{\tel}{\ev{le}\,j}{X}{Y}}
 \and
@@ -299,7 +300,7 @@ The empty field list and the empty continuation erase to themselves, and stores 
 
 \subsection{The checker}
 
-Every constructor of evidence and of atoms determines its endpoints from its arguments and the context. Object coercions carry their source telescope, pairing and folding carry their target telescopes, a basic template is checked from its hole outwards, and a composition template checks that its two premises prove one inclusion each and meet at the same middle type. The checker is therefore a family of synthesizing functions, one per judgment, each returning the typing derivation it found. Soundness holds by construction, and completeness, that every derivation is found, is a theorem proven by induction on derivations. Its top-level form is
+Every constructor of evidence and of atoms determines its endpoints from its arguments and the context. Object coercions carry their source telescope, pairing and folding carry their target telescopes, a basic template is checked from its hole outwards, and a composition template checks that its two templates prove one inclusion each and meet at the same middle type. The checker is therefore a family of synthesizing functions, one per judgment, each returning the typing derivation it found. Soundness holds by construction, and completeness, that every derivation is found, is a theorem proven by induction on derivations. Its top-level form is
 \[
 \lean{checkTm}\ \Gamma\ t\ T = \mathit{true} \iff \tmj{\Gamma}{t}{T} ,
 \]
