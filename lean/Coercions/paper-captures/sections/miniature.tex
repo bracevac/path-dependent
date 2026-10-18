@@ -4,7 +4,7 @@
 
 This section develops the whole proof of capture prediction on a fragment of the \treeK target. The fragment has closures, lets and calls, and capture sets made of term variables and capture variables. It has no casts, no objects beyond a unit literal, no boxes and no capture members. It is small enough to state every definition and to run one program by hand.
 
-The fragment is not mechanized on its own. Its running example comes from the \Lean examples \lean{C1} and \lean{C6} of \treeK. Their typings are decided by the kernel and their run is built by hand. Section~\ref{sec:mech-mini} maps every statement of this section to its Lean counterpart. Section~\ref{sec:problem-ideas} named two ideas, and this section shows the first. Binders declare use sets as data, and the typing of each redex carries the evidence for the discharge that its step performs. The second idea, that closed capture evidence over a typed store relates leaves, needs capture members, which Section~\ref{sec:target} adds.
+The fragment is not mechanized on its own. Its running example comes from the \Lean examples \lean{C1} and \lean{C6} of \treeK. Their typings are decided by the kernel and their run is built by hand. Section~\ref{sec:mech-mini} maps every statement of this section to its Lean counterpart. Section~\ref{sec:problem-ideas} named two ideas, and this section shows the first, use sets as data. The second idea, that closed capture evidence over a typed store relates leaves, needs capture members, which Section~\ref{sec:target} adds.
 
 \FloatBarrier
 \subsection{Overview}\label{sec:mini-overview}
@@ -12,7 +12,7 @@ The fragment is not mechanized on its own. Its running example comes from the \L
 Before the definitions, here is the running example and what the section proves about it. Section~\ref{sec:mini-leaves} defines capture sets, types and leaves, and Section~\ref{sec:mini-typing} evidence, typing and use sets.
 
 \paragraph{The platform.}
-Two capture variables, $\kappa_1$ and $\kappa_2$, stand for two resources, a log and a console. A capture variable stands for itself, as a type variable does in System~F. A program reaches each resource through a capability, a closure that it calls. The capabilities $\mathit{log}$ and $\mathit{console}$ are identity closures on $\Unit$, each annotated with its capture variable:
+Two capture variables, $\kappa_1$ and $\kappa_2$, stand for two primitive capabilities, a log and a console (Section~\ref{sec:cc-types}). A capture variable stands for itself, as a type variable does in System~F. A program reaches each through a capability value, a closure that it calls. The capabilities $\mathit{log}$ and $\mathit{console}$ are identity closures on $\Unit$, each annotated with its capture variable:
 \[
 \begin{array}{@{}lcl@{}}
 v_{\mathit{log}} & = & \lamc{\cset{\kappa_1}}{w}{\Unit}{w}{\ev{elem}\,\cset{w}\,\cset{\kappa_1, w}} \\
@@ -44,7 +44,7 @@ The store $\sigma_0$ holds the two capture binders, the two capabilities, the li
 Both call $\mathit{c1}$ and bind the closure it returns to $\mathit{inner}$. The first program calls $\mathit{inner}$. The second drops it and returns $\mathit{unit}$. Each let declares in its brackets the use set of its body, $\cset{\mathit{console}, \mathit{log}}$ and $\cempty$, with evidence that the uses of the body fit it. Example~\ref{ex:mini-typing} builds the evidence $f_1$.
 
 \paragraph{The claims.}
-The run of $\mathit{prog}_1$ reaches a state that calls $\mathit{console}$ (Table~\ref{tab:mini-run}). That is allowed, because $\kappa_2$ is among the leaves of the initial use set of $\mathit{prog}_1$, the capture variables that set resolves to. The use set of $\mathit{prog}_2$ has the one leaf $\kappa_1$. Theorem~\ref{thm:mini-effect} says that no state reached from $\mathit{prog}_2$ inspects a variable with leaf $\kappa_2$. This holds although the run of $\mathit{prog}_2$ stores the closure that would call $\mathit{console}$.
+The run of $\mathit{prog}_1$ reaches a state that calls $\mathit{console}$ (Table~\ref{tab:mini-run}). That is allowed, because the initial use set of $\mathit{prog}_1$ has the leaf $\kappa_2$ (Section~\ref{sec:mini-leaves}). The use set of $\mathit{prog}_2$ has the one leaf $\kappa_1$. Theorem~\ref{thm:mini-effect} says that no state reached from $\mathit{prog}_2$ inspects a variable with leaf $\kappa_2$. This holds although the run of $\mathit{prog}_2$ stores the closure that would call $\mathit{console}$.
 
 \paragraph{Roadmap.}
 Section~\ref{sec:mini-canon} proves the one theorem about capture evidence, Theorem~\ref{thm:mini-cap}: evidence for $C \le D$ puts the leaves of $C$ among those of $D$. Section~\ref{sec:mini-machine} adds stores and the machine, and the rest follows the textbook route of Section~\ref{sec:problem-textbook}. Its inversion of subcapturing at a call becomes Lemma~\ref{lem:mini-store}, which reads the annotation of a closure off the store. Preservation gains a use-set half, Lemma~\ref{lem:mini-step}, whose cases discharge the evidence that each redex carries (Section~\ref{sec:mini-step}). Section~\ref{sec:mini-run} carries that lemma along a run and derives effect safety.
@@ -104,7 +104,7 @@ X[z \mapsto y] & \mathrel{:=} & X \text{ with } y \text{ for every free } z \tex
 \end{array}
 \]
 \color{black}
-\caption{The fragment. Capture atoms are term variables and capture variables. Capture sets are lists, $C \cup D$ is concatenation and $C \subseteq D$ says that every atom of $C$ occurs in $D$. $\top$ is the empty object type of report~1, and $\unitv$ is the literal with no witnesses and no fields. The brackets $\ann{\ }$ hold data that the typing rules read and erasure removes: the use set a let declares, its avoidance evidence, and the closing evidence of a lambda. $\pit[x]{T}{T'}$ binds $x$ in $T'$. A lambda binds $x$ in $t$ and $g$, not in $A$. A let and a let frame bind $x$ in $u$ and $f$, not in $U$. A context binds each variable once, and so does a store. The leaves of a capture set are the capture variables its resolution reaches. The first equation that applies is used.}
+\caption{The fragment. Capture atoms are term variables and capture variables. Capture sets are lists, $C \cup D$ is concatenation and $C \subseteq D$ says that every atom of $C$ occurs in $D$. $\top$ is the empty object type of report~1, and $\unitv$ is the literal with no witnesses and no fields. The brackets $\ann{\ }$ hold data that the typing rules read and erasure removes: the use set a let declares, its avoidance evidence, and the closing evidence of a lambda. $\pit[x]{T}{T'}$ binds $x$ in $T'$. A lambda binds $x$ in $t$ and $g$, not in $A$. A let and a let frame bind $x$ in $u$ and $f$, not in $U$. A context binds each variable once, and so does a store. The leaves of a capture set are the capture variables it reaches through the types of its term variables. The first equation that applies is used.}
 \label{fig:mini-syntax}
 \end{figure}
 
@@ -126,9 +126,9 @@ Read it from the outside. The outer set $\cset{\mathit{log}}$ bounds what callin
 The value $v_{\mathit{c1}}$ is typed in $\Gamma_0$, and $\Gamma_1$ is the context of the store $\sigma_0$ (Section~\ref{sec:mini-machine}).
 
 \paragraph{Leaves.}
-What a capture set stands for in a context is its leaves, the capture variables that its resolution reaches. Figure~\ref{fig:mini-syntax} defines them by four equations. The leaves of a set are those of its atoms. A capture variable is its own leaf. A term variable has the leaves of the capture set of its type, computed in the part of the context before its binder. The recursion is well founded, because the capture set of a binder mentions only binders before it. For the same reason the leaves of a set do not change when the context grows at its end.
+What a capture set stands for in a context is its leaves, the capture variables it reaches when each term variable is replaced by the capture set of its type. Figure~\ref{fig:mini-syntax} defines them by four equations. The leaves of a set are those of its atoms. A capture variable is its own leaf. A term variable has the leaves of the capture set of its type, computed in the part of the context before its binder. The recursion is well founded, because the capture set of a binder mentions only binders before it. For the same reason the leaves of a set do not change when the context grows at its end.
 
-Two consequences matter below. A term variable is never a leaf. A variable whose type has the empty capture set has no leaves. So the atom $\mathit{unit}$ adds nothing to a set, and $\cset{x}$ in a set does not say that $x$ is a capability. It says that the set covers whatever the type of $x$ captures.
+As Section~\ref{sec:cc-types} noted, a term variable is never a leaf, and a variable whose type has the empty capture set has no leaves. So the atom $\mathit{unit}$ adds nothing to a set, and $\cset{x}$ in a set does not say that $x$ is a capability. It says that the set covers whatever the type of $x$ captures.
 
 We write $\caple{\Gamma}{C}{D}$ when every leaf of $C$ is a leaf of $D$, and read it as ``$C$ is covered by $D$ in $\Gamma$'', the documentation's phrase (Section~\ref{sec:cc-types}). We write $\capeqv{\Gamma}{C}{D}$ when $C$ and $D$ have the same leaves. Leaves are lists like capture sets, but only which atoms occur matters to $\preccurlyeq$ and $\approx$. Examples list leaves without duplicates.
 
@@ -174,7 +174,7 @@ The first equation goes through $\mathit{log}$, whose type $\CapT{\kappa_1}$ has
 
 Capture evidence is a proof term for an inclusion of capture sets. The judgment $\clej{\Gamma}{f}{C}{D}$ says that $f$ proves $C \le D$ in $\Gamma$. Figure~\ref{fig:mini-typing} gives its five rules, followed by the typing of terms and values. Rules are named by the conventions of Section~\ref{sec:intro}, and proofs cite them by name.
 
-\rn{C-Refl} and \rn{C-Trans} make capture inclusion a preorder. \rn{C-Elem} is a syntactic inclusion, which a checker decides. \rn{C-Union} bounds a union by bounding each part. \rn{C-Var} is the documentation's rule that a capability is below the capture set of its type (Section~\ref{sec:cc-types}). No rule applies to a capture variable, which stands for itself.
+\rn{C-Refl} and \rn{C-Trans} make capture inclusion a preorder. \rn{C-Elem} is a syntactic inclusion, which a checker decides. \rn{C-Union} bounds a union by bounding each part. \rn{C-Var} is the documentation's rule that a capability is below the capture set of its type (Section~\ref{sec:cc-types}). No rule replaces a capture variable by another set, as \rn{C-Var} does for a term variable. A capture variable stands for itself.
 
 \paragraph{Typing.}
 The term rules are report~1's, restricted to variables, with capture sets and their evidence added. \rn{T-App} applies a variable to a variable, and the result type instantiates the codomain at the argument. The fragment has no subsumption, so \rn{T-App} needs the argument at the parameter's type exactly. In the full calculus report~1's casts supply subsumption (Section~\ref{sec:target-delta}). Two rules carry capture evidence of their own, in the brackets that erasure removes.

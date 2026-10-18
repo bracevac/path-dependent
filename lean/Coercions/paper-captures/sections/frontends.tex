@@ -2,98 +2,98 @@
 \section{Front Ends}\label{sec:frontends}
 \mathplain
 
-Each of the three trees has a front end, a Lean library that takes a program in this report's notation to a derivation of its calculus and runs the program on the machine of \DOTMNF. A front end proves a composition. Its theorems about the derivation it returns apply theorems of the calculus to that derivation. Its other theorems speak of the front end's own functions. None adds a fact about the calculus. Table~\ref{tab:pipeline} sums up.
+Each of the three trees has a front end, a Lean library that takes a program in this report's notation to a derivation of its calculus and runs the program on the machine of \DOTMNF. Its theorems either apply theorems of the calculus to the derivation it returns or speak of its own functions. None adds a fact about the calculus (Table~\ref{tab:pipeline}).
 
-Two programs frame the section. The first is the escape of Section~\ref{sec:levels} as the front end of \treeCC reads it (\lean{EscSrc}), where \lean{File} abbreviates $\mu(f.\,\{\mathit{read} : \capt{(\forall(u : \top)\,\top)}{\cset{f}}\})$:
+The escape of Section~\ref{sec:levels} frames the section. The front end of \treeCC reads it as \lean{EscSrc}, where \lean{File} abbreviates $\mu(f.\,\{\mathit{read} : \capt{(\forall(u : \top)\,\top)}{\cset{f}}\})$:
 \begin{lstlisting}[mathescape=true]
 cc% λ(g : ⊤).
   let cb : ($\forall$(f : File ^ {any}) ($\forall$(u : ⊤) File ^ {any}) ^ {any}) ^ {}
          = λ(f : File ^ {any}). λ(u : ⊤). f
   in cb
 \end{lstlisting}
-The annotation of \lean{cb} reads the \lean{any} of its result at the scope binder of the body of $\lambda(g : \top)$, outside the callback's scope, and the front end rejects the program with a certificate (Section~\ref{sec:fe-reject}). The second program is C2 of Section~\ref{sec:source}, which the front end of \treeK types at the use set $\cset{\kappa_2}$ (\lean{C2\_type}, decided), where the hand derivation has $\cset{\kappa_1, \kappa_2}$.
+The annotation of \lean{cb} reads the \lean{any} of its result at the scope binder of the body of $\lambda(g : \top)$, outside the callback's scope, and the front end rejects the program with a certificate (Section~\ref{sec:fe-reject}).
 
 \subsection{The pipeline}\label{sec:fe-pipeline}
 
-A program is a Lean term inside a quotation, \lean{cap\%}, \lean{cc\%} or \lean{clsProg\%}. A program of \treeCL starts with a header that declares the classifiers, the platform, and optionally a use set and a kind. Name resolution inserts a $\kw{let}$ for every operand that is not a variable. It leaves a partial term whose empty slots are the annotations the program did not write: lambda domains, self shapes and field types. The elaborator fills the slots from expected types, and the typer returns a derivation of \DOTMNF with its use set. \lean{compile\_checks} proves that the checker of \FCdot accepts the translation of the derivation, and a machine for \DOTMNF runs the program.
+A program is a Lean term inside a quotation, \lean{cap\%}, \lean{cc\%} or \lean{clsProg\%}. A program of \treeCL starts with a header that declares the classifiers, the platform, and optionally a use set and a kind. Name resolution inserts a $\kw{let}$ for every operand that is not a variable. It leaves a partial term $p$ whose empty slots are the annotations the program did not write: lambda domains, self shapes and field types. The elaborator fills the slots from expected types, and the typer returns a derivation of \DOTMNF with its use set. \lean{compile\_checks} proves that the checker of \FCdot accepts the translation of the derivation.
 
-The typer follows the Scala 3 compiler at commit \lean{4dae25087d} \cite{scala3cc}: the subtype checker \lean{TypeComparer}, \lean{CaptureSet.subCaptures}, the level test \lean{acceptsLevelOf} in \treeCC and \treeCL, \lean{TypeOps.avoid} for an unannotated $\kw{let}$ and \lean{adaptBoxed} for missing boxes, with alternatives tried in the compiler's order. The docstring of \lean{Frontend/Sub.lean} lists twelve differences of the subtype checker from the compiler in \treeCC. One is that a $\mu$ is opened only at a variable. No theorem relates the typer to scalac.
+The typer follows the Scala 3 compiler at commit \lean{4dae25087d} \cite{scala3cc}: the subtype checker \lean{TypeComparer}, \lean{CaptureSet.subCaptures}, the level test \lean{acceptsLevelOf} in \treeCC and \treeCL, \lean{TypeOps.avoid} for an unannotated $\kw{let}$ and \lean{adaptBoxed} for missing boxes, with alternatives tried in the compiler's order. The docstring of \lean{Frontend/Sub.lean} lists twelve differences of the subtype checker from the compiler in \treeCC. No theorem relates the typer to scalac.
 
 \subsection{Soundness is the result type}\label{sec:fe-sound}
 
-The function \lean{compile} returns a fill $a$, the program with its empty slots filled, and a record
+The function \lean{compile} returns a fill $\bar{p}$, the partial term $p$ with its empty slots filled, and a record
 \[
-\langle \mathit{tm},\ U_c,\ T_c,\ d : \dtyuj{U_c}{\platctx}{t_c}{T_c},\ \mathit{skel}(\mathit{tm}) = \mathit{skel}(a) \rangle ,
+\langle \mathit{tm},\ U_c,\ T_c,\ d : \dtyuj{U_c}{\platctx}{t_c}{T_c},\ \mathit{skel}(\mathit{tm}) = \mathit{skel}(\bar{p}) \rangle ,
 \]
 with the elaborated term $\mathit{tm}$, the term $t_c$ of \DOTMNF that $\mathit{tm}$ becomes when its annotations are dropped (\lean{ATm.erase}), its use set, its type and a derivation of the calculus. The skeleton is defined in Section~\ref{sec:fe-input}. Soundness of the typer is the type of its result, and needs no theorem about the typer.
 
-The theorems marked ``record'' in Table~\ref{tab:pipeline} take the hypothesis $h$ that \lean{compile} returned the record, and no proof reads $h$. Each is a theorem of the calculus applied to $d$, so it holds for any record. For instance, \lean{compile\_effect\_safety} is the tree's copy of Theorem~\ref{thm:source-effect} at $d$ and at a run from $t_c$, for a platform capability $\kappa$ that is not an element of the list $U_c$ (Section~\ref{sec:source-thms}). In \treeCL it asks in addition that $U_c$ write no filter, so that $\kappa$ is not a leaf of $U_c$ (Section~\ref{sec:cl-runtime}).
+The theorems above the middle rule of Table~\ref{tab:pipeline} take the hypothesis $h$ that \lean{compile} returned the record, and no proof reads $h$. Each is a theorem of the calculus applied to $d$, so it holds for any record. For instance, \lean{compile\_effect\_safety} is the tree's copy of Theorem~\ref{thm:source-effect} at $d$ and at a run from $t_c$, for a platform capability $\kappa$ that is not an element of the list $U_c$, and in \treeCL it asks in addition that $U_c$ write no filter (Section~\ref{sec:source-thms}).
 
-\subsection{What speaks of the input program}\label{sec:fe-input}
-
-An annotated term is a term of Figure~\ref{fig:source} in which a literal $\nu(x : S.\,d)$ writes its self shape, a $\kw{let}$ may write the type of its variable, and $(t : T)$ ascribes a type. Square brackets mark a part that may be absent. The skeleton keeps the binding structure and the labels and forgets the rest:
-\begingroup
-\mathsrc
-\[
-\begin{array}{@{}lcl@{\qquad}l@{}}
-\mathit{skel}(x) & = & x \\
-\mathit{skel}(\lambda(x : T).\,t) & = & \lambda x.\,\mathit{skel}(t) \\
-\mathit{skel}(\nu(x : \capt{S}{[U]}.\,d)) & = & \nu(x.\,\mathit{skel}(d)) \\
-\mathit{skel}(x\,y) & = & x\,y \\
-\mathit{skel}(x.a) & = & x.a \\
-\mathit{skel}(\klet x\,[: T] = t \kin u) & = & \mathit{skel}(u)[y/x] & \text{if } \mathit{skel}(t) = y \\
-\mathit{skel}(\klet x\,[: T] = t \kin u) & = & \klet x = \mathit{skel}(t) \kin \mathit{skel}(u) & \text{otherwise} \\
-\mathit{skel}(\klet \langle c, x\rangle = t \kin u) & = & \mathit{skel}(\klet x = t \kin u) & \text{in \treeCC and \treeCL} \\
-\mathit{skel}(\dbox{x}) & = & x \\
-\mathit{skel}(\dunbox{[C]}{x}) & = & x \\
-\mathit{skel}((t : T)) & = & \mathit{skel}(t) \\
-\mathit{skel}(\ddeftyp{A}{S}) & = & \{A\} \\
-\mathit{skel}(\ddeftyp{C}{D}) & = & \{C\} \\
-\mathit{skel}(\ddeftrm{a}{t}) & = & \{a = \mathit{skel}(t)\} \\
-\mathit{skel}(d \wedge d') & = & \mathit{skel}(d) \wedge \mathit{skel}(d')
-\end{array}
-\]
-\endgroup
-
-\lean{compile\_faithful} relates the record to the written program in general. The program resolves to a partial term $p$, and the fill $a$ agrees with every slot $p$ writes. The elaborator's first candidate on $p$ has the term, type and use set of the record, except that in \treeCL the record may hold the use set the header declares. The fill is read off that term in \treeK and carried by the candidate in \treeCC and \treeCL, and the term has the skeleton of $a$. So the record's term may differ from the program where the skeleton forgets, as where box inference inserts a box. \lean{compile\_faithful\_written} says the same for a program that writes every slot, and \lean{compileE\_skel} gives the skeleton alone.
-
-{\sloppy Inference is complete at direct sites, such as call arguments, ascriptions and bodies of $\kw{let}$s, where the elaborator runs the typer's own clause on the fill. A fill is canonical when every slot the program leaves empty sits at a direct site. \lean{elab\_complete\_direct} and \lean{compile\_complete\_direct} assume a canonical fill that the typer accepts. \lean{compile\_complete\_direct} also assumes that the program resolves to $p$, that the fill agrees with every slot $p$ writes, and, in \treeK, that the fill can be read back off the typer's term. From some fuel on, the program then compiles as its fill does. Completeness fails elsewhere. In \lean{Mid} the callee has two function types and the argument is a lambda. The typer types the written program at the first. With the lambda's domain erased, the elaborator checks the argument at the larger of the two parameter types, and there it needs a middle type that the program does not write. It rejects at every budget (\lean{Mid\_rejected}, decided, in all three trees).\par}
-
-\subsection{Rejections and certificates}\label{sec:fe-reject}
-
-A rejection is a statement about an algorithm. \lean{Alg} is an inductive judgment with one rule for each alternative of the typer's subtype checker. All goals of a run draw on one tank of fuel. A goal that finds the tank short marks it, and a marked tank stays marked. A run that ends with the tank marked has reached the recursion limit, whatever fuel is left. The goal solvers are complete for \lean{Alg} up to that limit: if \lean{Alg} derives a goal and a run ends with the tank unmarked, the run answers it (\lean{shape?\_complete} and its kin). A run that ends with the tank unmarked and no answer has no \lean{Alg} derivation (the \lean{\_reject} theorems). \lean{Alg} is sound for the calculus (\lean{Alg.answer}, \lean{Alg.sound\_shape} and \lean{Alg.sound\_cap} in \treeK, \lean{Alg.sound} in \treeCC and \treeCL). No theorem says that \lean{Alg} is complete for the calculus, and it is not. The bad-bounds program \lean{E1} of \treeK's front end, not the E1 of Section~\ref{sec:classifiers}, has a hand-built derivation through a middle type $x.A$ that the program does not write. The typer rejects it with the tank unmarked (\lean{E1\_verdict}, decided), and the goal it fails at has no \lean{Alg} derivation (\lean{E1\_not\_alg}, decided). The Lean's comments say that scalac rejects it too, and no recorded run of the compiler backs this.
-
-Completeness cannot say that some fuel suffices, since an alternative that never ends, tried first, marks every tank. A marked run is never a rejection by the rules (\lean{LPlet\_limit}, decided). In \treeCC and \treeCL a verdict is \lean{ok}, \lean{rejected} with one of the typer's own reasons, such as a level escape, or \lean{unknown}.
-
-A level escape is rejected with a certificate. When the typer fails at a goal $C <: D$, the function \lean{certify?} looks for an atom $r$, the universal capability first and then each atom of $D$, that confines $D$ at every depth of resolution, and for a depth below four at which $C$ is not confined to $r$. If it finds them, the contrapositive of Theorem~\ref{thm:lvl-source} is the certificate: no member-free derivation proves $C <: D$ in that context (\leanin{escape\_rejected\_at}{\treeCC}, \leanin{certify?\_isSome}{\treeCC}). The certificate speaks only of the goal and context the typer reached, and only of member-free derivations. For the escape, the goal is $\cset{f} <: \cset{\varrho_g}$, with $\varrho_g$ the scope binder of the body of $\lambda(g : \top)$. \lean{Esc\_compile\_rejected} says, by \lean{rfl}, that \lean{compile} at the default budget returns this rejection with its certificate, \lean{Esc\_rejected'}, built by hand from decided facts. \lean{Esc\_rejected} says that the escape compiles at no budget. Below 31 units of fuel the verdict is \lean{unknown}, which we evaluated and no theorem states.
-
-\subsection{Informative instances}\label{sec:fe-instances}
-
-An instance of effect safety says something only if its run inspects a variable with a leaf. Four do, two in \treeK and one in each other tree. \lean{C2gb\_never\_reads\_k1} (\treeK) is about C2 with the client at $b$ called, at use set $\cset{\kappa_2}$. Its run inspects the client, the object $b$, which entered $c$ through a parameter declared at $\cset{\kappa_1, \kappa_2}$, and its member $\mathit{run}$, at steps 14, 16 and 18 (decided), and the theorem applies at each. \lean{C2ga\_never\_reads\_k2} is its twin at $a$ and $\kappa_2$. \lean{ReadK2\_never\_reads\_k1} (\treeCC) binds $a$ at $\cset{\kappa_1}$ and $f$ at $\cset{\kappa_2}$, has use set $\cset{\kappa_2}$ (decided), and inspects $f$ at step 6. \lean{CE1b\_reads\_only\_control} (\treeCL) declares $b$ at $\restr{\cset{\kappa_{\mathit{ctl}}, \kappa_{\mathit{io}}}}{\konly{\mathit{Control}}}$ and inspects it at step 5. Each applies \lean{compile\_effect\_safety\_get} or its filtered twin to a premise the kernel decides. The runs of \lean{C2\_never\_reads\_k1} and \lean{CE1\_reads\_only\_control} inspect only a closed function and a variable declared at $\cempty$, so they hold for want of a leaf. For box inference, \lean{C7scala\_type} (\treeK, decided) types C7 written with boxed field types but no box term and no unboxing, and the kernel checks that the elaborated term has a box in each field and an unboxing before the call.
-
-\begin{table}
+\begin{table}[tb]
 \footnotesize
-\caption{What each pipeline theorem guarantees, and what it does not. A theorem marked ``record'' holds for any record \lean{compile} could return. The others are statements about \lean{compile}.}
+\caption{What each pipeline theorem guarantees, and what it does not. The theorems above the middle rule hold for any record \lean{compile} could return. Those below it are statements about \lean{compile}.}
 \label{tab:pipeline}
 \centering
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}p{0.30\textwidth}p{0.07\textwidth}p{0.37\textwidth}p{0.21\textwidth}@{}}
+\begin{tabular}{@{}p{0.33\textwidth}p{0.42\textwidth}p{0.21\textwidth}@{}}
 \toprule
-theorem & kind & guarantees & does not guarantee \tabularnewline
+theorem & guarantees & does not guarantee \tabularnewline
 \midrule
-\raggedright \lean{compile\_checks}, \lean{compile\_uses\_checks}, \lean{compile\_erase} & \raggedright record & \raggedright the checker of \FCdot accepts the translation and its use-set evidence, and the translation erases to the record's term & \raggedright that this term is the written program \tabularnewline
-\raggedright \lean{compile\_safe}, \lean{compile\_not\_stuck}, \lean{compile\_run\_progress} & \raggedright record & \raggedright every reached source state is final or steps (Theorem~\ref{thm:source-safety}) & \raggedright termination, a run of \FCdot \tabularnewline
-\raggedright \lean{compile\_capture\_prediction} & \raggedright record & \raggedright the matched target use set is covered by the translated $U_c$ (Theorem~\ref{thm:source-pred}) & \raggedright that $U_c$ is least \tabularnewline
-\raggedright \lean{compile\_effect\_safety} & \raggedright record & \raggedright a platform capability outside $U_c$ is no leaf of an inspected variable (Theorem~\ref{thm:source-effect}) & \raggedright anything when that variable has no leaf \tabularnewline
-\raggedright \lean{compile\_lvl\_safety} (\treeCC, \treeCL) & \raggedright record & \raggedright confinement passes along each logged member-free premise (Theorem~\ref{thm:lvl-source}) & \raggedright anything about premises that use members \tabularnewline
-\raggedright \lean{compile\_consistent}, \lean{compile\_realized} (\treeCL) & \raggedright record & \raggedright reached stores of \FCdot are consistent and define every block name &  \tabularnewline
-\raggedright classified theorems (\treeCL) & \raggedright record & \raggedright every leaf of an inspected variable has a classifier in $\chi$ (Theorem~\ref{thm:cl-source}) & \raggedright that the header's kind was read \tabularnewline
-\raggedright \lean{compile\_faithful}, \lean{compile\_faithful\_written}, \lean{compile\_full} & \raggedright compile & \raggedright the fill agrees with the written slots, the record is the elaborator's first candidate (in \treeCL possibly at the declared use set), the term has the fill's skeleton & \raggedright that the term means the written program \tabularnewline
-\raggedright \lean{compileE\_fills}, \lean{compileE\_skel}, \lean{compileE\_slot} & \raggedright compile & \raggedright the fill and the skeleton of the partial term, slot reasons only at empty slots &  \tabularnewline
-\raggedright \lean{elab\_complete\_direct}, \lean{compile\_complete\_direct} & \raggedright compile & \raggedright a canonical fill the typer accepts is found from some fuel on & \raggedright completeness at other sites (\lean{Mid}) \tabularnewline
+\raggedright \lean{compile\_checks}, \lean{compile\_erase}, \lean{compile\_uses\_checks} & \raggedright the checker of \FCdot accepts the translation and its use-set evidence, and the translation erases to the record's term & \raggedright that this term is the written program \tabularnewline
+\raggedright \lean{compile\_safe}, \lean{compile\_not\_stuck}, \lean{compile\_run\_progress} & \raggedright every reached source state is final or steps (Theorem~\ref{thm:source-safety}) & \raggedright termination, a run of \FCdot \tabularnewline
+\raggedright \lean{compile\_capture\_prediction} & \raggedright the matched target use set is covered by the translated $U_c$ (Theorem~\ref{thm:source-pred}) & \raggedright that $U_c$ is least \tabularnewline
+\raggedright \lean{compile\_effect\_safety} & \raggedright a platform capability outside $U_c$ is no leaf of an inspected variable (Theorem~\ref{thm:source-effect}) & \raggedright anything when that variable has no leaf \tabularnewline
+\raggedright \lean{compile\_lvl\_safety} (\treeCC, \treeCL) & \raggedright at each member-free premise $C <: D$ of $d$, an atom that confines $D$ confines $C$ (Theorem~\ref{thm:lvl-source}, Section~\ref{sec:fe-reject}) & \raggedright anything about premises that use members \tabularnewline
+\raggedright \lean{compile\_consistent}, \lean{compile\_realized} (\treeCL) & \raggedright reached stores of \FCdot are consistent and define every block name &  \tabularnewline
+\raggedright classified theorems (\treeCL) & \raggedright every leaf of an inspected variable has a classifier in $\chi$ (Theorem~\ref{thm:cl-source}) & \raggedright that the header's kind was read \tabularnewline
+\midrule
+\raggedright \lean{compile\_faithful}, \lean{compile\_full}, \lean{compile\_faithful\_written} & \raggedright the fill agrees with the written slots, the record is the elaborator's first candidate, or the typer's synthesis when every slot is written (in \treeCL possibly at the declared use set), the term has the fill's skeleton & \raggedright that the term means the written program \tabularnewline
+\raggedright \lean{compileE\_fills}, \lean{compileE\_skel}, \lean{compileE\_slot} & \raggedright the fill and the skeleton of the partial term, slot reasons only at empty slots &  \tabularnewline
+\raggedright \lean{elab\_complete\_direct}, \lean{compile\_complete\_direct} & \raggedright a canonical fill the typer accepts is found from some fuel on & \raggedright completeness for a fill that is not canonical (\lean{Mid}) \tabularnewline
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{What speaks of the input program}\label{sec:fe-input}
+
+An annotated term is a term of Figure~\ref{fig:source} in which a literal $\nu(x : S.\,d)$ writes its self shape, a $\kw{let}$ may write the type of its variable, and $(t : T)$ ascribes a type. In \treeCC and \treeCL it may also be the unpacking $\klet \langle \kappa, x\rangle = t \kin u$ of Section~\ref{sec:levels-fresh}. Square brackets mark a part that may be absent. The skeleton keeps the binding structure and the labels and forgets the rest:
+\begingroup
+\color{srccol}
+\allowdisplaybreaks
+\begin{alignat*}{3}
+& \mathit{skel}(x) &\quad& = x \\
+& \mathit{skel}(\lambda(x : T).\,t) &\quad& = \lambda x.\,\mathit{skel}(t) \\
+& \mathit{skel}(\nu(x : \capt{S}{[U]}.\,d)) &\quad& = \nu(x.\,\mathit{skel}(d)) \\
+& \mathit{skel}(x\,y) &\quad& = x\,y \\
+& \mathit{skel}(x.a) &\quad& = x.a \\
+& \mathit{skel}(\klet x\,[: T] = t \kin u) &\quad& = \mathit{skel}(u)[y/x] &\qquad& \text{if } \mathit{skel}(t) = y \\
+& \mathit{skel}(\klet x\,[: T] = t \kin u) &\quad& = \klet x = \mathit{skel}(t) \kin \mathit{skel}(u) &\qquad& \text{otherwise} \\
+& \mathit{skel}(\klet \langle \kappa, x\rangle = t \kin u) &\quad& = \mathit{skel}(\klet x = t \kin u) &\qquad& \text{in \treeCC and \treeCL} \\
+& \mathit{skel}(\dbox{x}) &\quad& = x \\
+& \mathit{skel}(\dunbox{[C]}{x}) &\quad& = x \\
+& \mathit{skel}((t : T)) &\quad& = \mathit{skel}(t) \\
+& \mathit{skel}(\ddeftyp{A}{S}) &\quad& = \{A\} \\
+& \mathit{skel}(\ddeftyp{C}{D}) &\quad& = \{C\} \\
+& \mathit{skel}(\ddeftrm{a}{t}) &\quad& = \{a = \mathit{skel}(t)\} \\
+& \mathit{skel}(d \wedge d') &\quad& = \mathit{skel}(d) \wedge \mathit{skel}(d')
+\end{alignat*}
+\endgroup
+
+\lean{compile\_faithful} relates the record to the written program in general. The program resolves to $p$, and the fill $\bar{p}$ agrees with every slot $p$ writes. The elaborator's first candidate on $p$ has the term, type and use set of the record, except that in \treeCL the record may hold the use set the header declares. The record's term has the skeleton of $\bar{p}$. So it may differ from the program where the skeleton forgets, as where box inference inserts a box. \lean{compile\_faithful\_written} and \lean{compile\_full} say that a program that writes every slot compiles as the typer's own synthesis on its resolution, with the record's term, type and use set, up to the same exception in \treeCL. \lean{compileE\_skel} gives the skeleton alone.
+
+{\sloppy Inference is complete at direct sites, such as call arguments, ascriptions and bodies of $\kw{let}$s, where the elaborator runs the typer's own clause on the fill. A fill is canonical when every slot the program leaves empty sits at a direct site and holds what the elaborator reads there, and when, at a call argument or a field of a literal, the typer's check of the fill answers first with the fill itself. \lean{elab\_complete\_direct} and \lean{compile\_complete\_direct} assume a canonical fill that the typer accepts. \lean{compile\_complete\_direct} also assumes that the program resolves to $p$, that the fill agrees with every slot $p$ writes, and, in \treeK, that the fill can be read back off the typer's term. From some fuel on, the program then compiles as its fill does. Completeness fails where these premises fail. In \lean{Mid} the callee has two function types and the argument is a lambda. The typer types the written program at the first. With the lambda's domain erased, the elaborator checks the argument at the larger of the two parameter types, and there it needs a middle type that the program does not write. It rejects at every budget (\lean{Mid\_rejected}, decided, in all three trees). So the fill of \lean{Mid}, the written program, is not canonical, and the kernel decides this (\lean{canonAt}).\par}
+
+\subsection{Rejections and certificates}\label{sec:fe-reject}
+
+A rejection is a statement about an algorithm. \lean{Alg} is an inductive judgment with one rule for each alternative of the typer's subtype checker. All goals of a run draw on one tank of fuel. A goal that finds the tank short marks it for good, and a run that ends with the tank marked has reached the recursion limit. The goal solvers are complete for \lean{Alg} up to that limit: if \lean{Alg} derives a goal and a run ends with the tank unmarked, the run answers it (\lean{shape?\_complete} and its kin). A run that ends with the tank unmarked and no answer has no \lean{Alg} derivation (the \lean{\_reject} theorems). \lean{Alg} is sound for the calculus (\lean{Alg.answer}, \lean{Alg.sound\_shape} and \lean{Alg.sound\_cap} in \treeK, \lean{Alg.sound} in \treeCC and \treeCL). It is not complete for the calculus. The bad-bounds program \lean{E1} of \treeK's front end, not the E1 of Section~\ref{sec:classifiers}, has a hand-built derivation through a middle type $x.A$ that the program does not write. The typer rejects it with the tank unmarked (\lean{E1\_verdict}, decided), and the goal it fails at has no \lean{Alg} derivation (\lean{E1\_not\_alg}, decided).
+
+Completeness cannot say that some fuel suffices, since an alternative that never ends, tried first, marks every tank. A marked run is never a rejection by the rules (\lean{LPlet\_limit}, decided). In \treeCC and \treeCL a verdict is \lean{ok}, \lean{rejected} with one of the typer's own reasons, such as a level escape, or \lean{unknown}.
+
+A level escape is rejected with a certificate. An atom $r$ confines a source set $D$ in a source context $\Gamma$ when $\lvlle{\trans{\Gamma}}{\capsr{\trans{\Gamma}}{m}{\trans{D}}}{r}$ for every $m$. When the typer fails at a goal $C <: D$ in $\Gamma$, \lean{certify?} looks for an atom $r$ that confines $D$, $\topc$ first and then each atom of $D$, and for an $n < 4$ with $\neg\,\lvlle{\trans{\Gamma}}{\capsr{\trans{\Gamma}}{n}{\trans{C}}}{r}$. If it finds both, the contrapositive of Theorem~\ref{thm:lvl-source} is the certificate: no member-free derivation proves $C <: D$ in that context (\leanin{escape\_rejected\_at}{\treeCC}, \leanin{certify?\_isSome}{\treeCC}). The certificate speaks only of the goal and context the typer reached, and only of member-free derivations. For the escape, the goal is $\cset{f} <: \cset{\varrho_g}$, with $\varrho_g$ the scope binder of the body of $\lambda(g : \top)$. \lean{Esc\_compile\_rejected} says, by \lean{rfl}, that \lean{compile} at the default budget returns this rejection with its certificate, \lean{Esc\_rejected'}, built by hand from decided facts. \lean{Esc\_rejected} says that the escape compiles at no budget.
+
+\subsection{Informative instances}\label{sec:fe-instances}
+
+Four front-end instances are informative, two in \treeK and one in each other tree. Section~\ref{sec:cl-instances} gives the hand-built ones of \treeCL. \lean{C2gb\_never\_reads\_k1} (\treeK) is about C2 of Section~\ref{sec:source} with the client at $b$ called, at use set $\cset{\kappa_2}$. Its run inspects the client, the object $b$, which entered $c$ through a parameter declared at $\cset{\kappa_1, \kappa_2}$, and its member $\mathit{run}$, at steps 14, 16 and 18 (decided), and the theorem applies at each. \lean{C2ga\_never\_reads\_k2} is its twin at $a$ and $\kappa_2$. \lean{ReadK2\_never\_reads\_k1} (\treeCC) binds $a$ at $\cset{\kappa_1}$ and $f$ at $\cset{\kappa_2}$, has use set $\cset{\kappa_2}$ (decided), and inspects $f$ at step 6. \lean{CE1b\_reads\_only\_control} (\treeCL) declares $b$ at $\restr{\cset{\kappa_{\mathit{ctl}}, \kappa_{\mathit{io}}}}{\konly{\mathit{Control}}}$ and inspects it at step 5. Each applies \lean{compile\_effect\_safety\_get} or its filtered twin to a premise the kernel decides. For box inference, \lean{C7scala\_type} (\treeK, decided) types C7 written with boxed field types but no box term and no unboxing, and the kernel checks that the elaborated term has a box in each field and an unboxing before the call.
 
 \subsection{What is not proved}\label{sec:fe-open}
 

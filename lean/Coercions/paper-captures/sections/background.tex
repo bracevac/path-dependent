@@ -2,7 +2,7 @@
 \section{Capture Checking for a Reader of Report~1}\label{sec:cc}
 \mathplain
 
-This section explains capture checking to a reader who knows System F and \Rone but has never seen a capture checker. It follows the Scala 3 reference \cite{scala3cc} and fixes the words that the rest of the report uses: capability, capturing type, subcapturing, leaf, use set and inspection. Section~\ref{sec:cc-closures} settles what the capture set of a closure bounds, which is where the report and Scala's documentation differ.
+This section follows the Scala 3 reference \cite{scala3cc} and fixes the words that the rest of the report uses: capability, capturing type, subcapturing, leaf, use set and inspection. Section~\ref{sec:cc-closures} settles what the capture set of a closure bounds, which is where the report and Scala's documentation differ.
 
 \subsection{Capabilities and capturing types}\label{sec:cc-types}
 
@@ -18,7 +18,7 @@ Capture sets are ordered by subcapturing. The reference writes $C_1 \mathrel{<:}
 \end{enumerate}
 The third case says that a capability is covered by the capture set of its type. It becomes rule \rn{C-Var} of Section~\ref{sec:mini-typing}, and it makes a capture set mean more than its elements. For a logger $\mathit{lg}$ of type $\capt{\mathit{Logger}}{\cset{\mathit{out}}}$ that writes to a file $\mathit{out}$, it gives $\cset{\mathit{lg}} \mathrel{<:} \cset{\mathit{out}}$ (\texttt{overview.md}, lines 86 to 92). The set $\cset{\mathsf{any}}$ covers every capture set (\texttt{basics.md}, line 296).
 
-Following the third case from a variable to the capture set of its type, and on, has to end somewhere. In Scala it ends at \lstinline|any|, which the trees of this report read differently (Sections~\ref{sec:source-any} and~\ref{sec:levels}). In this report a program runs over a platform, a list of capture variables $\kappa_1, \kappa_2, \ldots$ that stand for primitive capabilities such as a file system or a console. A platform capture variable stands for itself. The capture variables that a capture set reaches by replacing variables with the capture sets of their types are the leaves of the set (Section~\ref{sec:mini-leaves}). A term variable is never a leaf, and a variable whose type has the empty capture set has no leaves. From now on, ``$C$ is covered by $D$'' means that every leaf of $C$ is a leaf of $D$, and the word subcapturing is kept for derivations. Whether every derivation yields coverage is the question of Section~\ref{sec:problem}.
+Following the third case from a variable to the capture set of its type, and on, has to end somewhere. In Scala it ends at \lstinline|any|. \treeK replaces each written \lstinline|any| by a set chosen by its position before typing (Section~\ref{sec:source-any}), and \treeCC gives each scope its own \lstinline|any| (Section~\ref{sec:levels}). In this report a program runs over a platform, a list of capture variables $\kappa_1, \kappa_2, \ldots$ that stand for primitive capabilities such as a file system or a console. A platform capture variable stands for itself. The capture variables that a capture set reaches by replacing variables with the capture sets of their types are the leaves of the set (Section~\ref{sec:mini-leaves}). A term variable is never a leaf, and a variable whose type has the empty capture set has no leaves. From now on, ``$C$ is covered by $D$'' means that every leaf of $C$ is a leaf of $D$, and the word subcapturing is kept for derivations. Whether every derivation yields coverage is the question of Section~\ref{sec:problem}.
 
 \subsection{What a closure's capture set bounds}\label{sec:cc-closures}
 
@@ -38,22 +38,10 @@ Not every use reads a stored value. A step inspects a variable when it reads the
 
 \subsection{Capability members, escape, boxes and classifiers}\label{sec:cc-later}
 
-Four more features of the checker appear later in the report, each with one paragraph here. Reach capabilities and separation checking are left out (Section~\ref{sec:related}).
-
-\paragraph{Capability members.}
-A capture set can be abstract. The reference shows a reactor whose event handlers may capture only what an abstract capability member allows (\texttt{polymorphism.md}, lines 197 to 205):
-\begin{lstlisting}[language=Scala]
-trait Reactor:
-  type Cap^ <: {caps.any}
-  def onEvent(h: Event ->{this.Cap} Unit): Unit
-
-trait GUIReactor extends Reactor:
-  type Cap^ <: {ui, log}
-\end{lstlisting}
-A capability member behaves like a path-dependent capture-set variable (line 192). DOT models a type parameter as a type member, and this report models a capture parameter as a capture member $\dcap{C}{C_1}{C_2}$ of an object, with bounds $C_1$ and $C_2$. Inside a capture set, $\dsel{x}{C}$ names the member $C$ of $x$. Sections~\ref{sec:target-members} and~\ref{sec:source} treat them on the Lean's example C2, which resembles the reactor: an object with a capture member bounded by two capabilities and a field whose closure captures that member.
+Four more features of the checker appear later in the report, each with one paragraph here. Reach capabilities and separation checking are left out (Section~\ref{sec:related}). Table~\ref{tab:programs} lists the programs that the report proves things about.\label{sec:cc-programs} For the escape, for \lstinline|Try.apply| and for \lstinline|Future.apply| the theorems are weaker than the promise (Sections~\ref{sec:levels} and~\ref{sec:classifiers}).
 
 \begin{table}[t]
-\caption{The programs of this report. For each program: where it comes from, the promise its type makes, and the sections and tree that treat it. ``Docs'' is the Scala 3 reference at commit \texttt{4dae25087d}.}
+\caption{The programs of this report, where each comes from, the promise its type makes, and the sections and tree that treat it. ``Docs'' is the Scala 3 reference at commit \texttt{4dae25087d}.}
 \label{tab:programs}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -69,27 +57,41 @@ A capability member behaves like a path-dependent capture-set variable (line 192
 \addlinespace
 \raggedright \texttt{withFile} escape & \raggedright docs, \texttt{scoped-\allowbreak capabilities.md} 417 to 419 & \raggedright the file does not escape the callback & \raggedright \S\ref{sec:levels}, \treeCC \tabularnewline
 \addlinespace
-\raggedright \texttt{Try.apply} & \raggedright docs, \texttt{classifiers.md} 96 & \raggedright the result keeps only control capabilities & \raggedright \S\ref{sec:classifiers}, \treeCL \tabularnewline
+\raggedright \texttt{Try.apply} & \raggedright docs, \texttt{classifiers.md} 95, 96 and 105 to 113 & \raggedright the result drops the capabilities known to be unrelated to \texttt{Control} & \raggedright \S\ref{sec:classifiers}, \treeCL \tabularnewline
 \addlinespace
 \raggedright \texttt{Future.apply} & \raggedright Capless(K), compare docs, \texttt{classifiers.md} 128 & \raggedright the body uses no thread-local capability & \raggedright \S\ref{sec:classifiers}, \treeCL \tabularnewline
 \bottomrule
 \end{tabular}
 \end{table}
 
+\paragraph{Capability members.}
+A capture set can be abstract. The reference shows a reactor whose event handlers may capture only what an abstract capability member allows (\texttt{polymorphism.md}, lines 197 to 205):
+\begin{lstlisting}[language=Scala]
+trait Reactor:
+  type Cap^ <: {caps.any}
+  def onEvent(h: Event ->{this.Cap} Unit): Unit
+
+trait GUIReactor extends Reactor:
+  type Cap^ <: {ui, log}
+\end{lstlisting}
+A capability member behaves like a path-dependent capture-set variable (line 192). DOT models a type parameter as a type member, and this report models a capture parameter as a capture member $\dcap{C}{C_1}{C_2}$ of an object, with bounds $C_1$ and $C_2$. Inside a capture set, $\dsel{x}{C}$ names the member $C$ of $x$. Sections~\ref{sec:target-members} and~\ref{sec:source} treat them on the Lean's example C2, which resembles the reactor: an object with a capture member bounded by two capabilities and a field whose closure captures that member.
+
 \paragraph{Escape and scopes.}
-The reference's page on scoped capabilities rejects an escape like that of Section~\ref{sec:intro}, for a method \lstinline|withFile| (\texttt{scoped-capabilities.md}, lines 417 to 419):
+The reference's page on scoped capabilities rejects an escape like that of Section~\ref{sec:intro}, for a method \lstinline|withFile| (\texttt{scoped-capabilities.md}, lines 417 to 419):\par\nopagebreak
+\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}[language=Scala,basicstyle=\ttfamily\footnotesize,columns=fixed,basewidth=0.52em]
 val escaped: () => File^ = withFile[() => File^]("test.txt")(f => () => f) // error
 //           ^^^^^^^^^^^ any here is in the outer scope
 escaped().read()  // Use-after-close!
 \end{lstlisting}
-The reference gives two mechanisms against escapes from \lstinline|withFile| (lines 169 to 183). First, every class, method body and block has its own local \lstinline|any|, and each capability has a level, the local \lstinline|any| of its defining scope. It can flow only into the \lstinline|any|s of its own scope or of nested ones (lines 28 to 30 and 85 to 111). This stops an escape through a mutable variable. Second, a function type may write \lstinline|fresh| in its result, which says that each call yields a new capability. Such a result is isolated and cannot be merged with capabilities of the enclosing scope (lines 40 to 44). This stops the returned closure above. To hide \lstinline|f|, its type \lstinline|() ->{f} File^{f}| would have to widen to an existentially bound \lstinline|fresh|, which cannot flow into the outer \lstinline|any| of the expected type (lines 396 to 412). Section~\ref{sec:levels} models scopes, levels and fresh results in \treeCC, treats the returned closure by levels, and says how much of that escape is proved.
+\end{minipage}\par\noindent
+The reference gives two mechanisms against escapes from \lstinline|withFile| (lines 169 to 183). First, every class, method body and block has its own local \lstinline|any|, and each capability has a level, the local \lstinline|any| of its defining scope. It can flow only into the \lstinline|any|s of its own scope or of nested ones (lines 28 to 30 and 85 to 111). This stops an escape through a mutable variable. Second, a function type may write \lstinline|fresh| in its result, which says that each call yields a new capability (Section~\ref{sec:levels-fresh}). Such a result cannot be merged with capabilities of the enclosing scope (lines 40 to 44), and this stops the returned closure above. Section~\ref{sec:levels} models scopes, levels and fresh results in \treeCC, treats the returned closure by levels, and says how much of that escape is proved.
 
 \paragraph{Boxes.}
 A pair of two capabilities can have a pure type. The reference types \lstinline|Pair(x, y)|, for \lstinline|x| capturing \lstinline|ct| and \lstinline|y| capturing \lstinline|fs|, at a \lstinline|Pair| type with no outer capture set, and the capture reappears when a component is accessed (\texttt{classes.md}, lines 186 to 206). This is capture tunneling. The theory explains it with boxes, and the compiler inserts box and unbox operations that have no run-time effect: ``Boxing hides a capture set and unboxing recovers it'' (\texttt{internals.md}, lines 37 to 46). The calculi of this report have boxes as terms. A box is pure, and an unboxing charges the boxed set against its use set. A step that unboxes inspects the box, which has no leaves, so effect safety never flags it. Section~\ref{sec:target-boxes} gives a separate theorem about the unboxed value. The trees refuse an \lstinline|any| under a box, in a type-member bound or in the lower bound of a capture member (Section~\ref{sec:source-any}).
 
 \paragraph{Classifiers.}
-Capabilities can be sorted by kind. \lstinline|Try.apply| runs a body that may use anything. Its result drops the capabilities of the body that are known to be unrelated to \lstinline|Control| and keeps the rest (\texttt{classifiers.md}, lines 95, 96 and 104 to 113):
+Capabilities can be sorted by kind. \lstinline|Try.apply| runs a body that may use anything. Its result drops the capabilities of the body that are known to be unrelated to \lstinline|Control| and keeps the rest (\texttt{classifiers.md}, lines 95, 96 and 105 to 113):
 \begin{lstlisting}[language=Scala]
 object Try:
   def apply[T](body: => T): Try[T]^{body.only[Control]} = ???
@@ -98,9 +100,5 @@ A method that runs its argument on another thread admits only capabilities known
 \begin{lstlisting}[language=Scala]
 def runOnNewThread[T](body: () ->{any.except[Control]} T): T = ???
 \end{lstlisting}
-Section~\ref{sec:classifiers} models classifiers in \treeCL. Its examples model \lstinline|Try.apply| and, in place of \lstinline|runOnNewThread|, a \lstinline|Future.apply| whose body may capture anything except thread-local capabilities. That is the thread example of Capless(K), System Capless with classifiers \cite{pham2026classifying}.
-
-\subsection{The programs of this report}\label{sec:cc-programs}
-
-Table~\ref{tab:programs} lists the programs that the report proves things about. For the escape and for \lstinline|Future.apply| the theorems are weaker than the promise (Sections~\ref{sec:levels} and~\ref{sec:classifiers}).
+Section~\ref{sec:classifiers} models classifiers in \treeCL, with \lstinline|Try.apply| and, in place of \lstinline|runOnNewThread|, the \lstinline|Future.apply| of Capless(K), System Capless with classifiers \cite{pham2026classifying}. The body of \lstinline|Future.apply| may capture anything except thread-local capabilities.
 

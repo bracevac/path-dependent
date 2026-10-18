@@ -13,7 +13,7 @@ Xu et al.\ \cite{xu2025box} give Capless, a core calculus with bounded quantific
 \item Boxes are kept in the source and the target. The core of Capless has none.
 \item Capture members of objects stand where Capless has abstraction over captures.
 \item In the target a $\kw{let}$ or an unboxing declares a use set, with evidence that erases, and the use set of a term is computed from its syntax. The source, like Capless, has a subsumption rule on use sets (\lean{HasTy.sub}).
-\item In \treeCC and \treeCL packing is an answer inclusion, \rn{Ans-Pack}. Capless types a term that packs a capture and a variable, and its existential has no declared bound.
+\item In \treeCC and \treeCL packing is an answer inclusion, \rn{Ans-Pack}, with evidence that the witness is below a declared bound. The pack wrapper on atoms and values carries the same evidence and is typed only at an existential answer. The pack term of Capless carries a witness and a variable, and its existential has no bound.
 \end{itemize}
 One departure is from the compiler and not from Capless. In \treeCC and \treeCL a call instantiates a parameter $\cany$ at the argument, where the compiler creates a fresh capability per call. Reach capabilities were dropped from Scala on 2026-06-16 (compiler commit \lean{9521ae1b0b}), and the formal foundation for them \cite{xu2024reach} is not modelled here. The reading of the language follows the reference documentation at commit \lean{4dae25087d} \cite{scala3cc}. The documentation is not a theorem. No theorem relates the typer of Section~\ref{sec:frontends} to the compiler.
 
