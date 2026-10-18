@@ -1,0 +1,69 @@
+% unit U1
+\section{Why Capture Safety Is Hard}\label{sec:problem}
+\mathsrc
+
+This section states what is to be proved, recalls how a textbook proof would go, shows the step where capture members break it, and names the two ideas that repair it. It follows the problem section of \Rone, with subcapturing in place of subtyping. The notation is that of the source calculus, which Section~\ref{sec:source} defines. Here a type written without a capture set is pure.
+
+\subsection{What is to be proved}\label{sec:problem-goal}
+
+Type safety says that a typed program does not get stuck. Report~1 proved it for DOT, and the capture calculi keep it (Section~\ref{sec:target-meta}). A capture checker promises more. The use set of a program bounds the capabilities that its run may use, so the promise is about every state that the run reaches, not only about the last one. Every variable that a reached state inspects must have its leaves among the leaves of the initial use set. Read the other way round, this is effect safety (Theorem~\ref{thm:mini-effect}): if $\kappa$ is not a leaf of the initial use set, then no reached state inspects a variable with leaf $\kappa$.
+
+The statement is about inspection, not about every use. A state that passes $x$ as an argument does not inspect $x$, and a later state that calls $x$ does. Leaves are computed in the context that types the current store. The store grows along a run, and the leaves of a location do not change when later locations are added (Section~\ref{sec:mini-run}).
+
+A statement about every reached state is proved by an invariant that each step keeps. Here the invariant is that the leaves of the current use set are among the leaves of the initial one. It holds at the start, and a step keeps it if the leaves of the new use set are among those of the old one. An inspected variable belongs to the use set of the state that inspects it, so the invariant gives effect safety. The proof needs a use-set half of preservation, and that is where the textbook proof runs into trouble.
+
+\subsection{The textbook route}\label{sec:problem-textbook}
+
+A textbook proof would extend preservation \cite{wright1994syntactic,pierce2002tapl} with use sets: if a state is typed at the use set $U$ and takes a step, then the next state is typed at a use set that $U$ covers. The case that needs work is a call. Let the running term be $x\,y$, typed by the rule
+\[
+\inferrule{\dtyuj{U}{\Gamma}{x}{\capt{(\dall{z}{T}{T'})}{C}} \\ \dtyuj{U}{\Gamma}{y}{T}}{\dtyuj{U}{\Gamma}{x\,y}{T'[z \mapsto y]}}
+\]
+in the context $\Gamma$ that types the store, and let the store hold at $x$ a closure $\lambda(z : T_0).\,t$. The rule for closures typed its body $t$ at a use set $A \cup \cset{z}$ and gave the closure a function type with capture set $A$. We call $A$ the annotation of the closure. The call steps to $t[z \mapsto y]$, so the new state may use what $A$ and $y$ reach. The old state could use $x$ and $y$, and the leaves of $x$ are those of $C_x$, the capture set of the type at which $\Gamma$ binds $x$. The new use set is therefore covered by the old one if $C_x$ covers $A$. The store typed the closure at the type of $x$ in $\Gamma$, and that typing may end with subsumption. So the proof needs the following lemma, with $C_x$ for $C$.
+
+\begin{lemma}[Inversion at a call, textbook version]
+Let $\Gamma$ type a store, let $v$ be a closure with annotation $A$, and let
+\[
+\dtyuj{\cempty}{\Gamma}{v}{\capt{(\dall{z}{T}{T'})}{C}} .
+\]
+Then $C$ covers $A$ in $\Gamma$.
+\end{lemma}
+
+The derivation of the premise ends with the rule for closures, which gives $v$ a type with capture set $A$, followed by uses of subsumption. Their capture premises compose to a derivation of $\subcj{\Gamma}{A}{C}$. The lemma needs that derivation to mean coverage, and that is an inversion lemma for subcapturing: if $\subcj{\Gamma}{A}{C}$ then $C$ covers $A$. It is proved by induction on the derivation. Reflexivity, inclusion of elements and union keep coverage. The rule for a variable derives $\subcj{\Gamma}{\cset{w}}{C'}$ when the type of $w$ has the capture set $C'$, and it keeps coverage because the leaves of $w$ are those of $C'$. Transitivity composes the two induction hypotheses, as in the textbook inversion of subtyping that report~1 recalls. What remains are the two rules that read a capture member.
+
+\subsection{Bad capture bounds}\label{sec:problem-bad}
+
+A capture member is declared with two bounds, $\dcap{C}{C_1}{C_2}$. A binder $x$ of that type makes two subcapturing facts available,
+\[
+\subcj{\Gamma}{C_1}{\cset{\dsel{x}{C}}} \qquad\text{and}\qquad \subcj{\Gamma}{\cset{\dsel{x}{C}}}{C_2} ,
+\]
+and by transitivity $\subcj{\Gamma}{C_1}{C_2}$. Nothing forces $C_2$ to cover $C_1$. Under the binder
+\[
+x : \dcap{C}{\cset{\kappa}}{\cempty}
+\]
+subcapturing derives $\subcj{\Gamma}{\cset{\kappa}}{\cempty}$. The capture variable $\kappa$ is its own leaf and the empty set has none, so the inversion lemma is false in such a context. This is the capture twin of report~1's bad bounds $\dtyp{A}{\top}{\bot}$ (Example~\ref{R1-ex:mini-bad} of report~1).
+
+The derivation can be put to use. The following closure, written by hand in the source notation, takes such an $x$ and a box $z$ that holds a value capturing $\kappa$, and unboxes $z$:
+\[
+\lambda(x : \dcap{C}{\cset{\kappa}}{\cempty}).\ \lambda(z : \square\,\capt{\top}{\cset{\kappa}}).\ \dunbox{\cset{\kappa}}{z} .
+\]
+An unboxing $\dunbox{C'}{z}$ charges the boxed set $C'$ against the use set of the term. The inner closure is pure, so its body is typed at the use set $\cset{z}$, its empty annotation with the parameter, and the charge needs $\subcj{\Gamma}{\cset{\kappa}}{\cset{z}}$. Bad capture bounds and inclusion of elements derive it. So the inner closure is pure, and its body returns a value that captures $\kappa$, while the use set of the body has no leaf at all, since $z$ is a box and has none.
+
+The target typing of the same idea is the Lean's example C3 in \treeK. There the outer binder has the object type $D = \obj[y]{[\,\plec{\cset{\kappa}}{\cempty}\,]}$, whose one proposition states the bad inclusion directly, with no capture name. In the target context $\Gamma_3$ of the two lambdas, the charge of the unboxing is the evidence
+\[
+\clej{\Gamma_3}{\ev{member}\,x\,(\ev{refl}\,D)\,0}{\cset{\kappa}}{\cempty} ,
+\]
+which reads proposition $0$ of $D$ at $x$. The kernel decides this evidence (\lean{C3\_badBounds}) and the typing of the whole term (\lean{C3\_typed}).
+
+As in report~1, the binder is harmless where it occurs. A literal defines its capture member as one capture set $W$ and so declares it with the bounds $W..W$. Passing such a literal at $\dcap{C}{\cset{\kappa}}{\cempty}$ would need $\cset{\kappa}$ below $W$ and $W$ below $\cempty$, and so a bad binder in the first place. The outer closure is never applied, and the unboxing never runs. The safety proof has to show this, without inverting the derivation in the body.
+
+\subsection{The two ideas}\label{sec:problem-ideas}
+
+Report~1 met bad bounds with one theorem about closed evidence over a typed store, which took the place of every inversion lemma (Section~\ref{R1-sec:idea} of report~1). This report meets bad capture bounds in the same way, with two ideas.
+
+\paragraph{Idea 1: use sets are data.}
+Every binder declares the use set of its body, and the typing of each redex carries the evidence for the discharge that its step performs. A closure carries its annotation and evidence that the use set of its body lies within the annotation and the parameter. A let carries its declared set and the avoidance evidence of its body. An unboxing carries its charge. The store types each location at a type whose capture set is the annotation of the stored value, so a location has exactly the leaves of that annotation, and no subcapturing derivation needs inverting. A step instantiates the evidence of its redex, and one theorem reads the instantiated evidence as coverage. The use-set half of preservation becomes a case analysis over the steps. Section~\ref{sec:mini} shows it on a fragment without capture members, where that theorem holds in every context (Theorem~\ref{thm:mini-cap}).
+
+\paragraph{Idea 2: closed capture evidence relates leaves.}
+In the full calculus, subcapturing is evidence, as subtyping was in report~1, and the theorem that reads it holds over a typed store: closed capture evidence relates only capture sets whose leaves are included (Theorem~\ref{thm:target-canon}). Under a binder with bad capture bounds the evidence exists, but no typed store provides such a binder, as report~1's store provided no binder with bad bounds. Section~\ref{sec:target-canon} shows it on C3 (Example~\ref{ex:target-bad}).
+
+With both ideas, the invariant of Section~\ref{sec:problem-goal} holds along every run, and effect safety follows.

@@ -1,0 +1,60 @@
+\documentclass[acmsmall,nonacm,screen]{acmart}
+\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\setcopyright{none}
+
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+\usepackage{booktabs}
+\usepackage{xspace}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{placeins}
+\usepackage{xr}
+\externaldocument[R1-]{../paper/main}
+\input{macros}
+\emergencystretch=3em
+\raggedbottom
+
+\lstdefinelanguage{Scala}{morekeywords={def,val,var,class,trait,type,object,extends,new,import,try,catch,throw,throws}}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+  frame=none,xleftmargin=1em,
+  literate={λ}{{$\lambda$}}1 {⊤}{{$\top$}}1 {→}{{$\to$}}1 {⇒}{{$\Rightarrow$}}1}
+
+\begin{document}
+
+\title{Explicit Evidence for Capture Checking}
+\subtitle{A Tutorial Report on Capture Prediction by Translation}
+
+\author{Oliver Bra\v{c}evac}
+\renewcommand{\shortauthors}{Bra\v{c}evac}
+\authorsaddresses{}
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\maketitle
+
+\setcounter{tocdepth}{1}
+\tableofcontents
+
+\input{sections/intro}
+\input{sections/background}
+\input{sections/problem}
+\input{sections/recap}
+\input{sections/miniature}
+\input{sections/miniature-run}
+\input{sections/target}
+\input{sections/source}
+\input{sections/levels}
+\input{sections/classifiers}
+\input{sections/frontends}
+\input{sections/history}
+\input{sections/mechanization}
+\input{sections/related}
+\input{sections/conclusion}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\end{document}

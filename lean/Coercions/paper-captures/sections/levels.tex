@@ -1,0 +1,261 @@
+% unit U6
+\section{Scopes and Levels: The Compiler's Reading of \texorpdfstring{$\mathsf{any}$}{any}}\label{sec:levels}
+
+% unit macros
+\providecommand{\elej}[4]{\tgt{#1 \vdash_{\!e} #2 : #3 \le #4}}
+\providecommand{\lamcc}[6]{\lambda^{#1}_{#2}(#3 : #4).\,#5\;\ann{#6}}
+\providecommand{\frletex}[6]{\klet \langle #1, #2\rangle.\,#3\;\ann{#4;\,#5;\,#6}}
+\ifcsname remark\endcsname\else
+  \theoremstyle{acmdefinition}\newtheorem{remark}[theorem]{Remark}
+\fi
+
+\mathtgt
+
+\treeK reads $\cany$ by its position, the DOT way (Section~\ref{sec:source-any}). The Scala~3 compiler reads it by scope. Every method body and every class has a local $\cany$. A capability may flow into the local $\cany$ of its own scope or of a nested scope, never into that of an enclosing one~\cite{scala3cc}. \treeCC models this reading. This section gives the escape that scopes exist to stop, the calculus, the theorems about levels, and what they leave unproved. Every theorem here is in \treeCC, and its head says whether \treeCL has it too.
+
+\subsection{The program, and \texorpdfstring{$\mathit{c1}$}{c1} in \treeCC}\label{sec:levels-program}
+
+The Scala~3 reference gives this escape (\texttt{scoped-capabilities.md}, lines 417 to 419, at the commit cited in~\cite{scala3cc}):
+\begin{lstlisting}[language=Scala]
+val escaped: () => File^ = withFile[() => File^]("test.txt")(f => () => f) // error
+escaped().read()  // Use-after-close!
+\end{lstlisting}
+The callback returns a closure that captures its file \lstinline{f}. The $\cany$ of the expected type \lstinline{() => File^} belongs to the scope outside \lstinline{withFile}, and \lstinline{f} belongs to the nested scope of the callback. So \lstinline{f} may not flow into that $\cany$, and the reference marks the program as an error. The promise is that the file does not outlive the callback. What is proved is narrower, and Section~\ref{sec:levels-open} says how.
+
+\treeCC transcribes the running example of Section~\ref{sec:mini}, from \lean{capVal} and \lean{C1Ctx} on. The typings of $\mathit{c1}$ and of both programs are decided. The run of $\mathit{prog}_1$ takes the seven steps of Table~\ref{tab:mini-run} and is built by hand (\lean{C6\_run} in \treeCC). A call now also sends the body's scope binder to the universal capability (Section~\ref{sec:levels-run}). Nothing in $\mathit{c1}$ mentions a scope binder, so each step does what it did in \treeK. Effect safety for $\mathit{prog}_2$ (\lean{C6\_safe} in \treeCC) is again an application of the general theorem. Scopes change what $\cany$ means. They do not change how a program without $\cany$ runs.
+
+\subsection{Scopes, levels and leaves}\label{sec:levels-scopes}
+
+\begin{figure}
+\small
+\color{tgtcol}
+\[
+\begin{array}{@{}l@{\quad}rcl@{}}
+\text{Capture atoms} & c, r & ::= & x \mid \kappa \mid \sel{x}{\ell} \mid \topc \\
+\text{Capture binders} & B & ::= & \varrho : \scopeb \mid \kappa : \cstar \mid \kappa \instb{C} \mid \kappa \le C \\
+\text{Contexts, stores} & \Gamma, \sigma & ::= & \cdots \mid \Gamma, B \mid \sigma, B \\
+\text{Shapes} & S & ::= & \cdots \mid \pit[\kappa, x]{T}{E} \\
+\text{Answers} & E & ::= & T \mid \exc{\kappa}{C}{T} \\
+\text{Packed atoms} & p & ::= & a \mid \ev{pack}\,C\,h\,d\,a \\
+\text{Values} & v & ::= & \cdots \mid \lamcc{A}{\varrho}{\kappa, x}{T}{t}{g} \mid \ev{pack}\,C\,h\,d\,v \\
+\text{Terms} & t, u & ::= & p \mid \cdots \mid \ev{castE}\,t\,g \mid \letex{\kappa}{x}{t}{u}{U}{h}{f} \\
+\text{Answer evidence} & g & ::= & \ev{plain}\,d \mid \ev{pack}\,C\,h\,d \mid \ev{cong}\,h\,d \mid \ev{trans}\,g\,g \\
+\text{Capture evidence} & f, h & ::= & \cdots \mid \ev{level}\,c\,r \\
+\text{Capture equality} & \psi & ::= & \cdots \mid \ev{instC}\,\kappa\,C \\
+\text{Continuations} & K & ::= & \cdots \mid K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}
+\end{array}
+\]
+\[
+\begin{array}{@{}lcl@{}}
+\sext{\sigma}{\sigma'} & \text{iff} & \sigma' = \sigma, \sigma'' \text{ where } \sigma'' \text{ binds no scope binder and no star binder} \\
+\uses{p} & = & \cset{\rt{p}} \qquad \text{where } \rt{\ev{pack}\,C\,h\,d\,a} = \rt{a} \\
+\uses{\letex{\kappa}{x}{t}{u}{U}{h}{f}} & = & \uses{t} \cup U \\
+\uses{K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}} & = & \uses{K} \cup U
+\end{array}
+\]
+\[
+\begin{array}{@{}l@{\quad}l@{}}
+\rn{C-Level} & r = \topc \text{ or } \Gamma \text{ binds } r : \scopeb \qquad \lvlle{\Gamma}{c}{r} \ \Longrightarrow\ \clej{\Gamma}{\ev{level}\,c\,r}{\cset{c}}{\cset{r}} \\
+\rn{Q-Inst} & \Gamma \text{ binds } \kappa \instb{C} \ \Longrightarrow\ \ceqj{\Gamma}{\ev{instC}\,\kappa\,C}{\cset{\kappa}}{C} \\
+\rn{Sh-Pi} & \lej{\mathit{scope}(\Gamma)}{d}{T_2}{T_1} \qquad \elej{\mathit{body}(\Gamma, T_2)}{g}{E_1}{E_2} \\
+ & \qquad \Longrightarrow\ \shpj{\Gamma}{\ev{pi}\,d\,g}{\pit[\kappa, x]{T_1}{E_1}}{\pit[\kappa, x]{T_2}{E_2}} \\
+\rn{A-Plain} & \lej{\Gamma}{d}{T}{T'} \ \Longrightarrow\ \elej{\Gamma}{\ev{plain}\,d}{T}{T'} \\
+\rn{A-Pack} & \clej{\Gamma}{h}{C}{C_0} \qquad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \elej{\Gamma}{\ev{pack}\,C\,h\,d}{T'}{\exc{\kappa}{C_0}{T}} \\
+\rn{A-Cong} & \clej{\Gamma}{h}{C_0}{C_0'} \qquad \lej{\mathit{scope}(\Gamma)}{d}{T}{T'} \ \Longrightarrow\ \elej{\Gamma}{\ev{cong}\,h\,d}{\exc{\kappa}{C_0}{T}}{\exc{\kappa}{C_0'}{T'}} \\
+\rn{A-Trans} & \elej{\Gamma}{g}{E_1}{E_2} \qquad \elej{\Gamma}{g'}{E_2}{E_3} \ \Longrightarrow\ \elej{\Gamma}{\ev{trans}\,g\,g'}{E_1}{E_3} \\
+\rn{T-PackA} & \atomj{\Gamma}{a}{T'} \quad \clej{\Gamma}{h}{C}{C_0} \quad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \tmj{\Gamma}{\ev{pack}\,C\,h\,d\,a}{\exc{\kappa}{C_0}{T}} \\
+\rn{T-PackV} & \valj{\Gamma}{v}{T'} \quad \clej{\Gamma}{h}{C}{C_0} \quad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \tmj{\Gamma}{\ev{pack}\,C\,h\,d\,v}{\exc{\kappa}{C_0}{T}} \\
+\rn{T-App} & \atomj{\Gamma}{a}{\capt{(\pit[\kappa, x]{T}{E})}{C}} \quad \atomj{\Gamma}{b}{T[\kappa \mapsto \rt{b}]} \ \Longrightarrow\ \tmj{\Gamma}{a\,b}{E[\kappa \mapsto \rt{b}, x \mapsto b]} \\
+\rn{T-CastE} & \tmj{\Gamma}{t}{E} \qquad \elej{\Gamma}{g}{E}{E'} \ \Longrightarrow\ \tmj{\Gamma}{\ev{castE}\,t\,g}{E'} \\
+\rn{T-LetEx} & \tmj{\Gamma}{t}{\exc{\kappa}{C_0}{T}} \qquad \clej{\Gamma}{h}{C_0}{U} \qquad \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \\
+ & \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}} \ \Longrightarrow\ \tmj{\Gamma}{\letex{\kappa}{x}{t}{u}{U}{h}{f}}{E} \\
+\rn{V-Lam} & \tmj{\mathit{body}(\Gamma, T)}{t}{E} \qquad \clej{\mathit{body}(\Gamma, T)}{g}{\uses{t}}{\weak{A} \cup \cset{x}} \\
+ & \qquad \Longrightarrow\ \valj{\Gamma}{\lamcc{A}{\varrho}{\kappa, x}{T}{t}{g}}{\capt{(\pit[\kappa, x]{T}{E})}{A}} \\
+\rn{K-LetEx} & \clej{\Gamma}{h}{C_0}{U} \qquad \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \qquad \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}} \\
+ & \contj{\Gamma}{K}{E}{T''} \ \Longrightarrow\ \contj{\Gamma}{K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}}{\exc{\kappa}{C_0}{T}}{T''} \\
+\rn{S-Cap} & \storej{\sigma}{\Gamma} \qquad B \text{ is not a scope binder} \ \Longrightarrow\ \storej{\sigma, B}{\Gamma, B}
+\end{array}
+\]
+\[
+\begin{array}{@{}l@{\quad}l@{}}
+\rn{E-App} & \mst{\sigma}{K}{x\,b} \step \mst{\sigma}{K}{t[\varrho \mapsto \topc, \kappa \mapsto \rt{b}, z \mapsto b]} \qquad \text{if } \sigma(x) = \lamcc{A}{\varrho}{\kappa, z}{T}{t}{g} \\
+\rn{E-LetEx} & \mst{\sigma}{K}{\letex{\kappa}{x}{t}{u}{U}{h}{f}} \step \mst{\sigma}{K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}}{t} \\
+\rn{E-Unpack} & \mst{\sigma}{K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}}{\ev{pack}\,C\,h_0\,d\,a} \step \mst{\sigma, \kappa \instb{C}}{K}{u[x \mapsto \ev{cast}\,a\,d']} \\
+\rn{E-UnpackV} & \mst{\sigma}{K \triangleright \frletex{\kappa}{x}{u}{U}{h}{f}}{\ev{pack}\,C\,h_0\,d\,v} \step \mst{\sigma, \kappa \instb{C}, \mathit{core}(v')}{K}{\mathit{adjust}(u, v')} \\
+ & \qquad \text{where } v' = \ev{cast}\,v\,d' \text{ and } d' = d[\varrho' \mapsto \topc, \kappa' \mapsto \kappa] \text{ for the binders } \varrho', \kappa' \text{ of } \mathit{scope}(\Gamma, C)
+\end{array}
+\]
+\color{black}
+\caption{What \treeCC adds to the syntax, the rules and the machine: the universal capability, scope and instance binders, existential answers, pack, unpacking, the rules \rn{C-Level} and \rn{Q-Inst}, and the changed rules for functions, lambdas, calls, stores and store extension. The contexts $\mathit{scope}(\Gamma)$, $\mathit{scope}(\Gamma, C)$ and $\mathit{body}(\Gamma, T)$, levels and expansion are in Section~\ref{sec:levels-scopes}. The Lean types packed atoms and values by judgments of their own, which \rn{T-PackA} and \rn{T-PackV} combine with the term rule. Literals and projections change as lambdas and calls do: the fields of a literal are typed under a scope binder bound before the self, and the projection step sends it to $\topc$. The application steps through casts substitute as \rn{E-App} does. An answer cast runs as a cast does: a frame holds $g$ until $t$ returns, and $g$ then casts, packs or rewraps the returned atom or value. The other rules of Figures~\ref{fig:target-capev} and~\ref{fig:target-rules} carry over with answers where they had types.}
+\label{fig:cc}
+\end{figure}
+
+Figure~\ref{fig:cc} gives the syntax and rules that \treeCC adds. A capture set may contain the universal capability $\topc$, the compiler's top-level $\cany$ read as a constant. A capture binder takes one of four forms. A scope binder $\varrho : \scopeb$ is the local $\cany$ of a scope. A star binder $\kappa : \cstar$ stands for itself, as in \treeK. An instance binder $\kappa \instb{C}$ stands for $C$. No rule constructs the fourth form, a bounded binder $\kappa \le C$. Scope and star binders are opaque. Three contexts open a scope:
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{scope}(\Gamma) & = & \Gamma, \varrho : \scopeb, \kappa : \cstar \\
+\mathit{scope}(\Gamma, C) & = & \Gamma, \varrho : \scopeb, \kappa \instb{C} \\
+\mathit{body}(\Gamma, T) & = & \Gamma, \varrho : \scopeb, \kappa : \cstar, x : T
+\end{array}
+\]
+In $\mathit{body}(\Gamma, T)$, $\varrho$ is the body's local $\cany$ and $x$ is the parameter. The arrow's capture binder $\kappa$ is what a parameter written $\cany$ reads as. A function shape $\pit[\kappa, x]{T}{E}$ binds $\kappa$ in $T$ and $E$ and binds $x$ in $E$. A lambda $\lamcc{A}{\varrho}{\kappa, x}{T}{t}{g}$ binds all three in $t$ and $g$.
+
+The level of a binder is the innermost scope binder to its left, and $\topc$ is the outermost level. A scope capability is $\topc$ or a scope binder. Resolution is that of Section~\ref{sec:target-leaves}, written $\capsr{\Gamma}{n}{C}$ here, with the clauses for $\topc$ and capture binders below. A leaf now comes after expansion, which opens each scope capability into $\topc$ and every opaque binder at or outside its level:
+\[
+\begin{array}{@{}lcl@{}}
+\lvl{\Gamma}{\topc} & = & \topc \\
+\lvl{\Gamma}{\varrho} & = & \varrho \qquad \text{if } \Gamma \text{ binds } \varrho : \scopeb \\
+\lvl{\Gamma}{y} & = & \text{the innermost scope binder left of } y\text{, else } \topc \qquad \text{for any other binder } y \\
+\lvl{\Gamma}{\sel{x}{\ell}} & = & \lvl{\Gamma}{x} \\
+\lvlle{\Gamma}{c}{r} & \text{iff} & \lvl{\Gamma}{c} = \topc\text{, or } r \text{ is a capture binder and } \lvl{\Gamma}{c} \text{ is } r \text{ or left of } r \\
+\lvlle{\Gamma}{C}{r} & \text{iff} & \lvlle{\Gamma}{c}{r} \text{ for every } c \in C \\
+\capsr{\Gamma}{n}{\topc} & = & \cset{\topc} \\
+\capsr{\Gamma}{n}{\kappa} & = & \cset{\kappa} \qquad \text{if } \Gamma \text{ binds } \kappa : \scopeb \text{ or } \kappa : \cstar \\
+\capsr{\Gamma}{n}{\kappa} & = & \capsr{\Gamma_0}{n}{C} \qquad \text{if } \Gamma = \Gamma_0, \kappa \instb{C}, \Gamma_1 \text{ or } \Gamma = \Gamma_0, \kappa \le C, \Gamma_1 \\
+\expand{\Gamma}{r} & = & \cset{\topc} \cup \{\kappa \mid \kappa \text{ is opaque in } \Gamma \text{ and } \lvlle{\Gamma}{\kappa}{r}\} \qquad \text{if } r \text{ is a scope capability} \\
+\expand{\Gamma}{c} & = & \cset{c} \qquad \text{for any other atom } c \\
+\expand{\Gamma}{C} & = & \textstyle\bigcup_{c \in C} \expand{\Gamma}{c} \\
+\leavesn{\Gamma}{n}{C} & = & \expand{\Gamma}{\capsr{\Gamma}{n}{C}}
+\end{array}
+\]
+We read $\lvlle{\Gamma}{c}{r}$ as ``$c$ is at or outside the level of $r$''. The Lean's comment puts it as ``inner absorbs outer, never the reverse''. A capability at the outermost level is at or outside every $r$, a capability inside some scope is never at or outside $\topc$, and $\topc$ is at or outside every $r$. In $\mathit{body}(\Gamma, T)$ the parameter and the arrow's binder both have level $\varrho$ (\lean{scope\_order} in \treeCC, by \lean{rfl}). So a set that contains $\varrho$ has among its leaves $\topc$, $\varrho$, $\kappa$ and every opaque binder outside the body.
+
+Capture prediction and effect safety, Theorems~\ref{thm:mini-pred} and~\ref{thm:mini-effect} in full, have the same Lean text in \treeCC as in \treeK, and their meaning changes with the leaves. A use set that contains $\topc$ covers every opaque binder at the outermost level, so over a store it covers every capability of the platform. Over a context with no scope binder, for a set whose resolution avoids $\topc$, expansion changes nothing and the leaves are those of \treeK (\lean{Ctx.roots\_eq\_caps\_of\_rootFree} in \treeCC). \lean{C6\_safe} uses this fact to compute the leaves of the use set of $\mathit{prog}_2$.
+
+\subsection{The level rule and the changed rules}\label{sec:levels-rule}
+
+Capture inclusion gains \rn{C-Level}. When $r$ is a scope capability and $c$ is at or outside the level of $r$, $\ev{level}\,c\,r$ proves $\cset{c} \le \cset{r}$. Both sides are singletons, and a larger set goes below $\cset{r}$ by $\ev{union}$. The rule lets an outer capability flow into an inner scope. In the context $\kappa_1 : \cstar, \varrho : \scopeb, \kappa_2 : \cstar$ it derives $\cset{\kappa_1} \le \cset{\varrho}$ and $\cset{\topc} \le \cset{\varrho}$. Its premise fails for $\varrho$ and for $\kappa_2$ against $\topc$, and no member-free evidence puts either of them below $\cset{\topc}$ (\lean{X2\_outer\_not\_inner} in \treeCC, by hand, every level premise decided). The rule needs a scope capability on its right, so it never puts a capability below the arrow's binder, a star binder. Capture equality gains \rn{Q-Inst}: an instance binder $\kappa \instb{C}$ gives $\cset{\kappa} \equiv C$, and $\ev{symm}$ and $\ev{eqToLe}$ give both inclusions.
+
+Three rules change shape. \rn{Sh-Pi} compares two function shapes under one fresh scope. \rn{V-Lam} types a body in $\mathit{body}(\Gamma, T)$. \rn{T-App} checks the argument $b$ at the domain with $\kappa$ at $\rt{b}$. So a parameter's $\cany$ is instantiated at the argument itself, not at a fresh capability. The documentation of \treeCC lists this among five departures from the compiler. Stores change by one premise each. \rn{S-Cap} stores any capture binder but a scope binder, and store extension appends only instance and bounded binders.
+
+The source of \treeCC has the same scopes, and the translation sends each source binder to its target counterpart. The source names no $\topc$, so its level rule has a scope binder on the right, and its left side is never $\cany$ or $\cfresh$. It also has an instance rule:
+\[
+\inferrule*[left=\rn{Sc-Level}]{\src{\Gamma \text{ binds } \varrho : \scopeb} \\ \src{\lvlle{\Gamma}{c}{\varrho}}}{\subcj{\Gamma}{\cset{c}}{\cset{\varrho}}}
+\qquad\qquad
+\inferrule*[left=\rn{Sc-Inst}]{\src{\Gamma \text{ binds } \kappa \instb{C}}}{\subcj{\Gamma}{C}{\cset{\kappa}}}
+\]
+A translated capture set never contains $\topc$ (\lean{CaptureSet.top\_not\_mem\_translate} in \treeCC). Theorem~\ref{thm:source-effect} uses that over a platform a leaf of $C$ is a member of $C$ (\lean{Platform.root\_iff}). In \treeCC that lemma assumes $\topc \notin C$, and this fact discharges it.
+
+The rule is not a theorem about evidence. What follows for evidence that mixes it with every other rule is in Section~\ref{sec:levels-inversion}.
+
+\subsection{The escape in the calculus}\label{sec:levels-escape}
+
+\begin{figure}
+\small
+\color{tgtcol}
+\[
+\begin{array}{@{}l@{\qquad}l@{}}
+\text{The order of } \mathit{body}(\cdot, \capt{\top}{\cset{\kappa_f}}) & \text{The other order} \\[2pt]
+\varrho : \scopeb,\ \kappa_f : \cstar,\ f : \capt{\top}{\cset{\kappa_f}} & \kappa_f : \cstar,\ f : \capt{\top}{\cset{\kappa_f}},\ \varrho : \scopeb \\
+\lvl{}{\kappa_f} = \lvl{}{f} = \varrho & \lvl{}{\kappa_f} = \lvl{}{f} = \topc \\
+\neg(\lvlle{}{f}{\topc}) \text{ and } \neg(\lvlle{}{\kappa_f}{\topc}) & \lvlle{}{f}{\topc} \\
+\text{no } g \text{ at all proves } \cset{f} \le \cset{\topc} & \ev{level}\,f\,\topc \text{ proves } \cset{f} \le \cset{\topc} \\
+\lean{X4\_no\_level}\text{, } \lean{X4\_no\_escape} & \lean{X5\_fires}
+\end{array}
+\]
+\color{black}
+\caption{The callback of the \lstinline{withFile} escape in two binder orders. In the order the calculus uses, $f$ and $\kappa_f$ sit at the level of $\varrho$, which is inside $\topc$, so the level rule cannot put $\cset{f}$ below $\cset{\topc}$. In the other order $f$ is at the outermost level and the rule fires.}
+\label{fig:cc-escape}
+\end{figure}
+
+\begin{example}[The escape in the calculus]\label{ex:lvl-escape}
+Read \lstinline{File} as $\top$ and put the call at the top level. The callback's body is typed in $\Gamma_{\!X4} = \mathit{body}(\cdot, \capt{\top}{\cset{\kappa_f}}) = \varrho : \scopeb, \kappa_f : \cstar, f : \capt{\top}{\cset{\kappa_f}}$, the Lean's \lean{X4Ctx}. The inner closure uses $f$, so its annotation must cover $f$, and the expected type asks for that annotation to be below the universal capability outside the call. So typing the program needs evidence for $\cset{f} \le \cset{\topc}$. That step is an argument in the comments of the Lean, not a theorem. Figure~\ref{fig:cc-escape} shows what is proved. The level premise fails. Neither $f$ nor $\kappa_f$ is at or outside $\topc$, and with one more scope binder $\varrho_{\mathit{out}}$ outside the call, $f$ is not at or outside $\varrho_{\mathit{out}}$ either (\lean{X4\_no\_level} in \treeCC, decided). No evidence at all closes the gap:
+\[
+\neg\, \exists g.\ \clej{\Gamma_{\!X4}}{g}{\cset{f}}{\cset{\topc}}
+\]
+(\lean{X4\_no\_escape} in \treeCC, by hand). The proof is Theorem~\ref{thm:lvl-plain} and three facts. The context is plain (\lean{X4Ctx\_plain}, decided). The set $\cset{f}$ resolves to $\cset{\kappa_f}$ at every fuel (\lean{X4\_caps}, by hand). And $\cset{\topc}$ resolves to itself, which is at or outside $\topc$. So $\cset{\kappa_f}$ would be at or outside $\topc$, which is false. In the other binder order the level rule fires (\lean{X5\_fires} in \treeCC, decided).
+\end{example}
+
+Example~\ref{ex:lvl-escape} is the picture at the level of the target. Its context is the translation of the body context of a source lambda $\src{\lambda(f : \capt{\top}{\cset{\cany}})}$ over the empty platform. What no translated program poses is its goal, since a translated capture set never contains $\topc$. A source program meets the escape at a capability of its platform.
+
+\begin{example}[The escape at the source]\label{ex:lvl-w5}
+Let $\src{\Gamma_{\!W2}}$ be the body context of a hand-made $\src{\mathit{process} : \dall{x}{\capt{\mathit{File}}{\cset{\cany}}}{\top}}$ over a platform with two capabilities $\src{k_1}$ and $\src{k_2}$, the Lean's \lean{W2BodyCtx}. No source derivation, member-free or not, proves $\subcj{\Gamma_{\!W2}}{\cset{f}}{\cset{k_1}}$ (\lean{W5\_no\_escape} in \treeCC, by hand). This is the source counterpart of Example~\ref{ex:lvl-escape}, in one hand-made context and at one platform capability, the older one. A top-level $\cany$ reads as the whole platform set $\src{\cset{k_1, k_2}}$, not as $\src{\cset{k_1}}$, and the statement at $\src{\cset{k_1, k_2}}$ is not in the Lean. The proof has two steps. $\src{\Gamma_{\!W2}}$ declares its one variable at a plain shape and binds no instance binder, so every source derivation in it is member-free (\lean{Subcap.memberFree\_of\_plain} in \treeCC). Theorem~\ref{thm:lvl-source} at $r = \topc$ then ends as in Example~\ref{ex:lvl-escape}. The premise of \rn{Sc-Level} fails at a scope binder outside the call (\lean{W5\_no\_level}, decided) and holds in the other binder order (\lean{W6\_fires}).
+\end{example}
+
+\subsection{Level inversion}\label{sec:levels-inversion}
+
+The level rule says when one step is allowed. Level inversion says what member-free evidence can do in any number of steps: it never moves a set inward. Member-free evidence and atoms are defined by
+\[
+\begin{array}{@{}lcl@{}}
+\mfree{f} & \text{iff} & f \text{ uses neither } \ev{member} \text{ nor } \ev{eqToLe}\text{, and } \mfree{a} \text{ for each atom } a \text{ under a } \ev{capvar} \text{ in } f \\
+\mfree{a} & \text{iff} & \mfree{f} \text{ for the capture evidence } f \text{ of every cast and recap in } a
+\end{array}
+\]
+The restriction is the lesson of the bad capture bounds of Example~\ref{ex:target-bad}. A lambda body may assume $\plec{\cset{\kappa}}{\cempty}$ through the object type of a binder, and only $\ev{member}$ and $\ev{eqToLe}$ read such an assumption.
+
+\begin{theorem}[Level inversion, \leanin{level\_inversion}{\treeCC and \treeCL}]\label{thm:lvl-inv}
+Let $\Gamma$ be a context and $r$ a capture atom.
+\begin{enumerate}
+\item If $\clej{\Gamma}{f}{C}{D}$, $\mfree{f}$, and $\lvlle{\Gamma}{\capsr{\Gamma}{m}{D}}{r}$ for every $m$, then $\lvlle{\Gamma}{\capsr{\Gamma}{n}{C}}{r}$ for every $n$.
+\item If $\atomj{\Gamma}{a}{\capt{S}{C}}$, $\mfree{a}$, and $\lvlle{\Gamma}{\capsr{\Gamma}{m}{C}}{r}$ for every $m$, then $\lvlle{\Gamma}{\capsr{\Gamma}{n}{\cset{\rt{a}}}}{r}$ for every $n$.
+\end{enumerate}
+\end{theorem}
+
+There is no store and no hypothesis that $r$ is a scope capability. The proof is a mutual induction on the two typings and on member-freeness, separate from that of Theorem~\ref{thm:target-canon}. The theorem holds in every context and has content only in one that opens a scope:
+
+\begin{lemma}[A store opens no scope, \leanin{Store.Typed.rootFree}{\treeCC and \treeCL}, with \lean{Store.Typed.confined}]\label{lem:lvl-rootfree}
+Let $\storej{\sigma}{\Gamma}$. Then $\Gamma$ binds no scope binder. If moreover $\topc \notin C$, then $\lvlle{\Gamma}{C}{\topc}$.
+\end{lemma}
+
+So over a store every set that avoids $\topc$ is at the outermost level. Theorem~\ref{thm:target-canon} reads a store and Theorem~\ref{thm:lvl-inv} reads none, so the two cover different contexts. In a plain context the member-free restriction can go. A context is plain when each of its term binders is an opaque $x : \capt{S}{C}$ with $\mathit{plain}(S)$ and it binds no instance binder, where
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{plain}(\bot) & = & \text{false} \\
+\mathit{plain}(\sel{x}{A}) & = & \text{false} \\
+\mathit{plain}(\pit[\kappa, x]{T}{E}) & = & \text{true} \\
+\mathit{plain}(\boxt{T}) & = & \text{true} \\
+\mathit{plain}(\obj{\tel}) & = & \text{true iff every proposition of } \tel \text{ is a bound } \pbnd{S'} \text{ with } \mathit{plain}(S')
+\end{array}
+\]
+
+\begin{theorem}[Level inversion in a plain context, \leanin{level\_inversion\_plain}{\treeCC}]\label{thm:lvl-plain}
+Let $\Gamma$ be plain and $r$ a capture atom. If $\clej{\Gamma}{f}{C}{D}$ and $\lvlle{\Gamma}{\capsr{\Gamma}{m}{D}}{r}$ for every $m$, then $\lvlle{\Gamma}{\capsr{\Gamma}{n}{C}}{r}$ for every $n$.
+\end{theorem}
+
+In a plain context $\ev{member}$ finds only bounds and capture equality is syntactic. \treeCL does not have this theorem. The next one is about leaves:
+
+\begin{theorem}[Leaf inversion, \leanin{root\_inversion}{\treeCC}]\label{thm:root-inv}
+Let $\Gamma$ be a context.
+\begin{enumerate}
+\item If $\clej{\Gamma}{f}{C}{D}$ and $\mfree{f}$, then $\caple{\Gamma}{C}{D}$.
+\item If $\atomj{\Gamma}{a}{\capt{S}{C}}$ and $\mfree{a}$, then $\caple{\Gamma}{\cset{\rt{a}}}{C}$.
+\end{enumerate}
+\end{theorem}
+
+It is Theorem~\ref{thm:target-canon} for member-free evidence with no store, and the nearest Lean statement to Theorem~\ref{thm:mini-cap}. It is in \treeCC, not in \treeK. It separates two star binders of one level, which Theorem~\ref{thm:lvl-inv} cannot.
+
+\begin{theorem}[Level inversion at the source, \leanin{source\_lvl\_safety}{\treeCC and \treeCL}]\label{thm:lvl-source}
+Let $\src{\Gamma}$ be a well-formed source context, $d$ a member-free derivation of $\subcj{\Gamma}{C}{D}$, and $r$ a target capture atom. If $\lvlle{\trans{\Gamma}}{\capsr{\trans{\Gamma}}{m}{\trans{D}}}{r}$ for every $m$, then $\lvlle{\trans{\Gamma}}{\capsr{\trans{\Gamma}}{n}{\trans{C}}}{r}$ for every $n$.
+\end{theorem}
+
+A source derivation is member-free when it uses neither \rn{Sc-Inst} nor the two rules for the bounds of a capture member. The proof applies Theorem~\ref{thm:lvl-inv} to the translation of $d$, which is typed (\lean{Subcap.translate\_typed}) and member-free (\lean{Subcap.translate\_memberFree}). The Lean also states two corollaries with a scope capability on the right, \lean{lvl\_safety} and \lean{no\_inner\_escape}. Section~\ref{sec:history} tells how earlier versions of them, stated over a typed store, said nothing.
+
+\subsection{Running a body}\label{sec:levels-run}
+
+\rn{E-App} sends $\varrho$ to $\topc$, $\kappa$ to $\rt{b}$ and the parameter to $b$. A running program is the outermost scope, so the local $\cany$ of a body it enters becomes the universal one. This is sound because a store opens no scope:
+
+\begin{lemma}[Entering a body, \leanin{Subst.Typed.enter}{\treeCC and \treeCL}]\label{lem:lvl-enter}
+Let $\Gamma$ bind no scope binder, and let $\atomj{\Gamma}{b}{T[\kappa \mapsto \rt{b}]}$. Then $[\varrho \mapsto \topc, \kappa \mapsto \rt{b}, x \mapsto b]$ is a typed substitution from $\mathit{body}(\Gamma, T)$ to $\Gamma$.
+\end{lemma}
+
+Among its conditions, a typed substitution sends each variable to an atom of the substituted type. It also maps scope capabilities to scope capabilities, level facts to level facts and instance binders to instance binders, and it keeps definitions. The substitution lemma then carries every judgment from $\mathit{body}(\Gamma, T)$ to $\Gamma$. The hypothesis serves the level facts: with no scope binder every atom is at the outermost level, so every level fact holds. The machine applies the lemma at the context of its store, which opens no scope (Lemma~\ref{lem:lvl-rootfree}). An opaque binder appended to a store would enlarge the expansion of $\topc$, so store extension appends none, and the machine stores a witness as an instance binder.
+
+The use-set half of preservation, Lemma~\ref{lem:target-step} in \treeCC, has 18 cases, against 12 in \treeK. Six are new. The three steps of an answer cast (\lean{castEPush}, \lean{castEVal} and \lean{castEAtom} in the Lean) and \rn{E-LetEx} relate equal sets. \rn{E-Unpack} and \rn{E-UnpackV} read evidence: the frame's $h$, the wrapper's $h_0$, rule \rn{Q-Inst} at the new binder, and the body's charge $f$, each through Theorem~\ref{thm:target-canon}. That theorem holds in \treeCC with two more cases, \rn{C-Level}, which reads no store, and \rn{Q-Inst}. The proof keeps its shape, and most of the new work is in the substitution lemma, whose file grew from 631 lines in \treeK to 2,986.
+
+\subsection{Fresh results}\label{sec:levels-fresh}
+
+A result type written with $\cfresh$ promises a new capability at each call. \treeCC reads it as an existential answer $\exc{\kappa}{C_0}{T}$: there is a $\kappa$ below $C_0$ such that the result has type $T$. Answers stand only as codomains of function shapes and as types of terms. Packing is an answer inclusion, rule \rn{A-Pack}, and also a wrapper on atoms and values, rules \rn{T-PackA} and \rn{T-PackV}, which unpacking matches. Values and atoms carry no answer cast, and no rule types a packed value at a plain type, so a packed value is never stored. The source has no pack term, and packing there is subsumption. The term $\letex{\kappa}{x}{t}{u}{U}{h}{f}$ opens a star binder $\kappa$ and the payload $x$. The evidence $h$ charges the bound $C_0$ to the declared set $U$, and the body's charge $f$ may name $\kappa$. At run time the unpacking steps store the witness as an instance binder $\kappa \instb{C}$, which \rn{Q-Inst} reads.
+
+\begin{remark}[Existentials are isolated, \leanin{no\_ex\_le\_ty}{\treeCC and \treeCL}]\label{rem:lvl-ex}
+For every $\Gamma$, $g$, $C_0$, $T$ and $T'$, there is no derivation of $\elej{\Gamma}{g}{\exc{\kappa}{C_0}{T}}{T'}$.
+\end{remark}
+
+It is immediate from the rules. No rule of answer inclusion has an existential on the left and a plain type on the right, and \rn{A-Trans} keeps an existential an existential (\lean{ex\_stays\_ex}). It is a design fact, the counterpart of the reference's rule that result $\cfresh$ capabilities are isolated.
+
+\begin{example}[Two calls of a fresh result]\label{ex:lvl-calls}
+Over the platform $\kappa_1 : \cstar$, the closure $\mathit{freshCell} : \capt{(\pit[\kappa', u]{\Unit}{\exc{\kappa}{\cset{\kappa_1}}{\capt{\mathit{Cell}}{\cset{\kappa}}}})}{\cset{\kappa_1}}$ is typed (\lean{Y1\_freshCell} in \treeCC, decided). A caller with no scope binder calls it twice and unpacks each result. In the context that two uses of \rn{T-LetEx} build, no capture evidence puts either opened binder below the other, and none puts either cell below the other (\lean{two\_calls\_incomparable} in \treeCC, by hand, four conjuncts). The limit is in the proof. It reads a hand-built store whose opened binders are star binders, a store no run produces. The machine stores the two witnesses as instance binders $\kappa_1' \instb{\cset{\kappa_1}}$ and $\kappa_2' \instb{\cset{\kappa_1}}$, and there \rn{Q-Inst} puts each below the other (on paper).
+\end{example}
+
+\subsection{What is not proved}\label{sec:levels-open}
+
+No theorem of \treeCC says that the escape program of Section~\ref{sec:levels-program} has no derivation, in the source or in the target. \lean{X4\_no\_escape} answers one subcapturing question in one hand-made target context. \lean{W5\_no\_escape} answers one in one hand-made source context, at one platform capability. The step from ``the program types'' to ``$\cset{f} \le \cset{r}$ is derivable'' is an argument in the comments of the Lean. Whole-program rejection is the verdict of the front end (Section~\ref{sec:fe-reject}), and its certificate rules out member-free derivations of one goal. The use after close of the reference is not modelled, since nothing closes a file. That \rn{C-Level} matches the compiler's own level check is said in comments only.

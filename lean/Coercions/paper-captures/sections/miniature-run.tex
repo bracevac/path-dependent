@@ -1,0 +1,289 @@
+% unit U3
+
+% unit macros
+\ifcsname remark\endcsname\else
+  \theoremstyle{acmdefinition}\newtheorem{remark}[theorem]{Remark}
+  \theoremstyle{acmplain}
+\fi
+
+\FloatBarrier
+\subsection{Stores and the machine}\label{sec:mini-machine}
+
+A program runs against a store. The store holds the capture binders of the platform and the values that the run has allocated. This subsection types stores and states, gives the four steps of the machine, and runs $\mathit{prog}_1$.
+
+\begin{figure}[t]
+\small
+\color{tgtcol}
+\[
+\begin{array}{@{}l@{\qquad}l@{}}
+\rn{S-Nil} & \inferrule{ }{\storej{\cdot}{\cdot}} \\[8pt]
+\rn{S-Val} & \inferrule{\storej{\sigma}{\Gamma} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, x = v}{\Gamma, x : T}} \\[8pt]
+\rn{S-Cap} & \inferrule{\storej{\sigma}{\Gamma}}{\storej{\sigma, \kappa}{\Gamma, \kappa : \cstar}} \\[14pt]
+\rn{K-Nil} & \inferrule{ }{\contj{\Gamma}{\cdot}{T}{T}} \\[8pt]
+\rn{K-Let} & \inferrule{\tmj{\Gamma, x : T}{u}{\weak{T'}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \\ \contj{\Gamma}{K}{T'}{T''}}{\contj{\Gamma}{K \triangleright \frlet{x}{u}{U}{f}}{T}{T''}} \\[14pt]
+\rn{St} & \inferrule{\storej{\sigma}{\Gamma} \\ \tmj{\Gamma}{t}{T} \\ \contj{\Gamma}{K}{T}{T'}}{\statej{\mst{\sigma}{K}{t}}{T'}}
+\end{array}
+\]
+\[
+\begin{array}{@{}l@{\qquad}l@{\enspace}c@{\enspace}l@{}}
+\rn{E-Let} & \mst{\sigma}{K}{\letc{x}{t}{u}{U}{f}} & \step & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{t} \\
+\rn{E-Alloc} & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{v} & \step & \mst{(\sigma, x = v)}{K}{u} \\
+\rn{E-Rename} & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{y} & \step & \mst{\sigma}{K}{u[x \mapsto y]} \\
+\rn{E-App} & \mst{\sigma}{K}{x\,y} & \step & \mst{\sigma}{K}{t[z \mapsto y]} \\
+& & & \quad \text{if } \sigma(x) = \lamc{A}{z}{T}{t}{g}
+\end{array}
+\]
+\[
+\begin{array}{@{}l@{\qquad}l@{}}
+\rn{Run-Refl} & \inferrule{ }{\mathit{st} \steps \mathit{st}} \\[8pt]
+\rn{Run-Step} & \inferrule{\mathit{st} \steps \mathit{st}' \\ \mathit{st}' \step \mathit{st}''}{\mathit{st} \steps \mathit{st}''} \\[10pt]
+\text{Final states} & \mst{\sigma}{\cdot}{v} \quad\text{and}\quad \mst{\sigma}{\cdot}{x}
+\end{array}
+\]
+\color{black}
+\caption{Stores, continuations, states and the machine of the fragment. $\contj{\Gamma}{K}{T}{T'}$ says that $K$ accepts a value of type $T$ and produces one of type $T'$. A store binds each location once, so the variable $x$ of \rn{E-Alloc} is not bound in $\sigma$, and $K$ does not mention it. $\steps$ is the reflexive transitive closure of $\step$. A state is final when its continuation is empty and its term is a value or a variable. No step allocates a capture binder.}
+\label{fig:mini-machine}
+\end{figure}
+
+\paragraph{Stores.}
+Figure~\ref{fig:mini-machine} gives the rules. \rn{S-Cap} binds a capture binder. \rn{S-Val} types a value in the context of the entries before it and binds its location at the type of the value. So the store is inert in the sense of report~1. The type of a location is the type of its value and asserts nothing more. In particular, by \rn{V-Lam} and \rn{V-Unit}, the capture set of that type is the annotation of the value. The rules are syntax directed, and a value has one type in a given context. So a typed store has exactly one context, and we call it the context of the store.
+
+\paragraph{The machine.}
+A state $\mst{\sigma}{K}{t}$ has a store, a continuation of let frames, and a term. \rn{E-Let} pushes the body of a let as a frame and runs the bound term. When the bound term has become a value, \rn{E-Alloc} stores it at the variable of the frame and runs the body. When it has become a variable $y$, \rn{E-Rename} puts $y$ for the variable of the frame in the body, in its capture sets and evidence too. \rn{E-App} reads the closure stored at the function of a call and runs its body at the argument. These are the steps of report~1's machine for lets and for application through a variable (Figure~\ref{R1-fig:mini-machine} of report~1), without casts. No step reads the brackets. They are there for the proof, and erasure removes them. Each step keeps the store or appends one location, and the capture binders of a run are those of its initial store.
+
+\paragraph{Continuations and states.}
+\rn{K-Let} has the last two premises of \rn{T-Let}, so a frame carries the avoidance evidence of the let it came from. \rn{St} types a state when its term and its continuation are typed in the context of its store. The evidence of a frame is typed in that context extended by the variable of the frame. It becomes closed evidence when \rn{E-Alloc} makes that variable a location (Example~\ref{ex:mini-alloc}).
+
+\paragraph{The running example.}
+\rn{S-Cap} binds $\kappa_1$ and $\kappa_2$ in $\sigma_0$. \rn{S-Val} binds $\mathit{log}$ at $\CapT{\kappa_1}$, $\mathit{console}$ at $\CapT{\kappa_2}$, $\mathit{unit}$ at $\Unit$, and $\mathit{c1}$ at $T_{\mathit{c1}}$ in $\Gamma_0$ (Example~\ref{ex:mini-typing}). So $\storej{\sigma_0}{\Gamma_1}$, and $\Gamma_1$ is the context of $\sigma_0$, as Section~\ref{sec:mini-leaves} announced. With $\tmj{\Gamma_1}{\mathit{prog}_1}{\Unit}$, \rn{K-Nil} and \rn{St} give $\statej{\mst{\sigma_0}{\cdot}{\mathit{prog}_1}}{\Unit}$, and in the same way $\statej{\mst{\sigma_0}{\cdot}{\mathit{prog}_2}}{\Unit}$. The typing of $\sigma_0$ and of both initial states is decided.
+
+Table~\ref{tab:mini-run} runs $\mathit{prog}_1$, with
+\[
+\begin{array}{@{}lcl@{\qquad}lcl@{}}
+K_0 & = & \cdot \triangleright \frlet{f}{f\,\mathit{unit}}{\cset{\mathit{console}, \mathit{log}}}{f_1} &
+\sigma_1 & = & \sigma_0,\ f = v_{\mathit{inner}} \\
+K_1 & = & K_0 \triangleright \frlet{r}{v_{\mathit{inner}}}{\cempty}{\ev{elem}\,\cempty\,\cempty} &
+T_f & = & \capt{(\pit[z]{\Unit}{\Unit})}{\cset{\mathit{console}}} \\
+t_2 & = & \letc{r}{\mathit{log}\,\mathit{unit}}{v_{\mathit{inner}}}{\cempty}{\ev{elem}\,\cempty\,\cempty} &
+\Gamma_2 & = & \Gamma_1,\ f : T_f
+\end{array}
+\]
+\rn{E-Let} pushes $K_0$, and the state calls $\mathit{c1}$ (row~1). \rn{E-App} runs the body of $v_{\mathit{c1}}$ at $\mathit{unit}$, which is $t_2$. Its let pushes the frame of $K_1$ and calls $\mathit{log}$ (row~3), which returns its argument. \rn{E-Rename} puts $\mathit{unit}$ for $r$ in $v_{\mathit{inner}}$, which does not mention $r$ (row~5). \rn{E-Alloc} stores $v_{\mathit{inner}}$ at $f$. The context of the new store $\sigma_1$ is $\Gamma_2$, since $v_{\mathit{inner}}$ has type $T_f$ in $\Gamma_1$. The body $f\,\mathit{unit}$ calls the stored closure, which calls $\mathit{console}$ (row~7). One more step by \rn{E-App} returns $\mathit{unit}$ in a final state.
+
+Leaves are computed in $\Gamma_1$ for rows~0 to~5 and in $\Gamma_2$ for rows~6 and~7. They shrink at the allocation, where the set that $K_0$ declares gives way to the use set of its body. Section~\ref{sec:mini-step} explains the last column. The seven steps are built by hand. The leaves of $\cset{\mathit{console}}$ in $\Gamma_2$ are built by hand, and the rest of the leaves column is on paper.
+
+\begin{table}[t]
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}c l c c l l l l p{24mm}@{}}
+\toprule
+$k$ & term & $K$ & $\sigma$ & use set & leaves & inspects & step & \raggedright case of Lemma~\ref{lem:mini-step} \tabularnewline
+\midrule
+0 & $\mathit{prog}_1$ & $\cdot$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & none & \rn{E-Let} & \raggedright equal sets \tabularnewline
+1 & $\mathit{c1}\,\mathit{unit}$ & $K_0$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & $\mathit{c1}$ ($\kappa_1$) & \rn{E-App} & \raggedright closing evidence of $v_{\mathit{c1}}$ at $\mathit{unit}$ \tabularnewline
+2 & $t_2$ & $K_0$ & $\sigma_0$ & $\cset{\mathit{log}, \mathit{unit}, \mathit{console}}$ & $\cset{\kappa_1, \kappa_2}$ & none & \rn{E-Let} & \raggedright equal sets \tabularnewline
+3 & $\mathit{log}\,\mathit{unit}$ & $K_1$ & $\sigma_0$ & $\cset{\mathit{log}, \mathit{unit}, \mathit{console}}$ & $\cset{\kappa_1, \kappa_2}$ & $\mathit{log}$ ($\kappa_1$) & \rn{E-App} & \raggedright closing evidence of $v_{\mathit{log}}$ at $\mathit{unit}$ \tabularnewline
+4 & $\mathit{unit}$ & $K_1$ & $\sigma_0$ & $\cset{\mathit{unit}, \mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & none & \rn{E-Rename} & \raggedright avoidance evidence $\ev{elem}\,\cempty\,\cempty$ at $\mathit{unit}$ \tabularnewline
+5 & $v_{\mathit{inner}}$ & $K_0$ & $\sigma_0$ & $\cset{\mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & none & \rn{E-Alloc} & \raggedright avoidance evidence $f_1$ over $\sigma_1$ \tabularnewline
+6 & $f\,\mathit{unit}$ & $\cdot$ & $\sigma_1$ & $\cset{f, \mathit{unit}}$ & $\cset{\kappa_2}$ & $f$ ($\kappa_2$) & \rn{E-App} & \raggedright closing evidence of $v_{\mathit{inner}}$ at $\mathit{unit}$ \tabularnewline
+7 & $\mathit{console}\,\mathit{unit}$ & $\cdot$ & $\sigma_1$ & $\cset{\mathit{console}, \mathit{unit}}$ & $\cset{\kappa_2}$ & $\mathit{console}$ ($\kappa_2$) & & \tabularnewline
+\bottomrule
+\end{tabular}
+\caption{The run of $\mathit{prog}_1$. Row $k$ is state $k$ and the step taken from it. Use sets are shown as sets, without duplicates. Leaves are computed in the context of the store of the state, and an inspected variable is shown with its leaves. The last column names the case of Lemma~\ref{lem:mini-step} that bounds the next row by this one. The leaves never grow, and they shrink at the allocation in row~5. The table stops at state~7, which inspects $\mathit{console}$. One more step reaches a final state.}
+\label{tab:mini-run}
+\end{table}
+
+\FloatBarrier
+\subsection{One step}\label{sec:mini-step}
+
+Preservation has the form it has in report~1. What is new is its use-set half: one step never adds a leaf to the use set of a state. Both halves read the typed store through one lemma and move evidence by substitution, which comes first.
+
+\begin{lemma}[Substitution and weakening]\label{lem:mini-subst}
+\leavevmode
+\begin{enumerate}
+\item[(a)] If $\clej{\Gamma, x : T}{f}{C}{D}$ and $\Gamma(y) = T$, then $\clej{\Gamma}{f[x \mapsto y]}{C[x \mapsto y]}{D[x \mapsto y]}$.
+\item[(b)] If $\tmj{\Gamma, x : T}{t}{T'}$ and $\Gamma(y) = T$, then $\tmj{\Gamma}{t[x \mapsto y]}{T'[x \mapsto y]}$. The same holds for the typing of values.
+\item[(c)] $\uses{t[x \mapsto y]} = \uses{t}[x \mapsto y]$.
+\item[(d)] A typing of capture evidence, of a term, of a value or of a continuation in $\Gamma$ holds in $\Gamma, \Gamma'$ for any binders $\Gamma'$ whose variables are fresh.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}[Proof sketch]
+Parts (a), (b) and (d) go by induction on the derivation, and (c) by induction on $t$. The one case of (a) that looks at $x$ is \rn{C-Var} at $x$ itself. There $\ev{capvar}\,x$ proves $\cset{x} \le C$ for the capture set $C$ of $T$, and $\ev{capvar}\,y$ proves $\cset{y} \le C$, since $\Gamma(y) = T$. The set $C$ does not mention $x$.
+\end{proof}
+
+\begin{lemma}[What a typed store says]\label{lem:mini-store}
+Let $\storej{\sigma}{\Gamma}$ and $\sigma(x) = v$.
+\begin{enumerate}
+\item[(a)] $\Gamma(x) = \capt{S}{\annot{v}}$ for some $S$. Hence $\capeqv{\Gamma}{\cset{x}}{\annot{v}}$.
+\item[(b)] If $v = \lamc{A}{z}{T}{t}{g}$, then $\Gamma(x) = \capt{(\pit[z]{T}{T'})}{A}$ for some $T'$, $\tmj{\Gamma, z : T}{t}{T'}$ and $\clej{\Gamma, z : T}{g}{\uses{t}}{\weak{A} \cup \cset{z}}$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+Let $\sigma = \sigma', x = v, \sigma''$. Inversion of the store typing gives $\Gamma = \Gamma', x : T_0, \Gamma''$ with $\valj{\Gamma'}{v}{T_0}$, and weakening, Lemma~\ref{lem:mini-subst}(d), gives $\valj{\Gamma}{v}{T_0}$. Inversion of \rn{V-Lam} or \rn{V-Unit} in $\Gamma$ shows that the capture set of $T_0$ is $\annot{v}$, and for a closure it gives the premises of (b). Lemma~\ref{lem:mini-var} gives the leaves in (a).
+\end{proof}
+
+Part (a) is what the textbook route of Section~\ref{sec:problem-textbook} wanted from inverting subcapturing at a call: the variable of a closure has the leaves of its annotation. Here it holds by construction, because the store binds a closure at its own type.
+
+\begin{theorem}[Preservation]\label{thm:mini-pres}
+If $\statej{\mathit{st}}{T}$ and $\mathit{st} \step \mathit{st}'$, then $\statej{\mathit{st}'}{T}$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+As in report~1 (Section~\ref{R1-sec:mini-safety}), by cases on the step, with the evidence of frames and closures moved by Lemma~\ref{lem:mini-subst}. \rn{E-Alloc} stores the value at the type its frame expects, so \rn{S-Val} extends the context of the store by exactly the binder under which \rn{K-Let} typed the body. \rn{E-App} takes the body of the closure from Lemma~\ref{lem:mini-store}(b), and \rn{T-App} gives the argument the parameter type.
+\end{proof}
+
+Preservation types every state of a run, and the use-set half bounds what a step does to the use set. In its proof, $\preccurlyeq$ is a preorder, and a union is covered when each of its parts is.
+
+\begin{lemma}[The use-set half of preservation]\label{lem:mini-step}
+Let $\mathit{st}$ be a state with store $\sigma$, let $\storej{\sigma}{\Gamma}$ and $\statej{\mathit{st}}{T}$, and let $\mathit{st} \step \mathit{st}'$, where the store $\sigma'$ of $\mathit{st}'$ has $\storej{\sigma'}{\Gamma'}$. Then $\sext{\sigma}{\sigma'}$ and $\caple{\Gamma'}{\uses{\mathit{st}'}}{\uses{\mathit{st}}}$.
+\end{lemma}
+
+\begin{proof}[Proof sketch]
+Every step keeps the store or appends one location, so $\sext{\sigma}{\sigma'}$. When it keeps the store, $\Gamma' = \Gamma$, since a store has one context. By \rn{St}, the term and the continuation of $\mathit{st}$ are typed in $\Gamma$. The cases follow the steps of Figure~\ref{fig:mini-machine} and use its names.
+\begin{itemize}
+\item \rn{E-Let} (rows~0 and~2). Before: $\uses{t} \cup U \cup \uses{K}$. After: $\uses{t} \cup \uses{K} \cup U$. The two sets have the same atoms.
+\item \rn{E-Rename} (row~4). Before: $\cset{y} \cup \uses{K} \cup U$. After: $\uses{u[x \mapsto y]} \cup \uses{K}$. \rn{K-Let} gives $\clej{\Gamma, x : T_0}{f}{\uses{u}}{\weak{U}}$ for the input type $T_0$ of the frame, and \rn{T-Var} gives $\Gamma(y) = T_0$. Lemma~\ref{lem:mini-subst}(a) and~(c) give $\clej{\Gamma}{f[x \mapsto y]}{\uses{u[x \mapsto y]}}{U}$, since $U$ does not mention $x$. Theorem~\ref{thm:mini-cap} gives $\caple{\Gamma}{\uses{u[x \mapsto y]}}{U}$.
+\item \rn{E-Alloc} (row~5). Before: $\uses{K} \cup U$, since a value uses nothing. After: $\uses{u} \cup \uses{K}$. The value has the input type $T_0$ of the frame, so the context of $\sigma, x = v$ is $\Gamma' = \Gamma, x : T_0$. That is the context in which \rn{K-Let} typed the avoidance evidence $f$ of the frame, for $\uses{u} \le \weak{U}$. So $f$ is now closed evidence, and Theorem~\ref{thm:mini-cap} in $\Gamma'$ gives $\caple{\Gamma'}{\uses{u}}{U}$.
+\item \rn{E-App} (rows~1, 3 and~6). Before: $\cset{x, y} \cup \uses{K}$. After: $\uses{t[z \mapsto y]} \cup \uses{K}$, where $\sigma(x) = \lamc{A}{z}{T}{t}{g}$. Lemma~\ref{lem:mini-store}(b) gives $\Gamma(x) = \capt{(\pit[z]{T}{T'})}{A}$ and $\clej{\Gamma, z : T}{g}{\uses{t}}{\weak{A} \cup \cset{z}}$, and \rn{T-App} gives $\Gamma(y) = T$. Lemma~\ref{lem:mini-subst}(a) and~(c) give $\clej{\Gamma}{g[z \mapsto y]}{\uses{t[z \mapsto y]}}{A \cup \cset{y}}$, and Theorem~\ref{thm:mini-cap} gives $\caple{\Gamma}{\uses{t[z \mapsto y]}}{A \cup \cset{y}}$. Lemma~\ref{lem:mini-store}(a) gives $\capeqv{\Gamma}{\cset{x}}{A}$, so $\caple{\Gamma}{A \cup \cset{y}}{\cset{x, y}}$. \qedhere
+\end{itemize}
+\end{proof}
+
+Each case discharges evidence that the typing of its redex carries: the avoidance evidence of the frame at \rn{E-Rename} and \rn{E-Alloc}, the closing evidence of the closure at \rn{E-App}. No derivation of capture evidence is inverted.
+
+The last column of Table~\ref{tab:mini-run} names these cases. At row~1, for instance, the closing evidence of $v_{\mathit{c1}}$ at $\mathit{unit}$ proves $\cset{\mathit{log}, \mathit{unit}} \le \cset{\mathit{log}} \cup \cset{\mathit{unit}}$, and $\cset{\mathit{c1}}$ has the leaves of $\cset{\mathit{log}}$. Row~5 is the allocation.
+
+\begin{example}[The allocation step]\label{ex:mini-alloc}
+State~5 is $\mst{\sigma_0}{K_0}{v_{\mathit{inner}}}$. Its use set is $\cset{\mathit{console}, \mathit{log}}$, the set that $K_0$ declares, with leaves $\cset{\kappa_1, \kappa_2}$ in $\Gamma_1$. \rn{E-Alloc} stores $v_{\mathit{inner}}$ at $f$ and runs $f\,\mathit{unit}$. The avoidance evidence $f_1$ of the frame was typed in $\Gamma_1, f : T_f$ when $\mathit{prog}_1$ was checked, with $f$ the variable of a let (Example~\ref{ex:mini-typing}). That context is now $\Gamma_2$, the context of the store $\sigma_1$. So $f_1$ proves $\cset{f, \mathit{unit}} \le \cset{\mathit{console}, \mathit{log}}$ about the location $f$. Its part $\ev{capvar}\,f$ proves $\cset{f} \le \cset{\mathit{console}}$, and by Lemma~\ref{lem:mini-store}(a) the leaves of $f$ are those of the annotation $\cset{\mathit{console}}$ of the stored closure, $\cset{\kappa_2}$. Theorem~\ref{thm:mini-cap} puts them among the leaves $\cset{\kappa_1, \kappa_2}$ of the declared set. The leaves of the state drop to $\cset{\kappa_2}$. The frame declared $\mathit{log}$, which its body never calls, and the step forgets it. The example is on paper, except for the leaves of $\cset{\mathit{console}}$ in $\Gamma_2$, which are built by hand.
+\end{example}
+
+\FloatBarrier
+\subsection{Along a run}\label{sec:mini-run}
+
+Along a run the store grows, and the leaves of a use set are computed in a new context after each allocation. One lemma relates the old leaves to the new ones.
+
+\begin{lemma}[Leaves under store extension]\label{lem:mini-ext}
+Let $\storej{\sigma}{\Gamma}$, $\storej{\sigma'}{\Gamma'}$ and $\sext{\sigma}{\sigma'}$. Then $\Gamma' = \Gamma, \Gamma''$ for some $\Gamma''$, and $\leaves{\Gamma'}{C} = \leaves{\Gamma}{C}$ for every capture set $C$ whose atoms are bound in $\Gamma$. Hence, for such $C$ and $D$, $\caple{\Gamma}{C}{D}$ gives $\caple{\Gamma'}{C}{D}$, and $\kappa$ is a leaf of $C$ in $\Gamma'$ if and only if it is one in $\Gamma$.
+\end{lemma}
+
+\begin{proof}
+Let $\sigma' = \sigma, \sigma''$. Store typing types each entry in the context of the entries before it, so the typing of $\sigma'$ types $\sigma$ as before, and $\Gamma' = \Gamma, \Gamma''$. The equations for leaves read the binder of an atom and the part of the context before it. For an atom bound in $\Gamma$, both are the same in $\Gamma'$.
+\end{proof}
+
+\begin{theorem}[Capture prediction]\label{thm:mini-pred}
+Let $\statej{\mathit{st}}{T}$ and $\mathit{st} \steps \mathit{st}'$, let $\sigma$ and $\sigma'$ be the stores of $\mathit{st}$ and $\mathit{st}'$, and let $\storej{\sigma'}{\Gamma'}$. Then $\sext{\sigma}{\sigma'}$ and $\caple{\Gamma'}{\uses{\mathit{st}'}}{\uses{\mathit{st}}}$.
+\end{theorem}
+
+\begin{proof}
+By induction on the run. For \rn{Run-Refl} both claims hold by reflexivity. For \rn{Run-Step}, let $\mathit{st} \steps \mathit{st}_m \step \mathit{st}'$, and let $\sigma_m$ be the store of $\mathit{st}_m$. Theorem~\ref{thm:mini-pres} along the run gives $\statej{\mathit{st}_m}{T}$, so $\sigma_m$ has a context $\Gamma_m$. The induction hypothesis gives $\sext{\sigma}{\sigma_m}$ and $\caple{\Gamma_m}{\uses{\mathit{st}_m}}{\uses{\mathit{st}}}$. Lemma~\ref{lem:mini-step} gives $\sext{\sigma_m}{\sigma'}$ and $\caple{\Gamma'}{\uses{\mathit{st}'}}{\uses{\mathit{st}_m}}$. Lemma~\ref{lem:mini-ext} carries the first inclusion into $\Gamma'$, and the two inclusions compose. So do the two extensions.
+\end{proof}
+
+\begin{remark}[An inspected variable is used]\label{rem:mini-insp}
+If $\insp{\mathit{st}} = x$, then $x$ is an atom of $\uses{\mathit{st}}$, so $\caple{\Gamma}{\cset{x}}{\uses{\mathit{st}}}$ for every $\Gamma$. Only a call $x\,y$ inspects, and its use set contains $x$. The remark needs no typing.
+\end{remark}
+
+\begin{theorem}[Effect safety]\label{thm:mini-effect}
+Let $\statej{\mathit{st}}{T}$, let $\Gamma$ be the context of the store of $\mathit{st}$, and let $\kappa$ be a capture variable bound in $\Gamma$ that is not a leaf of $\uses{\mathit{st}}$ in $\Gamma$. Let $\mathit{st} \steps \mathit{st}'$, where the store $\sigma'$ of $\mathit{st}'$ has $\storej{\sigma'}{\Gamma'}$, and let $\insp{\mathit{st}'} = x$. Then $\kappa \notin \leaves{\Gamma'}{\cset{x}}$.
+\end{theorem}
+
+\begin{proof}
+Suppose $\kappa \in \leaves{\Gamma'}{\cset{x}}$. Remark~\ref{rem:mini-insp} makes $\kappa$ a leaf of $\uses{\mathit{st}'}$ in $\Gamma'$, Theorem~\ref{thm:mini-pred} a leaf of $\uses{\mathit{st}}$ in $\Gamma'$, and Lemma~\ref{lem:mini-ext} a leaf of $\uses{\mathit{st}}$ in $\Gamma$. That contradicts the hypothesis on $\kappa$.
+\end{proof}
+
+For $\mathit{prog}_1$ the theorem says nothing about $\kappa_2$, which is a leaf of the initial use set. Capture prediction says more. At state~7 the run inspects $\mathit{console}$, whose leaf is $\kappa_2$, and Remark~\ref{rem:mini-insp} with Theorem~\ref{thm:mini-pred} puts $\kappa_2$ among the leaves of the initial use set. This instance is built by hand.
+
+\begin{example}[The second program]\label{ex:mini-prog2}
+The state $\mst{\sigma_0}{\cdot}{\mathit{prog}_2}$ is typed, and $\kappa_2$ is not a leaf of $\uses{\mathit{prog}_2}$, whose leaves in $\Gamma_1$ are $\cset{\kappa_1}$ (Example~\ref{ex:mini-leaves}). By Theorem~\ref{thm:mini-effect}, no state reached from $\mathit{prog}_2$ inspects a variable with leaf $\kappa_2$. This instance, for every run, is built by hand. Table~\ref{tab:mini-run2} gives one run on paper, with
+\[
+K'_0 = \cdot \triangleright \frlet{f}{\mathit{unit}}{\cempty}{\ev{capvar}\,\mathit{unit}}
+\qquad\text{and}\qquad
+K'_1 = K'_0 \triangleright \frlet{r}{v_{\mathit{inner}}}{\cempty}{\ev{elem}\,\cempty\,\cempty} .
+\]
+It takes the first six steps of the run of $\mathit{prog}_1$. It inspects $\mathit{c1}$ and $\mathit{log}$, whose leaf is $\kappa_1$, stores $v_{\mathit{inner}}$ at $f$, and ends in a final state. Its last store holds a closure that would call $\mathit{console}$, and no state inspects its location. So the theorem is not vacuous here: the run inspects two variables, and neither has leaf $\kappa_2$.
+\end{example}
+
+\begin{table}[t]
+\footnotesize
+\begin{tabular}{@{}c l c c l l l l@{}}
+\toprule
+$k$ & term & $K$ & $\sigma$ & use set & leaves & inspects & step \\
+\midrule
+0 & $\mathit{prog}_2$ & $\cdot$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}}$ & $\cset{\kappa_1}$ & none & \rn{E-Let} \\
+1 & $\mathit{c1}\,\mathit{unit}$ & $K'_0$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}}$ & $\cset{\kappa_1}$ & $\mathit{c1}$ ($\kappa_1$) & \rn{E-App} \\
+2 & $t_2$ & $K'_0$ & $\sigma_0$ & $\cset{\mathit{log}, \mathit{unit}}$ & $\cset{\kappa_1}$ & none & \rn{E-Let} \\
+3 & $\mathit{log}\,\mathit{unit}$ & $K'_1$ & $\sigma_0$ & $\cset{\mathit{log}, \mathit{unit}}$ & $\cset{\kappa_1}$ & $\mathit{log}$ ($\kappa_1$) & \rn{E-App} \\
+4 & $\mathit{unit}$ & $K'_1$ & $\sigma_0$ & $\cset{\mathit{unit}}$ & $\cempty$ & none & \rn{E-Rename} \\
+5 & $v_{\mathit{inner}}$ & $K'_0$ & $\sigma_0$ & $\cempty$ & $\cempty$ & none & \rn{E-Alloc} \\
+6 & $\mathit{unit}$ & $\cdot$ & $\sigma_1$ & $\cset{\mathit{unit}}$ & $\cempty$ & none & final \\
+\bottomrule
+\end{tabular}
+\caption{A run of $\mathit{prog}_2$, on paper. It allocates a closure that captures $\mathit{console}$ and never inspects it. The term $t_2$ and the store $\sigma_1$ are those of Table~\ref{tab:mini-run}.}
+\label{tab:mini-run2}
+\end{table}
+
+\begin{figure}[t]
+\footnotesize
+\setlength{\unitlength}{1mm}
+\centering
+\begin{picture}(138,68)
+% row 1
+\put(2,60){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-var}\\variables}}}
+% row 2
+\put(2,45){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-cap}\\evidence}}}
+\put(30,45){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-store}\\typed store}}}
+\put(58,45){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-subst}\\substitution}}}
+\put(86,45){\color{gray}\framebox(24,8){\shortstack{Section~\ref{sec:levels}\\level inversion}}}
+\put(114,45){\color{gray}\framebox(24,8){\shortstack{Section~\ref{sec:classifiers}\\kinding}}}
+% row 3
+\put(30,30){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-step}\\one step}}}
+\put(58,30){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-pres}\\preservation}}}
+\put(86,30){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-ext}\\extension}}}
+\put(114,30){\framebox(24,8){\shortstack{Remark~\ref{rem:mini-insp}\\inspection}}}
+% row 4
+\put(58,15){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-pred}\\prediction}}}
+\put(114,15){\color{gray}\framebox(24,8){\shortstack{Theorem~\ref{thm:source-trans}\\translation}}}
+% row 5
+\put(86,0){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-effect}\\effect safety}}}
+\put(114,0){\color{gray}\framebox(24,8){\shortstack{Theorem~\ref{thm:source-effect}\\source}}}
+% arrows, row 1 to row 2
+\put(14,60){\vector(0,-1){7}}
+% row 2 to row 3
+\put(19,45){\vector(2,-1){14}}
+\put(42,45){\vector(0,-1){7}}
+\put(50,45){\vector(2,-1){14}}
+\put(66,45){\vector(-2,-1){14}}
+\put(76,45){\vector(0,-1){7}}
+% row 3 to row 4
+\put(47,30){\vector(2,-1){14}}
+\put(70,30){\vector(0,-1){7}}
+\put(93,30){\vector(-2,-1){14}}
+% to row 5
+\put(75,15){\vector(2,-1){14}}
+\put(97,30){\vector(0,-1){22}}
+\put(117,30){\vector(-2,-3){14.67}}
+\color{gray}
+\put(126,15){\vector(0,-1){7}}
+\put(110,4){\vector(1,0){4}}
+\end{picture}
+\caption{The proof on one page. An arrow from one result to another says that the second uses the first. The only result about what capture evidence means is Theorem~\ref{thm:mini-cap}. The only result that reads a stored value is Lemma~\ref{lem:mini-store}. Greyed boxes are later sections. The two beside Theorem~\ref{thm:mini-cap} are the theorems about evidence that Sections~\ref{sec:levels} and~\ref{sec:classifiers} add. The two at the bottom are Section~\ref{sec:source}, where the typed translation, Theorem~\ref{thm:mini-cap} at the initial state and the simulation of report~1 make effect safety a theorem about the source.}
+\label{fig:mini-proof}
+\end{figure}
+
+Figure~\ref{fig:mini-proof} shows the whole argument. One theorem is about evidence, one lemma reads the store, and the use-set lemma combines them at each step.
+
+\paragraph{Where the use sets come from.}
+The induction starts from a typed state whose use set is declared. A source derivation declares a use set $U$. Its translation comes with evidence that puts the use set of the translated program below the translation of $U$ (Theorem~\ref{thm:source-trans}). Theorem~\ref{thm:mini-cap}, in the form that Section~\ref{sec:target} gives it, turns that evidence into an inclusion of leaves at the initial state, and Section~\ref{sec:source} carries it along the run.
+
+\FloatBarrier
+\subsection{What the miniature leaves out}\label{sec:mini-out}
+
+The full calculus adds the following to the fragment, and Sections~\ref{sec:target} to~\ref{sec:classifiers} explain each.
+\begin{itemize}
+\item Capture names and capture members. A capture member makes bad capture bounds derivable, and it brings the store into the theorem about capture evidence (Sections~\ref{sec:target-members} to~\ref{sec:target-canon}).
+\item Report~1's shape evidence, atoms with casts, and the application steps that read the chain of casts on an atom (Sections~\ref{sec:target-delta} and~\ref{sec:target-meta}).
+\item Boxes and unboxing (Section~\ref{sec:target-boxes}).
+\item Progress and the erasure simulation, which keep the form they have in report~1 (Section~\ref{sec:target-meta}).
+\item The source and its translation (Section~\ref{sec:source}). Scopes, levels and $\cfresh$ (Section~\ref{sec:levels}). Classifiers (Section~\ref{sec:classifiers}).
+\end{itemize}
+None of these changes the shape of the argument: one theorem about capture evidence, and a use-set lemma whose cases discharge the evidence each redex carries.

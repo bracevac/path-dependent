@@ -1,0 +1,258 @@
+% unit U5
+\section{The Source and Its Translation}\label{sec:source}
+
+% unit macros
+\providecommand{\varatom}[1]{\mathit{varAtom}(#1)}
+\providecommand{\capwit}{\mathit{capwit}}
+\providecommand{\tstate}{\tgt{\mathit{ts}}}
+
+\mathsrc
+
+This section gives the source calculus and its translation into the target of Section~\ref{sec:target}. As in \Rone, nothing is proved about the source directly except its erasure. The translation turns a derivation into a typed target term and its declared use set into capture evidence. The target's capture theorems then carry over along report~1's simulation, to a matched target state.
+
+\paragraph{The program.}
+The reactor of Section~\ref{sec:target}, written in \DOTMNF, reads
+\[
+\begin{array}{@{}l@{}}
+\klet c = \lambda(x : \capt{\dmu{z}{\dcap{C}{\cempty}{\cset{\kappa_1, \kappa_2}} \wedge \dfld{\mathit{run}}{\capt{(\dall{u}{\Unit}{\Unit})}{\cset{z.C}}}}}{\cset{\kappa_1, \kappa_2}}). \\
+\qquad \lambda(u : \Unit).\ \klet g = x.\mathit{run} \kin g\,u \kin \\
+\klet a = \dnew{z}{\ddeftrm{C}{\cset{\kappa_1}} \wedge \ddeftrm{\mathit{run}}{\lambda(u : \Unit).\,u}} \kin \\
+\klet b = \dnew{z}{\ddeftrm{C}{\cset{\kappa_2}} \wedge \ddeftrm{\mathit{run}}{\lambda(u : \Unit).\,u}} \kin
+\klet \mathit{ga} = c\,a \kin \klet \mathit{gb} = c\,b \kin \mathit{gb}
+\end{array}
+\]
+Its promise is that the program never inspects a variable with leaf $\kappa_1$. The derivation \lean{C2\_typed} of \treeK, built by hand, has use set $\cset{\kappa_1, \kappa_2}$, and the typer of Section~\ref{sec:frontends} finds $\cset{\kappa_2}$, as \lean{C2\_type} decides. Both are right. Only the second meets the hypothesis of Theorem~\ref{thm:source-effect} at $\kappa_1$, and \leanin{C2\_never\_reads\_k1}{\treeK} is that instance. It says little, because the run inspects only $c$, which closes over nothing. Section~\ref{sec:frontends} gives a variant whose run inspects more.
+
+\subsection{\DOTMNF with use sets}\label{sec:source-calc}
+
+Figure~\ref{fig:source} gives the source, report~1's \DOTMNF with capture sets. A type is a shape with a capture set. The capture member $\dcap{A}{C_1}{C_2}$ sits at a type label, as the compiler desugars a capture-set parameter. Type-member bounds are shapes, so a capturing type enters a type member only inside a box $\dbox{T}$. The unboxing $\dunbox{C}{x}$ names the set it charges.
+
+\begin{figure}
+\footnotesize
+\mathsrc
+\[
+\begin{array}{@{}lrcl@{}}
+\text{Capture atoms} & c & ::= & x \mid \kappa \mid x.A \mid \cany \\
+\text{Capture sets} & C, D, U & ::= & \cset{c_1, \ldots, c_n} \\
+\text{Shapes} & S & ::= & \top \mid \bot \mid x.A \mid \dtyp{A}{S}{S} \mid \dfld{a}{T} \mid \dcap{A}{C}{C} \mid \dmu{x}{S} \mid \dall{x}{T}{T} \mid S \wedge S \mid \dbox{T} \\
+\text{Types} & T & ::= & \capt{S}{C} \\
+\text{Declaration shapes} & S_d & ::= & \top \mid \dtyp{A}{S}{S} \mid \dfld{a}{T} \mid \dcap{A}{C}{C} \mid \dmu{x}{S_d} \mid S_d \wedge S_d \\
+\text{Terms} & t, u & ::= & x \mid v \mid x\,y \mid x.a \mid \klet x = t \kin u \mid \dunbox{C}{x} \\
+\text{Values} & v & ::= & \lambda(x : T).\,t \mid \dnew{x}{d} \mid \dbox{x} \\
+\text{Definitions} & d & ::= & \ddeftyp{A}{S} \mid \ddeftyp{A}{C} \mid \ddeftrm{a}{t} \mid d \wedge d \\
+\text{Contexts} & \Gamma & ::= & \cdot \mid \Gamma, x : T \mid \Gamma, x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d \mid \Gamma, \kappa
+\end{array}
+\]
+\[
+\begin{array}{@{}lcl@{}}
+T\ \mathit{wf} & \iff & \text{the body } S \text{ of every recursive shape } \dmu{x}{S} \text{ in } T \text{ is a declaration shape, written } \Decl\,S \\
+\insp{\mst{\sigma}{K}{x\,y}} & = & x \\
+\insp{\mst{\sigma}{K}{x.a}} & = & x \\
+\insp{\mst{\sigma}{K}{\dunbox{C}{x}}} & = & x \\
+\mst{\sigma}{K}{\dunbox{C}{x}} & \step & \mst{\sigma}{K}{y} \quad \text{if } \sigma(x) = \dbox{y}
+\end{array}
+\]
+\[
+\begin{array}{@{}l@{\quad}l@{\ \ }c@{\ \ }l@{}}
+\rn{Sc-Refl} & & & \subcj{\Gamma}{C}{C} \\
+\rn{Sc-Trans} & \subcj{\Gamma}{C_1}{C_2} \quad \subcj{\Gamma}{C_2}{C_3} & \Longrightarrow & \subcj{\Gamma}{C_1}{C_3} \\
+\rn{Sc-Elem} & C_1 \subseteq C_2 & \Longrightarrow & \subcj{\Gamma}{C_1}{C_2} \\
+\rn{Sc-Union} & \subcj{\Gamma}{C_1}{D} \quad \subcj{\Gamma}{C_2}{D} & \Longrightarrow & \subcj{\Gamma}{C_1 \cup C_2}{D} \\
+\rn{Sc-Var} & \Gamma(x) = \capt{S}{C} & \Longrightarrow & \subcj{\Gamma}{\cset{x}}{C} \\
+\rn{Sc-Sel-Lower} & \dtyuj{U'}{\Gamma}{x}{\capt{\dcap{A}{C_1}{C_2}}{D}} & \Longrightarrow & \subcj{\Gamma}{C_1}{\cset{x.A}} \\
+\rn{Sc-Sel-Upper} & \dtyuj{U'}{\Gamma}{x}{\capt{\dcap{A}{C_1}{C_2}}{D}} & \Longrightarrow & \subcj{\Gamma}{\cset{x.A}}{C_2} \\[3pt]
+\rn{Capt} & \subj{\Gamma}{S}{S'} \quad \subcj{\Gamma}{C}{C'} & \Longrightarrow & \subj{\Gamma}{\capt{S}{C}}{\capt{S'}{C'}} \\
+\rn{Cap} & \subcj{\Gamma}{C_1'}{C_1} \quad \subcj{\Gamma}{C_2}{C_2'} & \Longrightarrow & \subj{\Gamma}{\dcap{A}{C_1}{C_2}}{\dcap{A}{C_1'}{C_2'}} \\
+\rn{Boxed} & \subj{\Gamma}{T}{T'} & \Longrightarrow & \subj{\Gamma}{\dbox{T}}{\dbox{T'}} \\[3pt]
+\rn{Var} & \Gamma(x) = \capt{S}{C} & \Longrightarrow & \dtyuj{\cset{x}}{\Gamma}{x}{\capt{S}{\cset{x}}} \\
+\rn{All-I} & \dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : T_1}{t}{T_2} \quad T_1\ \mathit{wf} & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\lambda(x : T_1).\,t}{\capt{(\dall{x}{T_1}{T_2})}{U}} \\
+\rn{All-E} & \dtyuj{U}{\Gamma}{x}{\capt{(\dall{z}{T_1}{T_2})}{C}} \quad \dtyuj{U}{\Gamma}{y}{T_1} & \Longrightarrow & \dtyuj{U}{\Gamma}{x\,y}{\inst{T_2}{y}} \\
+\rn{\{\}-I} & \dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d}{d}{S} \quad \Distinct\,d & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\dnew{x}{d}}{\capt{(\dmu{x}{S})}{U}} \\
+\rn{Box} & \dtyuj{U}{\Gamma}{x}{T} & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\dbox{x}}{\capt{(\dbox{T})}{\cempty}} \\
+\rn{\{\}-E} & \dtyuj{U}{\Gamma}{x}{\capt{\dfld{a}{T}}{C}} & \Longrightarrow & \dtyuj{U}{\Gamma}{x.a}{T} \\
+\rn{Let} & \dtyuj{U}{\Gamma}{t}{T} \quad \dtyuj{\weak{U}}{\Gamma, x : T}{u}{\weak{T'}} \quad T'\ \mathit{wf} & \Longrightarrow & \dtyuj{U}{\Gamma}{\klet x = t \kin u}{T'} \\
+\rn{Unbox} & \dtyuj{U}{\Gamma}{x}{\capt{(\dbox{\capt{S}{C}})}{D}} \quad \subcj{\Gamma}{C}{U} & \Longrightarrow & \dtyuj{U}{\Gamma}{\dunbox{C}{x}}{\capt{S}{C}} \\
+\rn{Rec-I} & \dtyuj{U}{\Gamma}{x}{\capt{\inst{S}{x}}{C}} \quad \Decl\,S & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}} \\
+\rn{Rec-E} & \dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}} \quad \Decl\,S & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{\inst{S}{x}}{C}} \\
+\rn{And-I} & \dtyuj{U}{\Gamma}{x}{\capt{S_1}{C}} \quad \dtyuj{U}{\Gamma}{x}{\capt{S_2}{C}} & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{(S_1 \wedge S_2)}{C}} \\
+\rn{Sub} & \dtyuj{U}{\Gamma}{t}{T} \quad \subj{\Gamma}{T}{T'} \quad \subcj{\Gamma}{U}{U'} & \Longrightarrow & \dtyuj{U'}{\Gamma}{t}{T'} \\[3pt]
+\rn{Def-Typ} & & & \dtyuj{U}{\Gamma}{\ddeftyp{A}{S}}{\dtyp{A}{S}{S}} \\
+\rn{Def-Cap} & & & \dtyuj{U}{\Gamma}{\ddeftyp{A}{C}}{\dcap{A}{C}{C}} \\
+\rn{Def-Trm} & \dtyuj{U}{\Gamma}{t}{T} & \Longrightarrow & \dtyuj{U}{\Gamma}{\ddeftrm{a}{t}}{\dfld{a}{T}} \\
+\rn{Def-And} & \dtyuj{U}{\Gamma}{d_1}{S_1} \quad \dtyuj{U}{\Gamma}{d_2}{S_2} & \Longrightarrow & \dtyuj{U}{\Gamma}{d_1 \wedge d_2}{S_1 \wedge S_2}
+\end{array}
+\]
+\color{black}
+\caption{\DOTMNF with use sets: the syntax, inspection, the new step, every subcapturing rule, the three new subtyping rules, and every typing and definition typing rule. The other subtyping rules are those of report~1's Figure~\ref{R1-fig:source-typing} read at shapes: \rn{Top}, \rn{Bot}, \rn{Refl}, \rn{Trans}, \rn{And$_1$}, \rn{And$_2$}, \rn{And}, \rn{Fld}, \rn{Typ}, \rn{Sel-<:}, \rn{<:-Sel} and \rn{All}. \rn{Fld} and \rn{All} compare capturing types by \rn{Capt}, and a selection rule types $x$ at any use set. $\Gamma(x)$ is the type of $x$, $\weak{U}$ is $U$ under the new binder, and $C_1 \subseteq C_2$ says that every atom of $C_1$ occurs in $C_2$. $\insp{\mathit{st}}$ is undefined for every other state. No rule reads $\cany$.}
+\label{fig:source}
+\end{figure}
+
+The judgment $\dtyuj{U}{\Gamma}{t}{T}$ puts the use set first, as Capless does \cite{xu2025box}. \rn{All-I} checks the body at $\weak{U} \cup \cset{x}$ and gives the lambda the use set $\cempty$, so creating a closure uses nothing. \rn{\{\}-I} does the same for fields. \rn{Let} uses one $U$ for both premises, so the body's uses of $x$ must be absorbed into $\weak{U}$ by \rn{Sub}, which widens use sets on every term. \rn{Unbox} charges the boxed set $C$ against $U$, and \rn{Box} charges nothing.
+
+A program runs over a platform $\plat$, a list of capture binders $\kappa_1, \ldots, \kappa_n$ that stand for the capabilities it is given. The context $\platctx$ binds them, and the store $\platstore$ holds one slot without data for each. The machine is report~1's with these slots and the step of Figure~\ref{fig:source}. A source $\kw{let}$ declares no use set, so use sets live in derivations only.
+
+\subsection{\texorpdfstring{$\mathsf{any}$}{any} by position}\label{sec:source-any}
+
+No typing rule reads $\cany$. A program means by it the set that its position reads, and the Lean's \lean{Ty.expand} puts that set in place before typing. An arrow reads the $\cany$ of its codomain as its own set with its parameter. An object reads the $\cany$ of a field type, or of a capture member's upper bound, as its own set with its self. The examples read a top-level $\cany$ as the platform's set. Four positions get the empty set: the outer set of a parameter type, a type-member bound, the lower bound of a capture member, and everything under a box. A type is \lean{AnyOk} when no $\cany$ occurs there, which the kernel decides. \lean{Ty.expandWith\_of\_anyOk}, in \treeK only, says that for an AnyOk type $T$ and all capture sets $D$ and $E$, expanding $T$ at $D$ with $E$ given to the four positions yields the expansion of $T$ at $D$.
+
+The examples type the expanded type and tie it to the written one by \lean{rfl}. \lean{S1\_anyOk} decides that the written type of \lean{withFile} is AnyOk, \lean{S1\_expand} reads its result $\capt{\top}{\cset{\cany}}$ as $\capt{\top}{\cset{\mathit{fs}, \mathit{cp}, \mathit{op}}}$, and \lean{S1\_typed}, built by hand, types a program that binds \lean{withFile} at the expanded type and calls it. The escape of Section~\ref{sec:levels} has a callback whose parameter has type $\capt{\mathit{File}}{\cset{\cany}}$, an $\cany$ in the outer set of a parameter type. That position gets the empty set and is not AnyOk, so the escape cannot be posed in \treeK.
+
+\subsection{The translation}\label{sec:source-trans}
+\mathtgt
+
+Figure~\ref{fig:source-trans} gives the translation where it differs from report~1's. It drops $\cany$. A field's telescope gains an entry that bounds its capture name by its declared set, and a capture member becomes two capture inclusions on its capture name. \rn{Sc-Var} becomes $\ev{capvar}$ at the variable's atom $\varatom{x}$, which at a literal's self binder is a cast from the precise type to the declared type. A variable becomes that atom recaptured at $\cset{x}$, the set that \rn{Var} concludes.
+
+The new part is a second function on derivations, $\transu{h}$, capture evidence that the use set of $\trans{h}$ lies below $\trans{U}$. At the body of a translated lambda or field it is the closing evidence, and at the body of a translated $\kw{let}$ the avoidance evidence. The charge of a translated unboxing is not use-set evidence. It is $\trans{f}$, the translation of the premise $\subcj{\Gamma}{C}{U}$.
+
+\begin{figure}
+\footnotesize
+\mathtgt
+\begin{minipage}[t]{0.56\textwidth}
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\trans{\cempty} & = & \cempty \\
+\trans{\cset{x} \cup C} & = & \cset{x} \cup \trans{C} \\
+\trans{\cset{\kappa} \cup C} & = & \cset{\kappa} \cup \trans{C} \\
+\trans{\cset{x.A} \cup C} & = & \cset{\sel{x}{A}} \cup \trans{C} \\
+\trans{\cset{\cany} \cup C} & = & \trans{C} \\[2pt]
+\trans{\capt{S}{C}} & = & \capt{\trans{S}}{\trans{C}} \\
+\trans{\dbox{T}} & = & \boxt{\trans{T}} \\
+\mathit{tel}\,\dfld{a}{\capt{S}{C}} & = & [\,\phas{a},\ \ple{\sel{\self}{a}}{\weak{\trans{S}}},\ \plec{\cset{\sel{\self}{a}}}{\weak{\trans{C}}}\,] \\
+\mathit{tel}\,\dcap{A}{C_1}{C_2} & = & [\,\plec{\weak{\trans{C_1}}}{\cset{\sel{\self}{A}}},\ \plec{\cset{\sel{\self}{A}}}{\weak{\trans{C_2}}}\,] \\
+\mathit{tel}\,\dbox{T} & = & [\,\pbnd{\weak{(\boxt{\trans{T}})}}\,] \\
+\capwit\,\dfld{a}{\capt{S}{C}} & = & [\,a = \trans{C}\,] \\
+\capwit\,\dcap{A}{C_1}{C_2} & = & [\,A = \trans{C_1}\,] \\
+\capwit\,\src{(S_1 \wedge S_2)} & = & \capwit\,\src{S_1} \mathbin{+\!\!+} \capwit\,\src{S_2} \\
+\capwit\,\src{S} & = & [\,] \quad \text{for every other } \src{S} \\
+\trans{\src{\Gamma, \kappa}} & = & \trans{\Gamma}, \kappa : \cstar
+\end{array}
+\]
+\end{minipage}\hfill
+\begin{minipage}[t]{0.43\textwidth}
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\trans{\rn{Sc-Refl}} & = & \ev{refl}\,\trans{C} \\
+\trans{\rn{Sc-Trans}\,f\,g} & = & \ev{trans}\,\trans{f}\,\trans{g} \\
+\trans{\rn{Sc-Elem}} & = & \ev{elem}\,\trans{C_1}\,\trans{C_2} \\
+\trans{\rn{Sc-Union}\,f\,g} & = & \ev{union}\,\trans{f}\,\trans{g} \\
+\trans{\rn{Sc-Var}} & = & \ev{capvar}\,(\varatom{x}) \\
+\trans{\rn{Sc-Sel-Lower}\,h} & = & \ev{member}\,\transa{h}\,e_C\,0 \\
+\trans{\rn{Sc-Sel-Upper}\,h} & = & \ev{member}\,\transa{h}\,e_C\,1 \\
+ & & \text{where } e_C = \ev{refl}\,\trans{\dcap{A}{C_1}{C_2}} \\
+\trans{\rn{Capt}\,d\,f} & = & \ev{capt}\,\trans{d}\,\trans{f} \\
+\trans{\rn{Boxed}\,d} & = & \ev{boxed}\,\trans{d}
+\end{array}
+\]
+\end{minipage}
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\trans{\src{\Gamma, x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d}} & = & \trans{\Gamma}, x : \capt{\mathit{litTy}\,\src{S}}{\trans{U}} \mathrel{:=} (W_S,\ \capwit\,\src{S},\ F_S) \\
+\varatom{x} & = & x \quad \text{if } \src{\Gamma} \text{ binds } \src{x : T} \\
+\varatom{x} & = & \ev{cast}\,x\,(\ev{capt}\,(\mathit{litCo}\,\src{S})\,(\ev{refl}\,\trans{U})) \quad \text{if } \src{\Gamma} \text{ binds } \src{x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d} \\
+\transa{\rn{Var}} & = & \ev{recap}\,(\varatom{x})\,(\ev{refl}\,\cset{x}) \\
+\trans{\rn{All-I}\,h} & = & \lamc{\trans{U}}{x}{\trans{T_1}}{\trans{h}}{\transu{h}} \\
+\trans{\rn{\{\}-I}\,h} & = & \ev{cast}\,(\litc{\trans{U}}{W_S}{\capwit\,\src{S}}{\trans{h}_f})\,(\ev{capt}\,(\mathit{litCo}\,\src{S})\,(\ev{refl}\,\trans{U})) \\
+\trans{\rn{Def-Trm}\,h}_f & = & [\,a = \ev{cast}\,\trans{h}\,(\ev{capt}\,(\ev{eqToLe}\,(\ev{symm}\,(\ev{def}\,\self\,a)))\,(\ev{eqToLe}\,(\ev{symm}\,(\ev{defC}\,\self\,a))))\;\ann{\transu{h}}\,] \\
+\trans{\rn{Def-Cap}}_f & = & [\,] \\
+\trans{\rn{Box}\,h} & = & \ev{box}\,\transa{h} \\
+\trans{\rn{\{\}-E}\,h} & = & \ev{cast}\,(\ev{proj}\,\transa{h}\,a\,(\ev{member}\,\transa{h}\,e\,0))\,(\ev{capt}\,(\ev{member}\,\transa{h}\,e\,1)\,(\ev{member}\,\transa{h}\,e\,2)) \\
+ & & \text{where } e = \ev{refl}\,\trans{\dfld{a}{T}} \\
+\trans{\rn{Let}\,h_1\,h_2} & = & \letc{x}{\trans{h_1}}{\trans{h_2}}{\trans{U}}{\transu{h_2}} \\
+\trans{\rn{Unbox}\,h\,f} & = & \unboxc{\transa{h}}{\trans{U}}{\trans{f}}
+\end{array}
+\]
+\begin{minipage}[t]{0.49\textwidth}
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\transu{\rn{Var}} & = & \ev{refl}\,\cset{x} \\
+\transu{\rn{All-I}\,h} & = & \ev{refl}\,\cempty \\
+\transu{\rn{All-E}\,h_1\,h_2} & = & \ev{union}\,\transu{h_1}\,\transu{h_2} \\
+\transu{\rn{\{\}-I}\,h} & = & \ev{refl}\,\cempty \\
+\transu{\rn{Box}\,h} & = & \ev{refl}\,\cempty \\
+\transu{\rn{\{\}-E}\,h} & = & \transu{h}
+\end{array}
+\]
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\transu{\rn{Let}\,h_1\,h_2} & = & \ev{union}\,\transu{h_1}\,(\ev{refl}\,\trans{U}) \\
+\transu{\rn{Unbox}\,h\,f} & = & \ev{union}\,\transu{h}\,(\ev{refl}\,\trans{U}) \\
+\transu{\rn{Rec-I}\,h} & = & \transu{h} \\
+\transu{\rn{Rec-E}\,h} & = & \transu{h} \\
+\transu{\rn{And-I}\,h_1\,h_2} & = & \transu{h_1} \\
+\transu{\rn{Sub}\,h\,d\,f} & = & \ev{trans}\,\transu{h}\,\trans{f}
+\end{array}
+\]
+\end{minipage}
+\color{black}
+\caption{The translation where it differs from report~1's. The bottom block is the use-set evidence, one clause per typing rule. $\cany$ is dropped. A capture member becomes two capture inclusions on a capture name, and like a field it translates to the object shape of its telescope. The charge of an unboxing is the translation of the source's subcapturing premise. $W_S$ and $F_S$ are the witnesses and field labels of $\src{S}$, and $\mathit{litTy}$ and $\mathit{litCo}$ are report~1's, extended by the capture witnesses. \rn{Cap} becomes an object coercion whose two capture templates carry $\trans{f_1}$ and $\trans{f_2}$, and \rn{Fld} routes a field's capture entry through a template that carries its translated capture premise. Report~1's other clauses carry over at capturing types.}
+\label{fig:source-trans}
+\end{figure}
+
+As in report~1, typedness needs a well-formed context. $\src{\Gamma}$ is well formed when the shape $\src{S}$ of every binder $\src{x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d}$ in it is a literal shape with distinct labels, where
+\[
+\text{Literal shapes} \quad \src{S_\ell} \;::=\; \src{\dtyp{A}{S}{S} \mid \dcap{A}{C}{C} \mid \dfld{a}{T} \mid S_\ell \wedge S_\ell} .
+\]
+The empty context and every platform context are well formed, and \rn{\{\}-I} keeps contexts well formed.
+
+\begin{theorem}[Typed translation, \leanin{HasTy.translate\_typed}{\treeK}]\label{thm:source-trans}
+Let $\src{h}$ derive $\dtyuj{U}{\Gamma}{t}{T}$.
+\begin{enumerate}
+\item $\erase{\trans{h}} = \erase{\src{t}}$. Hence two derivations of $\src{t}$ in the same $\src{\Gamma}$ translate to terms with the same erasure.
+\item If $\src{\Gamma}$ is well formed, then $\tmj{\trans{\Gamma}}{\trans{h}}{\trans{T}}$.
+\item If $\src{\Gamma}$ is well formed, then $\clej{\trans{\Gamma}}{\transu{h}}{\uses{\trans{h}}}{\trans{U}}$.
+\item If $\src{\Gamma}$ is well formed and $\src{f}$ derives $\subcj{\Gamma}{C}{D}$, then $\clej{\trans{\Gamma}}{\trans{f}}{\trans{C}}{\trans{D}}$.
+\end{enumerate}
+\end{theorem}
+
+Items~1 to~4 are \lean{HasTy.translate\_erase} with \lean{coherence}, \lean{HasTy.translate\_typed}, \lean{HasTy.translate\_uses} and \lean{Subcap.translate\_typed}, in all three trees. Items~1 and~2 are report~1's Theorems~\ref{R1-thm:trans-erase} and~\ref{R1-thm:trans-typed} at capturing types. Item~3 is new, and \rn{All-I}, \rn{\{\}-I} and \rn{Let} need it in the proof of item~2. \lean{C2\_translated}, \lean{C7\_translated} and \lean{S3\_translated} are item~2 at derivations built by hand. They are theorems, not computed terms, because the Lean's translation is defined by well-founded recursion and does not reduce in the kernel.
+
+\subsection{The theorems}\label{sec:source-thms}
+
+Each source theorem matches a source run by a target run from the translated program, as report~1's Theorem~\ref{R1-thm:dot-safety} does, and reads a target theorem off the matched state. The match is \lean{Platform.simulatedRun}, and its last state is not a cast redex.
+
+\begin{theorem}[Safety over a platform, \leanin{dot\_safety\_platform}{\treeK}]\label{thm:source-safety}
+Let $\plat$ be a platform, let $\src{d}$ derive $\dtyuj{U}{\platctx}{t}{T}$, and let $\mst{\platstore}{\cdot}{\src{t}} \steps \src{\mathit{st}}$ be a run of the source machine. Then $\src{\mathit{st}}$ is final or steps.
+\end{theorem}
+
+\lean{dot\_not\_stuck\_platform}, in \treeK and \treeCL but not \treeCC, says that $\src{\mathit{st}}$ is not stuck, and \lean{C2\_safe} is the theorem at the program above. \lean{dot\_safety} assumes the empty context, where a use set can hold only $\cany$.
+
+\begin{theorem}[Capture prediction for \DOTMNF, \leanin{dot\_capture\_prediction}{\treeK}]\label{thm:source-pred}
+Let $\plat$, $\src{d}$ and the run be as in Theorem~\ref{thm:source-safety}. Then there are a target state $\tstate$ with store $\sigma'$, a context $\Gamma'$ and a renaming $\rho$ such that (1)~$\mst{\tplatstore}{\cdot}{\trans{d}} \steps \tstate$ is a run of the target machine, (2)~$\statej{\tstate}{V}$ for some $V$, (3)~$\erase{\tstate} = \erase{\src{\mathit{st}}}$, (4)~$\storej{\sigma'}{\Gamma'}$, (5)~$\sextr{\rho}{\tplatstore}{\sigma'}$, and (6)~$\caple{\Gamma'}{\uses{\tstate}}{\rho(\trans{U})}$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The match gives items~1 and~3, and preservation (Theorem~\ref{thm:target-meta}) items~2 and~4. Capture prediction in the target, Theorem~\ref{thm:mini-pred} in full (\leanin{capture\_prediction}{\treeK}), gives $\rho$, item~5, and $\caple{\Gamma'}{\uses{\tstate}}{\rho(\uses{\trans{d}})}$. The initial store $\tplatstore$ is typed by $\trans{\platctx}$, so Theorem~\ref{thm:target-canon} turns item~3 of Theorem~\ref{thm:source-trans} into $\caple{\trans{\platctx}}{\uses{\trans{d}}}{\trans{U}}$. Store extension carries this into $\Gamma'$, as in Lemma~\ref{lem:mini-ext}. The renaming $\rho$ places the binders of $\tplatstore$ in $\sigma'$, and with named binders it is the identity.
+\end{proof}
+
+\begin{theorem}[Effect safety for \DOTMNF, \leanin{dot\_effect\_safety}{\treeK}]\label{thm:source-effect}
+Let $\plat$, $\src{d}$ and the run be as in Theorem~\ref{thm:source-safety}. Let $\kappa$ be a capture binder of $\plat$ that is not an element of the list $\trans{U}$, and let $\insp{\src{\mathit{st}}} = x$. Then there are $\tstate$, $\sigma'$, $\Gamma'$ and $\rho$ with items~1 to~5 of Theorem~\ref{thm:source-pred} and $\rho(\kappa) \notin \leaves{\Gamma'}{\cset{x}}$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Erasure keeps the inspected variable on both machines, and the matched state is not a cast redex, so it inspects $x$. Over a platform the leaves of a set are its atoms, so $\kappa$ is not a leaf of $\trans{U}$, and by Theorem~\ref{thm:target-canon} applied to $\transu{d}$ not a leaf of $\uses{\trans{d}}$. Effect safety in the target, Theorem~\ref{thm:mini-effect} in full (\leanin{effect\_safety}{\treeK}), concludes.
+\end{proof}
+
+Both theorems speak about a target state $\tstate$ with the erasure of $\src{\mathit{st}}$, in the context $\Gamma'$ of its store, and not about $\src{\mathit{st}}$ in source terms. Effect safety covers only the variable that the next step inspects. The hypothesis $\insp{\src{\mathit{st}}} = x$ is syntactic in all three trees. The hypothesis on $\kappa$ is syntactic in \treeK and \treeCC, so an $\cany$ in $U$ is invisible to it. There the conclusion omits that $\tstate$ inspects $x$, although the proof derives it. Over a platform it means $\kappa \notin \leaves{\trans{\platctx}}{\trans{U}}$, by \lean{Platform.root\_iff} (in \treeCC with a premise that Section~\ref{sec:levels} explains). \treeCL states that semantic hypothesis and adds that $\tstate$ inspects $x$.
+
+\subsection{Where the use set of \texorpdfstring{$\mathit{prog}_1$}{prog1} comes from}\label{sec:source-example}
+
+\begin{example}[The use set of $\mathit{prog}_1$, on paper]\label{ex:source-prog1}
+Take the source context
+\[
+\src{\Gamma_s = \kappa_1, \kappa_2, \mathit{log} : \CapT{\kappa_1}, \mathit{console} : \CapT{\kappa_2}, \mathit{unit} : \Unit, \mathit{c1} : T_{\mathit{c1}}} ,
+\]
+with the types of Section~\ref{sec:mini} written with $\forall$ for $\Pi$. Its translation is the context $\Gamma_1$ of Section~\ref{sec:mini}, with every binder opaque. Let $\src{U = \cset{\mathit{console}, \mathit{log}}}$. A derivation $\src{h}$ of $\dtyuj{U}{\Gamma_s}{\klet f = \mathit{c1}\,\mathit{unit} \kin f\,\mathit{unit}}{\Unit}$ ends in \rn{Let}. Its body premise $\src{h_2}$ types $\src{f\,\mathit{unit}}$ by \rn{All-E}, and each variable passes through \rn{Sub} with the use-set premise \rn{Sc-Var} then \rn{Sc-Elem}, $\src{\cset{f} <:_c \cset{\mathit{console}} <:_c U}$ and $\src{\cset{\mathit{unit}} <:_c \cempty <:_c U}$. Figure~\ref{fig:source-trans} gives
+\[
+\begin{array}{@{}r@{\ }c@{\ }l@{}}
+\transu{h_2} & = & \ev{union}\ (\ev{trans}\,(\ev{refl}\,\cset{f})\,(\ev{trans}\,(\ev{capvar}\,f)\,(\ev{elem}\,\cset{\mathit{console}}\,\trans{U}))) \\
+ & & \phantom{\ev{union}}\ (\ev{trans}\,(\ev{refl}\,\cset{\mathit{unit}})\,(\ev{trans}\,(\ev{capvar}\,\mathit{unit})\,(\ev{elem}\,\cempty\,\trans{U}))) .
+\end{array}
+\]
+Without its two steps $\ev{trans}\,(\ev{refl}\,\_)$ this is the avoidance evidence $f_1$ that Section~\ref{sec:mini} writes by hand. The use-set evidence of $\src{h}$, $\ev{union}\,\transu{h_1}\,(\ev{refl}\,\trans{U})$, proves $\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}} \le \trans{U}$. It uses only $\ev{refl}$, $\ev{trans}$, $\ev{elem}$, $\ev{union}$ and $\ev{capvar}$, so Theorem~\ref{thm:mini-cap} applies in $\Gamma_1$. The leaves of the use set, $\cset{\kappa_1, \kappa_2}$ as in state~0 of Table~\ref{tab:mini-run}, are among those of $\trans{U}$. This is the step that Theorem~\ref{thm:source-pred} takes at its initial state. The theorem itself does not apply, since $\src{\Gamma_s}$ is not a platform context, and the Lean's step needs a typed store. The example has no Lean counterpart, because the translation does not reduce in the kernel.
+\end{example}
+
+\subsection{What is not proved}\label{sec:source-open}
+
+The source has no metatheory of its own, and its theorems conclude about a matched target state. No theorem relates a derivation that contains $\cany$ to the derivation at the expanded type. No source theorem carries \lean{effect\_safety\_unbox} (Theorem~\ref{thm:target-unbox}) over, so on the source side nothing speaks about a capability inside a box. \lean{dot\_safety} covers only programs that use no capability.
