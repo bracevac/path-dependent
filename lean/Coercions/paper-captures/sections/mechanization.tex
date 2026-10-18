@@ -4,23 +4,23 @@
 \section{Mechanization}\label{sec:mech}
 \mathplain
 
-Every Lean statement that this report cites is a declaration in one of the three trees, and the report names the tree. The miniature of Section~\ref{sec:mini} is a fragment of \treeK and not a development of its own. The development has no library dependencies, so there is no Mathlib, and the toolchain is \lean{leanprover/lean4:v4.29.1}.
+Every Lean statement that this report cites is a declaration in one of the three trees, and the report names the tree. The development has no library dependencies, so there is no Mathlib, and the toolchain is \lean{leanprover/lean4:v4.29.1}.
 
 \subsection{Layout and lineage}\label{sec:mech-trees}
 
 All paths are relative to \lean{lean/Coercions}. The three trees are \lean{Captures/}, \lean{CapturesCC/} and \lean{Classifiers/}. Each has the directories of the development of \Rone, under a namespace of its own. \lean{DotMNF/} is the source, \lean{FCdot/} the target, \lean{DotToFCdot/} the translation and \lean{Frontend/} the pipeline of Section~\ref{sec:frontends}. \treeCL also has \lean{Cls/}, the classifier tree and the kinds. A tree is a copy of its predecessor, and the three do not import one another. The file \lean{BASE} of each tree names the commit of the copy. \treeK is a copy of the vanilla line at \lean{83079d4}, which is the development of report~1 before PR~\#56. \treeCC is a copy of \treeK at \lean{a4df821}, and \treeCL a copy of \treeCC at \lean{90fab2a}.
 
-The copy of \treeK was taken before PR~\#56 simplified the normalizer. So the forms of the capture trees are not those of Figure~\ref{R1-fig:forms} of report~1. \lean{Form} has a constructor \lean{eqv}, which holds closed equality evidence between the endpoints. There is one list of entries, in which a routed entry \lean{thru} may stand anywhere, where report~1 splits local and free entries and has the local entries $\form{trans}$ and $\form{copy}$. The capture trees add the entries \lean{leC} and \lean{eqC} and the form \lean{boxed}. No normalizer case is displayed in this report, and the capture cases were not ported to the forms of report~1.
+PR~\#56 simplified the forms of report~1 after the copy of \treeK was taken. So the forms of the capture trees differ from those of report~1's Figure~\ref{R1-fig:forms} in four ways. First, a head form $\form{eqv}\,\varphi$ holds closed equality evidence $\varphi$ between the endpoints. Report~1 folds it into $\form{id}$, so \rn{E-AppCastRefl} accepts either (Table~\ref{tab:target-steps}). Second, object forms and $\form{into}$ forms share one list of entries. In it a routed entry $\form{thru}\,F\,E$ may stand anywhere. Its head form $F$ reaches another object type from the source, and its entry $E$ proves the target proposition there. Report~1 routes free entries only. Third, there is no split into local and free entries, and so no local entry $\form{trans}$ or $\form{copy}$. Fourth, the evidence lacks report~1's composition template $\ev{leTrans}$, which report~1's own translation never produces. The capture trees add three things. The head form $\form{boxed}\,d$ holds closed evidence $d$ between the boxed types. The entries $\form{leC}$ and $\form{eqC}$ keep a capture template as it is. A capture slot of a view carries no data. This report displays no normalizer case, because the capture half is never normalized. The capture cases were not ported to the forms of report~1.
 
-Fixes made to \treeK after the copies were not all ported. \lean{effect\_safety\_unbox} and \lean{Ty.expandWith\_of\_anyOk} exist in \treeK only, and \lean{dot\_not\_stuck\_platform} exists in \treeK and \treeCL and not in \treeCC. Later strengthenings of \treeCC are not in \treeCL. They are \lean{root\_inversion}, \lean{level\_inversion\_plain}, \lean{Subcap.memberFree\_of\_plain}, the forms of \lean{X4\_no\_escape} and \lean{W5\_no\_escape} for all evidence, and the four conjuncts of \lean{two\_calls\_incomparable}. Report~1 says that each copy carries canonical forms of closed evidence, preservation, progress, the erasure simulation and the safety of its source. That holds for the three trees. Table~\ref{tab:matrix} lists the further theorems that exist in some trees only.
+Fixes made to \treeK after the copies were not all ported, and later strengthenings of \treeCC are not in \treeCL. Table~\ref{tab:matrix} lists the cited theorems whose existence or statement differs between the trees.
 
 \subsection{Sizes}\label{sec:mech-sizes}
 
-Table~\ref{tab:sizes} counts the lines of Lean per tree and directory, examples included. The vanilla row is the development of report~1. Its \lean{DotMNF} count is the sum of the first two rows of Table~\ref{R1-tab:sizes}, and its \lean{DotToFCdot} count the sum of the fourth and fifth.
+Table~\ref{tab:sizes} counts the lines of Lean per tree and directory. The vanilla row is the development of report~1. Its \lean{DotMNF} count is the sum of the first two rows of Table~\ref{R1-tab:sizes}, its \lean{FCdot} count is the third row, and its \lean{DotToFCdot} count the sum of the fourth and fifth. That table does not count the front end.
 
 \begin{table}
 \small
-\caption{Lines of Lean per tree and directory, examples included. The vanilla row is the development of report~1 and matches its Table~\ref{R1-tab:sizes}.}
+\caption{Lines of Lean per tree and directory, examples included. The totals are the sums of the columns. They leave out each tree's \lean{Runtime.lean} and the root modules that import the others, which add 283, 420 and 434 lines to \treeK, \treeCC and \treeCL.}
 \label{tab:sizes}
 \centering
 \begin{tabular}{@{}lrrrrrr@{}}
@@ -37,9 +37,11 @@ vanilla & 3{,}970 & 10{,}985 & 2{,}725 & 14{,}366 & & 32{,}046 \\
 
 \subsection{Axioms and checks}\label{sec:mech-checks}
 
-The libraries build with \lean{lake build Captures CapturesCC Classifiers CapturesFrontend CapturesCCFrontend ClassifiersFrontend} from the root of the repository. The front-end libraries import the three calculi. They were built from a scratch copy of the trees at \lean{de9b596} without error, together with the \lean{Examples} modules of the three \lean{FCdot} directories. A search of the three trees finds no \lean{sorry}, no \lean{axiom}, no \lean{native\_decide} and no \lean{partial}, \lean{unsafe} or \lean{opaque} definition. The command \lean{\#print axioms} reports \lean{propext} and \lean{Quot.sound} and nothing else. It was run in every tree on \lean{capture\_prediction}, \lean{effect\_safety}, \lean{dot\_effect\_safety} and on the theorems peculiar to the tree: \lean{effect\_safety\_unbox}, \lean{C6\_safe} and \lean{C3\_typed} in \treeK, \lean{root\_inversion}, \lean{level\_inversion}, \lean{no\_inner\_escape}, \lean{source\_lvl\_safety}, \lean{X3\_no\_escape}, \lean{X4\_no\_escape}, \lean{W5\_no\_escape} and \lean{two\_calls\_incomparable} in \treeCC, and \lean{kind\_canon}, \lean{classified\_effect\_safety}, \lean{dot\_classified\_effect\_safety} and \lean{K6x\_no\_kindCo} in \treeCL. A check of more than seventy theorems of the front ends gave the same result.
+The libraries build with \lean{lake build Captures CapturesCC Classifiers CapturesFrontend CapturesCCFrontend ClassifiersFrontend} from the root of the repository. Each front-end library imports its own calculus. The six libraries were built without error from a scratch copy of the trees at \lean{de9b596}, together with the \lean{Examples} modules of the three \lean{FCdot} directories. A search of the three trees finds no \lean{sorry}, no \lean{axiom}, no \lean{native\_decide} and no \lean{partial}, \lean{unsafe} or \lean{opaque} definition.
 
-Examples are checked in five ways. A kernel decision runs a checker and applies its soundness theorem, as in \lean{C1\_typed}, which is \lean{checkValue\_sound (by decide +kernel)}. A refusal is the verdict \lean{= false} of the checker, as in \lean{C6\_rejected}. A run is built by hand from the step constructors, as in \lean{C6\_run}. A translation is a theorem and not a computation, because \lean{translate} and \lean{translateUses} do not reduce in the kernel, so no translated use-set evidence of a concrete program is printed. A resolution fact is proved by \lean{simp} on the clause lemmas, because \lean{Ctx.caps} is defined by well-founded recursion and its equations are the clause lemmas. The report marks each example as decided, built by hand or on paper. The hand-built ones are \lean{C6\_run}, the source derivations, \lean{two\_calls\_incomparable}, \lean{X4\_no\_escape}, \lean{W5\_no\_escape} and Examples~\ref{ex:target-member} and~\ref{ex:source-prog1}. Example~\ref{ex:mini-reject} and Table~\ref{tab:mini-run2} are on paper.
+The command \lean{\#print axioms} finds at most \lean{propext} and \lean{Quot.sound}. It was run in every tree on \lean{capture\_prediction}, \lean{effect\_safety} and \lean{dot\_effect\_safety}. In \treeK it was also run on \lean{effect\_safety\_unbox}, \lean{C6\_safe} and \lean{C3\_typed}. In \treeCC it was run on \lean{root\_inversion}, \lean{level\_inversion}, \lean{no\_inner\_escape} and \lean{source\_lvl\_safety}, and on the examples \lean{X3\_no\_escape}, \lean{X4\_no\_escape}, \lean{W5\_no\_escape} and \lean{two\_calls\_incomparable}. In \treeCL it was run on \lean{kind\_canon}, \lean{classified\_effect\_safety}, \lean{dot\_classified\_effect\_safety} and \lean{K6x\_no\_kindCo}. A check of more than seventy theorems of the front ends found at most the same two axioms.
+
+Examples are checked in four ways. A kernel decision runs a checker and applies its soundness theorem, as in \lean{C1\_typed}, which is \lean{checkValue\_sound (by decide +kernel)}. A refusal is the verdict \lean{= false} of the checker, as in \lean{C6\_rejected}. A run is built by hand from the step constructors, as in \lean{C6\_run}. A resolution fact is proved by \lean{simp} on the clause lemmas, because \lean{Ctx.caps} is defined by well-founded recursion and its equations are the clause lemmas. A translated example is a theorem about a derivation and not a computation (Section~\ref{sec:source-trans}).
 
 \subsection{The miniature and the Lean}\label{sec:mech-mini}
 
@@ -47,14 +49,13 @@ Table~\ref{tab:mini-lean} maps each statement of Section~\ref{sec:mini} to the d
 \begin{enumerate}
 \item It has named binders, and the Lean is de Bruijn. Store extension, capture prediction and effect safety carry a renaming $\rho$, as \lean{Store.Ext} does, and are existential in it. With names $\rho$ is the identity, and the miniature drops it.
 \item It has no fuel. The Lean's resolution takes fuel for capture names, which the miniature does not have. \lean{C6\_prog2\_caps} holds at every fuel.
-\item Its atoms are variables. The Lean's atoms have wrappers (\lean{cast}, \lean{recap}, \lean{foldSelf}, \lean{unfoldSelf}, \lean{both}), and its application has three steps. \rn{E-App} is \lean{appVar}. The steps \lean{appCastRefl} and \lean{appCast} read the chain of casts, and \lean{appCastRefl} accepts a head form $\form{id}$ or $\form{eqv}$.
-\item $\top$ is primitive, and $\unitv$ is the Lean's \lean{unitVal}, \lean{Value.obj [] nil nil nil} (\lean{FCdot/Examples.lean:979}), at the type $\capt{\obj{\tnil}}{\cempty}$.
+\item Its atoms are variables. The Lean's atoms have wrappers (\lean{cast}, \lean{recap}, \lean{foldSelf}, \lean{unfoldSelf}, \lean{both}). \rn{E-App} is \lean{appVar}, and the Lean has two more application steps, \rn{E-AppCastRefl} and \rn{E-AppCast}, which read the chain of casts.
 \item It writes store binders as $x : T$. The Lean binds them transparently with empty witnesses (\lean{C6Ctx}) and checks $v_{c1}$ in a context whose binders are opaque (\lean{C1Ctx}). Let binders and parameters are opaque in the Lean.
 \item Theorem~\ref{thm:mini-cap} holds in every context. \lean{cap\_canon} in \treeK assumes a typed store, as a section variable, and covers all evidence. The statement with no store, for member-free evidence, is \lean{root\_inversion}, which exists in \treeCC only.
 \item Theorem~\ref{thm:mini-pres} is proved on paper. Its counterpart \lean{preservation'} renames the type, and the renaming is not tied to \lean{Store.Ext}.
 \item The Lean's allocation stores \lean{core(v)} and continues with \lean{adjust(u, v)}, which is the identity on a value without casts. It moves the evidence of the frame from an opaque to a transparent binder with \lean{CapCo.HasType.adjust\_none}.
 \item The Lean identifies contexts with \lean{Store.Typed.ctx\_unique}, where the miniature says once that a store has one context. Lemma~\ref{lem:mini-store}(b) is stated in the context $\Gamma$ of the store, as \lean{Store.Typed.lam\_closing} is.
-\item Example~\ref{ex:mini-reject} and Table~\ref{tab:mini-run2} are on paper. The Lean decides the refusal of one evidence term (\lean{C6\_rejected}) and states \lean{C6\_safe} for every run of $\mathit{prog}_2$ without writing one out.
+\item The run of $\mathit{prog}_2$ in Example~\ref{ex:mini-prog2} is on paper. The Lean states \lean{C6\_safe} for every run of $\mathit{prog}_2$ and writes none out.
 \end{enumerate}
 
 \begin{table}
@@ -63,26 +64,60 @@ Table~\ref{tab:mini-lean} maps each statement of Section~\ref{sec:mini} to the d
 \caption{The statements of Section~\ref{sec:mini} and the declarations of \treeK that they restrict, with the hypotheses and renamings that the Lean adds. Files are in \lean{FCdot/}.}
 \label{tab:mini-lean}
 \centering
-\begin{tabular}{@{}p{0.2\linewidth}p{0.34\linewidth}p{0.22\linewidth}p{0.2\linewidth}@{}}
+\begin{tabular}{@{}p{0.2\linewidth}p{0.33\linewidth}p{0.21\linewidth}p{0.19\linewidth}@{}}
 \toprule
 miniature & Lean in \treeK & file and line & difference \\
 \midrule
-grammar of Figure~\ref{fig:mini-syntax} & \lean{Tm}, \lean{Value}, \lean{CapCo}, \lean{CapAtom} & \lean{Syntax}: 573, 589, 340, 28 & atoms have wrappers \\
-leaves, covered by, same leaves & \lean{Ctx.caps}, \lean{Ctx.capsAtom}, \lean{Ctx.roots}, \lean{Ctx.Root}, \lean{CapLe}, \lean{RootsEq} & \lean{Resolution}: 568, 578, 1019, 1027, 1035, 1039 & fuel \\
-$\mathit{uses}$, $\mathit{insp}$, $\mathit{annot}$ & \lean{Tm.uses}, \lean{usesK}, \lean{State.uses}, \lean{Tm.inspects}, \lean{State.inspects}, \lean{Value.annot} & \lean{Syntax}: 675, 699, 656. \lean{Machine}: 108, 133, 136 & none \\
-rules of Figures~\ref{fig:mini-typing} and~\ref{fig:mini-machine} & \lean{CapCo.HasType}, \lean{Tm.HasType}, \lean{Value.HasType}, \lean{Store.Typed}, \lean{Cont.Typed}, \lean{State.Typed} & \lean{Typing}: 65, 299, 332. \lean{Store}: 84. \lean{Machine}: 67, 93 & opaque and transparent binders \\
-machine steps & \lean{Step}, with \lean{let}, \lean{alloc}, \lean{rename}, \lean{appVar} among its twelve constructors & \lean{Machine}: 179-195 & \lean{core}, \lean{adjust}, three application steps \\
-store extension & \lean{Store.Ext} & \lean{Machine}: 260 & renaming $\rho$ \\
-Lemma~\ref{lem:mini-var} & \lean{Ctx.Root\_var} & \lean{CanonicalForms}: 286 & \\
-Theorem~\ref{thm:mini-cap} & \lean{cap\_canon}, \lean{atom\_canon} & \lean{CanonicalForms}: 362, 503 & typed store, all evidence \\
-Lemma~\ref{lem:mini-store} & \lean{Store.Typed.lookup\_annot}, \lean{root\_annot}, \lean{lam\_closing}, \lean{ctx\_unique} & \lean{Store}: 133. \lean{Prediction}: 84. \lean{Preservation}: 544. \lean{Machine}: 324 & \\
-Lemma~\ref{lem:mini-subst} & \lean{CapCo.HasType.substAtom}, \lean{letBody\_substAtom}, \lean{Tm.HasType.substAtom}, \lean{Tm.uses\_substAtom} & \lean{TypingSubst}: 611, 622, 598. \lean{RenameLemmas}: 1102 & substitution of atoms \\
-Theorem~\ref{thm:mini-pres} & \lean{preservation'}, \lean{Steps.typed} & \lean{CanonicalForms}: 766. \lean{Consistency}: 258 & renamed type \\
-Lemma~\ref{lem:mini-step} & \lean{step\_uses} with the cases \lean{let}, \lean{alloc}, \lean{rename}, \lean{appVar}. \lean{Store.Typed.app\_uses}. \lean{CapCo.HasType.adjust\_none} & \lean{Prediction}: 143 (cases 150, 161, 181, 192), 95. \lean{Preservation}: 511 & \lean{ctx\_unique}, \lean{adjust\_none}, $\rho$ \\
-Lemma~\ref{lem:mini-ext} & \lean{Store.Ext.roots}, \lean{root\_iff}, \lean{capLe} & \lean{Machine}: 342, 377, 391 & $\rho$ \\
-Theorem~\ref{thm:mini-pred} & \lean{capture\_prediction} & \lean{Prediction}: 260 & $\exists\rho$ \\
-Remark~\ref{rem:mini-insp} & \lean{inspects\_covered}, \lean{Tm.inspects\_mem\_uses} & \lean{Prediction}: 278. \lean{Syntax}: 718 & \\
-Theorem~\ref{thm:mini-effect} & \lean{effect\_safety} & \lean{Prediction}: 292 & $\exists\rho$ \\
+\rg grammar of Figure~\ref{fig:mini-syntax} & \rg \lean{Tm}, \lean{Value}, \lean{CapCo}, \lean{CapAtom} & \rg \lean{Syntax}: 573, 589, 340, 28 & \rg atoms have wrappers \\
+\rg leaves, covered by, same leaves & \rg \lean{Ctx.caps}, \lean{Ctx.capsAtom}, \lean{Ctx.roots}, \lean{Ctx.Root}, \lean{CapLe}, \lean{RootsEq} & \rg \lean{Resolution}: 568, 578, 1019, 1027, 1035, 1039 & \rg fuel \\
+\rg $\mathit{uses}$, $\mathit{insp}$, $\mathit{annot}$ & \rg \lean{Tm.uses}, \lean{usesK}, \lean{State.uses}, \lean{Tm.inspects}, \lean{State.inspects}, \lean{Value.annot} & \rg \lean{Syntax}: 675, 699, 656. \lean{Machine}: 108, 133, 136 & \rg none \\
+\rg rules of Figures~\ref{fig:mini-typing} and~\ref{fig:mini-machine} & \rg \lean{CapCo.HasType}, \lean{Tm.HasType}, \lean{Value.HasType}, \lean{Store.Typed}, \lean{Cont.Typed}, \lean{State.Typed} & \rg \lean{Typing}: 65, 299, 332. \lean{Store}: 84. \lean{Machine}: 67, 93 & \rg opaque and transparent binders \\
+\rg \rn{E-Let}, \rn{E-Alloc}, \rn{E-Rename}, \rn{E-App} & \rg \lean{Step} with the constructors \lean{let}, \lean{alloc}, \lean{rename}, \lean{appVar} of its twelve & \rg \lean{Machine}: 179-195 & \rg \lean{core}, \lean{adjust}, three application steps \\
+\rg store extension & \rg \lean{Store.Ext} & \rg \lean{Machine}: 260 & \rg renaming $\rho$ \\
+\rg Lemma~\ref{lem:mini-var} & \rg \lean{Ctx.Root\_var} & \rg \lean{CanonicalForms}: 286 & \\
+\rg Theorem~\ref{thm:mini-cap} & \rg \lean{cap\_canon}, \lean{atom\_canon} & \rg \lean{CanonicalForms}: 362, 503 & \rg typed store, all evidence \\
+\rg Lemma~\ref{lem:mini-store} & \rg \lean{Store.Typed.lookup\_annot}, \lean{root\_annot}, \lean{lam\_closing}, \lean{ctx\_unique} & \rg \lean{Store}: 133. \lean{Prediction}: 84. \lean{Preservation}: 544. \lean{Machine}: 324 & \\
+\rg Lemma~\ref{lem:mini-subst} & \rg \lean{CapCo.HasType.substAtom}, \lean{letBody\_substAtom}, \lean{Tm.HasType.substAtom}, \lean{Tm.uses\_substAtom} & \rg \lean{TypingSubst}: 611, 622, 598. \lean{RenameLemmas}: 1102 & \rg substitution of atoms \\
+\rg Theorem~\ref{thm:mini-pres} & \rg \lean{preservation'}, \lean{Steps.typed} & \rg \lean{CanonicalForms}: 766. \lean{Consistency}: 258 & \rg renamed type \\
+\rg Lemma~\ref{lem:mini-step} & \rg \lean{step\_uses} with the cases \lean{let}, \lean{alloc}, \lean{rename}, \lean{appVar}. \lean{Store.Typed.app\_uses}. \lean{CapCo.HasType.adjust\_none} & \rg \lean{Prediction}: 143 (cases 150, 161, 181, 192), 95. \lean{Preservation}: 511 & \rg \lean{ctx\_unique}, \lean{adjust\_none}, $\rho$ \\
+\rg Lemma~\ref{lem:mini-ext} & \rg \lean{Store.Ext.roots}, \lean{root\_iff}, \lean{capLe} & \rg \lean{Machine}: 342, 377, 391 & \rg $\rho$ \\
+\rg Theorem~\ref{thm:mini-pred} & \rg \lean{capture\_prediction} & \rg \lean{Prediction}: 260 & \rg $\exists\rho$ \\
+\rg Remark~\ref{rem:mini-insp} & \rg \lean{inspects\_covered}, \lean{Tm.inspects\_mem\_uses} & \rg \lean{Prediction}: 278. \lean{Syntax}: 718 & \\
+\rg Theorem~\ref{thm:mini-effect} & \rg \lean{effect\_safety} & \rg \lean{Prediction}: 292 & \rg $\exists\rho$ \\
+\rg the running example & \rg \lean{C1\_typed}, \lean{C6\_run}, \lean{C6\_safe} & \rg \lean{Examples}: 1016, 1210, 1295 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Names}\label{sec:mech-names}
+
+Table~\ref{tab:names} maps the words of this report to the names of the Lean. Table~\ref{R1-tab:names} of report~1 maps its results to the declarations of the vanilla development. The Lean calls the leaves of a capture set its roots, and its comments call star and classified binders rigid. In the report a root is only the $\rt{a}$ of report~1, the variable under the wrappers of an atom. An example that \treeCC and \treeCL share is cited from \treeCC unless the text names \treeCL. Table~\ref{tab:matrix} gives the trees of each cited theorem that is not in all three, and says how a statement differs where the report relies on the difference.
+
+\begin{table}
+\small
+\caption{Words of this report and the Lean's names for them. Table~\ref{tab:mini-lean} gives the names for the words of the miniature. The mark (CC) means that the name is in \treeCC and \treeCL and not in \treeK. The mark (CL) means \treeCL only. The bounds \lean{root}, \lean{star}, \lean{upper} and \lean{inst} are in the syntax of all three trees.}
+\label{tab:names}
+\centering
+\begin{tabular}{@{}p{0.35\linewidth}p{0.61\linewidth}@{}}
+\toprule
+report & Lean \\
+\midrule
+\rg root of an atom, $\rt{a}$ & \rg \lean{Atom.root} \\
+\rg leaves of a set, $\leaves{\Gamma}{C}$ & \rg \lean{Ctx.roots}, \lean{Ctx.Root}, after expansion in \treeCC and \treeCL \\
+\rg star binder, $\kappa : \cstar$ & \rg \lean{CapBound.star} \\
+\rg scope binder, $\varrho : \scopeb$ & \rg \lean{CapBound.root}, constructed in \treeCC and \treeCL only \\
+\rg classified binder, $\kappa : \clsb{k}$ & \rg \lean{CapBound.cls} (CL) \\
+\rg instance binder, $\kappa \instb{C}$ & \rg \lean{CapBound.inst}, constructed in \treeCC and \treeCL only \\
+\rg bounded binder & \rg \lean{CapBound.upper}, never constructed \\
+\rg opaque capture binder & \rg \lean{CapBound.opaque} (CC): scope or star, and classified in \treeCL \\
+\rg platform binder & \rg a binder of the prefix of \lean{Platform}: star in \treeK and \treeCC, star or classified in \treeCL \\
+\rg universal capability, $\topc$ & \rg \lean{CapAtom.top} (CC) \\
+\rg scope capability & \rg \lean{Ctx.IsRoot} (CC) \\
+\rg innermost scope capability & \rg \lean{Ctx.rootAtom} (CC) \\
+\rg the context has no scope binder & \rg \lean{Store.Typed.rootFree} (CC) \\
+\rg at or outside the level of, $\lvlle{\Gamma}{c}{r}$ & \rg \lean{Ctx.LvlLe} (CC) \\
+\rg member-free, $\mfree{f}$ & \rg \lean{CapCo.MemberFree}, \lean{Subcap.MemberFree} (CC) \\
+\rg classifier of an atom, $\clsof{\Gamma}{c}$ & \rg \lean{Ctx.classOf} (CL) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -90,240 +125,37 @@ Theorem~\ref{thm:mini-effect} & \lean{effect\_safety} & \lean{Prediction}: 292 &
 \begin{table}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\addtocounter{table}{-1}
-\caption{Table~\ref{tab:mini-lean}, continued: the checks of the running example in \lean{FCdot/Examples.lean} of \treeK, and how each is checked.}
-\centering
-\begin{tabular}{@{}p{0.42\linewidth}p{0.22\linewidth}rp{0.22\linewidth}@{}}
-\toprule
-fact about the running example & Lean & line & how \\
-\midrule
-$\mathit{c1}$ is typed in the platform context & \lean{C1\_typed} & 1016 & decided \\
-$\uses{\mathit{prog}_1}$ and $\uses{\mathit{prog}_2}$ & \lean{C1\_uses\_console}, \lean{C1\_uses\_pure} & 1046, 1053 & decided \\
-the checker refuses the closure with inner annotation $\cempty$ & \lean{C6\_rejected} & 1079 & decided, \lean{= false} \\
-$\sigma_0$ is typed, and the initial state is typed & \lean{C6\_store}, \lean{C6st0\_typed} & 1100, 1110 & decided \\
-the seven steps of Table~\ref{tab:mini-run} & \lean{C6\_run} & 1210 & built by hand \\
-$\cset{\mathit{console}}$ is covered at state 7, and $\kappa_2$ is a leaf of the initial use set & \lean{C6\_covered}, \lean{C6\_covered\_root} & 1228, 1258 & theorem application \\
-the leaves of $\cset{\mathit{console}}$ after the allocation & \lean{C6\_console\_caps} & 1242 & \lean{simp}, fuel 0 \\
-the leaves of $\uses{\mathit{prog}_2}$ at every fuel & \lean{C6\_prog2\_caps} & 1277 & \lean{simp} \\
-$\kappa_2$ is not a leaf of $\uses{\mathit{prog}_2}$ & \lean{C6\_no\_kappa2} & 1285 & \lean{simp}, \lean{decide +kernel} \\
-Theorem~\ref{thm:mini-effect} for $\mathit{prog}_2$ & \lean{C6\_safe} & 1295 & theorem application \\
-Example~\ref{ex:mini-reject}, Table~\ref{tab:mini-run2} & none & & on paper \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Names}\label{sec:mech-names}
-
-Table~\ref{tab:names} maps the words of this report to the names of the Lean. Table~\ref{R1-tab:names} of report~1 does the same for the vanilla development. The Lean calls the leaves of a capture set its roots, and its comments call star binders, classified binders and anything opaque by one further word that the report does not use. In the report a root is only the $\rt{a}$ of report~1, the variable under the wrappers of an atom. Table~\ref{tab:matrix} gives for every theorem that the report cites its declaration line in each tree. Where a statement differs between trees, the note says how. The report cites every example of \treeCC from \treeCC unless it says otherwise.
-
-\begin{table}
-\small
-\caption{Words of this report and the Lean's names for them. The mark (CC) means that the name is in \treeCC and \treeCL and not in \treeK. The mark (CL) means \treeCL only.}
-\label{tab:names}
-\centering
-\begin{tabular}{@{}p{0.42\linewidth}p{0.5\linewidth}@{}}
-\toprule
-report & Lean \\
-\midrule
-root of an atom, $\rt{a}$ & \lean{Atom.root} \\
-leaves of a set, $\leaves{\Gamma}{C}$ & \lean{Ctx.roots}, \lean{Ctx.Root} (after expansion in CC) \\
-covered by, $\caple{\Gamma}{C}{D}$ & \lean{CapLe} \\
-same leaves, $\capeqv{\Gamma}{C}{D}$ & \lean{RootsEq} \\
-capture evidence includes leaves & \lean{cap\_canon} \\
-inspects, $\insp{t}$ & \lean{Tm.inspects}, \lean{State.inspects} \\
-use-set half of preservation & \lean{step\_uses} \\
-store extension, $\sext{\sigma}{\sigma'}$ & \lean{Store.Ext} \\
-star binder, $\kappa : \cstar$ & \lean{CapBound.star} \\
-scope binder, $\varrho : \scopeb$ & \lean{CapBound.root} (CC) \\
-classified binder, $\kappa : \clsb{k}$ & \lean{CapBound.cls} (CL) \\
-instance binder, $\kappa \instb{C}$ & \lean{CapBound.inst} \\
-bounded binder & \lean{CapBound.upper}, in the syntax of all three trees and never constructed \\
-opaque capture binder & \lean{CapBound.opaque} (CC): scope, star or classified \\
-platform binder & a binder of the prefix of \lean{Platform}: star in \treeK and \treeCC, star or classified in \treeCL \\
-universal capability, $\topc$ & \lean{CapAtom.top} (CC) \\
-scope capability & \lean{Ctx.IsRoot} (CC) \\
-innermost scope capability & \lean{Ctx.rootAtom} (CC) \\
-the context has no scope binder & \lean{Store.Typed.rootFree} (CC) \\
-at or outside the level of, $\lvlle{\Gamma}{c}{r}$ & \lean{Ctx.LvlLe} (CC) \\
-member-free, $\mfree{f}$ & \lean{CapCo.MemberFree}, \lean{Subcap.MemberFree} (CC) \\
-classifier of an atom, $\clsof{\Gamma}{c}$ & \lean{Ctx.classOf} (CL) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}
-\scriptsize
-\setlength{\tabcolsep}{2.5pt}
-\renewcommand{\arraystretch}{0.9}
-\caption{Which theorem exists in which tree, part 1: the target calculus. A dash means no declaration of that name. The columns K, CC and CL give the line of the declaration in \treeK, \treeCC and \treeCL, in the file of the second column. A cell with several numbers lists the declarations in the order of the first column. In part 1 the directory \lean{FCdot/} is left out of the file names.}
+\caption{The cited theorems whose existence or statement differs between the trees. K, CC and CL stand for \treeK, \treeCC and \treeCL. A mark $\checkmark$ means a declaration of that name in the tree, and a dash means none. A cited theorem that the table does not list has the same name in all three trees. Examples are listed only where their statements differ, because the report cites each example with its tree.}
 \label{tab:matrix}
 \centering
-\begin{tabular}{@{}p{0.29\linewidth}p{0.2\linewidth}rrrp{0.26\linewidth}@{}}
+\begin{tabular}{@{}p{0.47\linewidth}cccp{0.36\linewidth}@{}}
 \toprule
-name & file & K & CC & CL & note \\
+theorems & K & CC & CL & note \\
 \midrule
-\rg \lean{Ctx.\allowbreak{}Root\_\allowbreak{}var} & \rg \lean{CanonicalForms} & 286 & 292 & 292 & \rg  \\
-\rg \lean{cap\_\allowbreak{}canon} & \rg \lean{CanonicalForms} & 362 & 394 & 397 & \rg CC adds the case \lean{level}. CL adds \lean{unprojC}, \lean{projC}, \lean{projMono}. \\
-\rg \lean{capeq\_\allowbreak{}canon} & \rg \lean{CanonicalForms} & 381 & 428 & 492 & \rg CC adds \lean{instC}. \\
-\rg \lean{atom\_\allowbreak{}canon} & \rg \lean{CanonicalForms} & 503 & 553 & 627 & \rg conjunct \lean{AtomConcl.capLe} \\
-\rg \lean{le\_\allowbreak{}canon\_\allowbreak{}cap} & \rg \lean{CanonicalForms} & 354 & 387 & 389 & \rg  \\
-\rg \lean{shape\_\allowbreak{}canon} & \rg \lean{CanonicalForms} & 303 & 336 & 338 & \rg report 1's \lean{le\_canon} \\
-\rg \lean{closedAtomForm\_\allowbreak{}typed} & \rg \lean{CanonicalForms} & 549 & 599 & 673 & \rg  \\
-\rg \lean{closed\_\allowbreak{}box\_\allowbreak{}inversion} & \rg \lean{CanonicalForms} & 637 & 687 & 761 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}formsTyped} & \rg \lean{CanonicalForms} & 699 & 750 & 824 & \rg  \\
-\rg \lean{preservation'} & \rg \lean{CanonicalForms} & 766 & 817 & 891 & \rg  \\
-\rg \lean{erase\_\allowbreak{}reflect'} & \rg \lean{CanonicalForms} & 772 & 1216 & 1214 & \rg CC and CL state it at answers. CC, CL in \lean{FCdot/\allowbreak{}ErasureMetatheory}. \\
-\rg \lean{progress}, \lean{not\_\allowbreak{}stuck} & \rg \lean{Progress} & 69, 120 & 70, 151 & 70, 151 & \rg  \\
-\rg \lean{erase\_\allowbreak{}step} & \rg \lean{ErasureMetatheory} & 360 & 493 & 492 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}lookup\_\allowbreak{}annot} & \rg \lean{Store} & 133 & 178 & 178 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}root\_\allowbreak{}annot} & \rg \lean{Prediction} & 84 & 92 & 92 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}app\_\allowbreak{}uses} & \rg \lean{Prediction} & 95 & 103 & 103 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}proj\_\allowbreak{}uses} & \rg \lean{Prediction} & 117 & 126 & 126 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}lam\_\allowbreak{}closing} & \rg \lean{Preservation} & 544 & 824 & 842 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}ctx\_\allowbreak{}unique} & \rg \lean{Machine} & 324 & 464 & 480 & \rg  \\
-\rg \lean{CapCo.\allowbreak{}HasType.\allowbreak{}substAtom} & \rg \lean{TypingSubst} & 611 & 2864 & 3305 & \rg  \\
-\rg \lean{CapCo.\allowbreak{}HasType.\allowbreak{}letBody\_\allowbreak{}substAtom} & \rg \lean{TypingSubst} & 622 & 2875 & 3316 & \rg  \\
-\rg \lean{Tm.\allowbreak{}HasType.\allowbreak{}substAtom} & \rg \lean{TypingSubst} & 598 & 2851 & 3292 & \rg  \\
-\rg \lean{Tm.\allowbreak{}uses\_\allowbreak{}substAtom} & \rg \lean{RenameLemmas} & 1102 & 1474 & 1580 & \rg  \\
-\rg \lean{CapCo.\allowbreak{}HasType.\allowbreak{}adjust\_\allowbreak{}none} & \rg \lean{Preservation} & 511 & 759 & 778 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}unboxRefl\_\allowbreak{}result}, \lean{unboxCast\_\allowbreak{}result} & \rg \lean{Preservation} & 655, 666 & 1000, 1011 & 1018, 1029 & \rg  \\
-\rg \lean{Steps.\allowbreak{}typed} & \rg \lean{Consistency} & 258 & 416 & 420 & \rg  \\
-\rg \lean{step\_\allowbreak{}uses} & \rg \lean{Prediction} & 143 & 305 & 305 & \rg 12 cases in K, 18 in CC and CL \\
-\rg \lean{Store.\allowbreak{}Ext.\allowbreak{}roots}, \lean{root\_\allowbreak{}iff}, \lean{capLe} & \rg \lean{Machine} & 342, 377, 391 & 482, 517, 531 & 498, 533, 547 & \rg  \\
-\rg \lean{capture\_\allowbreak{}prediction} & \rg \lean{Prediction} & 260 & 451 & 451 & \rg same text. In CC and CL leaves are expanded. \\
-\rg \lean{inspects\_\allowbreak{}covered} & \rg \lean{Prediction} & 278 & 469 & 469 & \rg no typing hypothesis \\
-\rg \lean{Tm.\allowbreak{}inspects\_\allowbreak{}mem\_\allowbreak{}uses} & \rg \lean{Syntax} & 718 & 852 & 984 & \rg  \\
-\rg \lean{effect\_\allowbreak{}safety} & \rg \lean{Prediction} & 292 & 481 & 481 & \rg same text \\
-\rg \lean{effect\_\allowbreak{}safety\_\allowbreak{}unbox} & \rg \lean{Prediction} & 315 & - & - & \rg added to K after the CC copy \\
-\rg \lean{returned\_\allowbreak{}capture\_\allowbreak{}bound} & \rg \lean{Prediction} & 395 & 538 & 564 & \rg not about a run \\
-\rg \lean{Ctx.\allowbreak{}Root\_\allowbreak{}name} & \rg \lean{Resolution} & 1109 & 1880 & 2285 & \rg  \\
-\rg \lean{closed\_\allowbreak{}le\_\allowbreak{}shapes} & \rg \lean{Consistency} & 116 & 122 & 129 & \rg box disjunct \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}no\_\allowbreak{}top\_\allowbreak{}le\_\allowbreak{}bot} & \rg \lean{Consistency} & 158 & 164 & 171 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}no\_\allowbreak{}cap\_\allowbreak{}escape} & \rg \lean{Consistency} & 236 & 245 & 253 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}no\_\allowbreak{}cap\_\allowbreak{}star\_\allowbreak{}le\_\allowbreak{}nil} & \rg \lean{Consistency} & 244 & 252 & 260 & \rg  \\
-\rg \lean{reachable\_\allowbreak{}consistent} & \rg \lean{Consistency} & 269 & 427 & 431 & \rg  \\
-\rg \lean{checkTm\_\allowbreak{}iff}, \lean{checkCap\_\allowbreak{}iff} & \rg \lean{CheckerCompleteness} & 545, 430 & 638, 507 & 703, 553 & \rg  \\
-\rg \lean{root\_\allowbreak{}inversion}, \lean{atom\_\allowbreak{}root\_\allowbreak{}inversion} & \rg \lean{Consistency} & - & 361, 387 & - & \rg CC only \\
-\rg \lean{level\_\allowbreak{}inversion}, \lean{atom\_\allowbreak{}level\_\allowbreak{}inversion} & \rg \lean{LevelInversion} & - & 93, 121 & 151, 191 & \rg member-free, no store \\
-\rg \lean{level\_\allowbreak{}inversion\_\allowbreak{}plain} & \rg \lean{LevelInversion} & - & 478 & - & \rg CC only \\
-\rg \lean{lvl\_\allowbreak{}safety} & \rg \lean{Consistency} & - & 324 & 383 & \rg CL states it on leaves \\
-\rg \lean{no\_\allowbreak{}inner\_\allowbreak{}escape} & \rg \lean{Consistency} & - & 340 & 396 & \rg  \\
-\rg \lean{lvl\_\allowbreak{}canon} & \rg \lean{Consistency} & - & - & 374 & \rg deleted from CC, restated in CL \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}rootFree} & \rg \lean{Store} & - & 116 & 116 & \rg  \\
-\rg \lean{Store.\allowbreak{}Typed.\allowbreak{}confined} & \rg \lean{Consistency} & - & 285 & 292 & \rg  \\
-\rg \lean{Ctx.\allowbreak{}roots\_\allowbreak{}eq\_\allowbreak{}caps\_\allowbreak{}of\_\allowbreak{}rootFree} & \rg \lean{Resolution} & - & 1777 & 2179 & \rg  \\
-\rg \lean{Subst.\allowbreak{}Typed.\allowbreak{}enter} & \rg \lean{TypingSubst} & - & 2583 & 2973 & \rg premise: no scope binder in the context \\
-\rg \lean{ex\_\allowbreak{}stays\_\allowbreak{}ex}, \lean{no\_\allowbreak{}ex\_\allowbreak{}le\_\allowbreak{}ty}, \lean{pack\_\allowbreak{}canon} & \rg \lean{Preservation} & - & 573, 584, 596 & 595, 605, 616 & \rg  \\
-\rg \lean{kind\_\allowbreak{}canon} & \rg \lean{CanonicalForms} & - & - & 441 & \rg  \\
-\rg \lean{Ctx.\allowbreak{}roots\_\allowbreak{}proj}, \lean{Ctx.\allowbreak{}Root\_\allowbreak{}proj} & \rg \lean{Resolution} & - & - & 2387, 2401 & \rg  \\
-\rg \lean{Ctx.\allowbreak{}kindLe\_\allowbreak{}proj}, \lean{Ctx.\allowbreak{}KindLe.\allowbreak{}mono} & \rg \lean{Resolution} & - & - & 2557, 2561 & \rg  \\
-\rg \lean{Store.\allowbreak{}Ext.\allowbreak{}kindLe} & \rg \lean{Machine} & - & - & 626 & \rg  \\
-\rg \lean{classified\_\allowbreak{}prediction}, \lean{classified\_\allowbreak{}effect\_\allowbreak{}safety} & \rg \lean{Prediction} & - & - & 501, 514 & \rg  \\
-\rg \lean{checkKindCo\_\allowbreak{}iff\_\allowbreak{}hasType} & \rg \lean{CheckerCompleteness} & - & - & 572 & \rg adequacy, not completeness \\
-\rg \lean{Kind.\allowbreak{}contains\_\allowbreak{}subtract\_\allowbreak{}of}, \lean{Kind.\allowbreak{}Subkind.\allowbreak{}contains} & \rg \lean{Cls/\allowbreak{}Ops} & - & - & 230, 237 & \rg sound half only \\
-\rg \lean{Classifier.\allowbreak{}subclass\_\allowbreak{}or\_\allowbreak{}disjoint} & \rg \lean{Cls/\allowbreak{}Core} & - & - & 125 & \rg restated after the audit \\
+\rg \lean{effect\_safety\_unbox}, \lean{Ty.\allowbreak{}expandWith\_of\_anyOk} & $\checkmark$ & - & - & \rg added to K after the copies \\
+\rg \lean{dot\_not\_stuck\_platform} & $\checkmark$ & - & $\checkmark$ & \rg \\
+\rg \lean{Alg.answer} & $\checkmark$ & - & - & \rg CC and CL call it \lean{Alg.sound} \\
+\rg \lean{Alg.sound\_shape}, \lean{shape?\_complete} & $\checkmark$ & $\checkmark$ & - & \rg CL calls them \lean{Alg.sound\_shp} and \lean{shp?\_complete} \\
+\rg \lean{root\_inversion}, \lean{atom\_root\_inversion}, \lean{level\_inversion\_plain}, \lean{Subcap.\allowbreak{}memberFree\_of\_plain} & - & $\checkmark$ & - & \rg later strengthenings of CC \\
+\rg \lean{certify?\_sound}, \lean{certify?\_isSome} & - & $\checkmark$ & - & \rg CL keeps \lean{compile\_rejected\_goal} in their place (Section~\ref{sec:history}) \\
+\rg \lean{level\_inversion}, \lean{atom\_level\_inversion}, \lean{no\_inner\_escape}, \lean{Store.\allowbreak{}Typed.\allowbreak{}rootFree}, \lean{Store.\allowbreak{}Typed.\allowbreak{}confined}, \lean{Ctx.\allowbreak{}roots\_eq\_caps\_of\_rootFree}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}enter}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}singleC}, \lean{ex\_stays\_ex} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the target (Section~\ref{sec:levels}) \\
+\rg \lean{source\_lvl\_safety}, \lean{Subcap.\allowbreak{}translate\_memberFree}, \lean{CaptureSet.\allowbreak{}top\_not\_mem\_translate} and \lean{compile\_lvl\_safety} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the source and the front end \\
+\rg \lean{lvl\_safety} & - & $\checkmark$ & $\checkmark$ & \rg CC states it on the resolved set, CL on leaves \\
+\rg \lean{lvl\_canon} & - & - & $\checkmark$ & \rg deleted from CC, restated in CL (Section~\ref{sec:history}) \\
+\rg \lean{kind\_canon}, \lean{classified\_prediction}, \lean{classified\_effect\_safety}, \lean{Store.\allowbreak{}Ext.\allowbreak{}kindLe}, \lean{Ctx.\allowbreak{}KindLe.\allowbreak{}mono}, \lean{CapBound.\allowbreak{}cls\_not\_appendable}, \lean{Kind.\allowbreak{}Subkind.\allowbreak{}contains}, \lean{Classifier.\allowbreak{}subclass\_or\_disjoint}, \lean{dot\_classified\_effect\_safety}, \lean{compile\_classified\_effect\_safety}, \lean{compile\_consistent}, \lean{compile\_realized} & - & - & $\checkmark$ & \rg classifiers (Section~\ref{sec:classifiers}) \\
+\rg \lean{cap\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC adds the case \lean{level}, and CL adds \lean{unprojC}, \lean{projC} and \lean{projMono} \\
+\rg \lean{capeq\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL add the case \lean{instC} \\
+\rg \lean{step\_uses} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg 12 cases in K, 18 in CC and CL \\
+\rg \lean{erase\_reflect'} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL state it at answer types \\
+\rg \lean{capture\_prediction}, \lean{effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg same text, with leaves after expansion in CC and CL \\
+\rg \lean{dot\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL assume a plain type \\
+\rg \lean{Platform.\allowbreak{}root\_iff} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg no premise in K, $\topc \notin C$ in CC, and also no filtered atom in CL \\
+\rg \lean{dot\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg the hypothesis on $\kappa$ differs (Section~\ref{sec:source-thms}) \\
+\rg \lean{compile\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CL adds the premise \lean{noProj?} and the conjunct \lean{stt.inspects = some x} \\
+\midrule
+\rg \lean{X4\_no\_escape} & - & $\checkmark$ & $\checkmark$ & \rg CC for all evidence, CL for member-free evidence \\
+\rg \lean{W5\_no\_escape} & - & $\checkmark$ & $\checkmark$ & \rg at $\kappa_1$. CC for all source evidence, CL for member-free evidence \\
+\rg \lean{two\_calls\_incomparable} & - & $\checkmark$ & $\checkmark$ & \rg four conjuncts in CC, two in CL \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\begin{table}
-\scriptsize
-\setlength{\tabcolsep}{2.5pt}
-\renewcommand{\arraystretch}{0.9}
-\addtocounter{table}{-1}
-\caption{Table~\ref{tab:matrix}, part 2: the source calculus and its translation.}
-\centering
-\begin{tabular}{@{}p{0.29\linewidth}p{0.2\linewidth}rrrp{0.26\linewidth}@{}}
-\toprule
-name & file & K & CC & CL & note \\
-\midrule
-\rg \lean{Ty.\allowbreak{}expandWith\_\allowbreak{}of\_\allowbreak{}anyOk} & \rg \lean{DotMNF/\allowbreak{}Syntax} & 890 & - & - & \rg  \\
-\rg \lean{HasTy.\allowbreak{}widen} & \rg \lean{DotMNF/\allowbreak{}Typing} & 264 & 902 & 1225 & \rg  \\
-\rg \lean{erase\_\allowbreak{}step}, \lean{erase\_\allowbreak{}reflect} & \rg \lean{DotMNF/\allowbreak{}Erasure} & 245, 337 & 344, 453 & 345, 454 & \rg  \\
-\rg \lean{HasTy.\allowbreak{}translate\_\allowbreak{}typed} & \rg \lean{DotToFCdot/\allowbreak{}TermsTyped} & 212 & 213 & 215 & \rg hypothesis: context well formed \\
-\rg \lean{HasTy.\allowbreak{}translate\_\allowbreak{}uses} & \rg \lean{DotToFCdot/\allowbreak{}TermsTyped} & 286 & 313 & 315 & \rg  \\
-\rg \lean{HasTy.\allowbreak{}translate\_\allowbreak{}erase}, \lean{coherence} & \rg \lean{DotToFCdot/\allowbreak{}Erasure} & 51, 107 & 51, 110 & 51, 110 & \rg no well-formedness hypothesis \\
-\rg \lean{Subcap.\allowbreak{}translate\_\allowbreak{}typed} & \rg \lean{DotToFCdot/\allowbreak{}EvidenceTyped} & 1245 & 1388 & 1513 & \rg  \\
-\rg \lean{Platform.\allowbreak{}root\_\allowbreak{}iff} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 135 & 141 & 163 & \rg K has no premise. CC has $\topc \notin C$. CL has $\topc \notin C$ and no filtered atom. \\
-\rg \lean{Platform.\allowbreak{}simulatedRun} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 208 & 226 & 286 & \rg  \\
-\rg \lean{dot\_\allowbreak{}safety} & \rg \lean{DotToFCdot/\allowbreak{}Safety} & 184 & 187 & 189 & \rg empty context. CC and CL: plain answers \\
-\rg \lean{dot\_\allowbreak{}safety\_\allowbreak{}platform} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 228 & 320 & 306 & \rg  \\
-\rg \lean{dot\_\allowbreak{}not\_\allowbreak{}stuck\_\allowbreak{}platform} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 237 & - & 316 & \rg not in CC \\
-\rg \lean{dot\_\allowbreak{}capture\_\allowbreak{}prediction} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 255 & 250 & 338 & \rg  \\
-\rg \lean{dot\_\allowbreak{}effect\_\allowbreak{}safety} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & 284 & 281 & 368 & \rg K and CC: hypothesis $\kappa \notin \trans{U}$, no conjunct $\insp{\mathit{stt}} = x$. CL: $\kappa$ not a leaf of $\trans{U}$, with the conjunct. \\
-\rg \lean{reachable\_\allowbreak{}consistent} & \rg \lean{DotToFCdot/\allowbreak{}Consistency} & 27 & 28 & 31 & \rg  \\
-\rg \lean{source\_\allowbreak{}lvl\_\allowbreak{}safety} & \rg \lean{DotToFCdot/\allowbreak{}EvidenceTyped} & - & 1618 & 1862 & \rg  \\
-\rg \lean{Subcap.\allowbreak{}translate\_\allowbreak{}memberFree} & \rg \lean{DotToFCdot/\allowbreak{}Evidence} & - & 325 & 384 & \rg  \\
-\rg \lean{Subcap.\allowbreak{}memberFree\_\allowbreak{}of\_\allowbreak{}plain} & \rg \lean{DotToFCdot/\allowbreak{}EvidenceTyped} & - & 1753 & - & \rg  \\
-\rg \lean{CaptureSet.\allowbreak{}top\_\allowbreak{}not\_\allowbreak{}mem\_\allowbreak{}translate} & \rg \lean{DotToFCdot/\allowbreak{}Types} & - & 139 & 152 & \rg  \\
-\rg \lean{CapKind.\allowbreak{}translate\_\allowbreak{}typed} & \rg \lean{DotToFCdot/\allowbreak{}EvidenceTyped} & - & - & 1679 & \rg  \\
-\rg \lean{dot\_\allowbreak{}classified\_\allowbreak{}prediction}, \lean{dot\_\allowbreak{}classified\_\allowbreak{}prediction'} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & - & - & 409, 429 & \rg  \\
-\rg \lean{dot\_\allowbreak{}classified\_\allowbreak{}effect\_\allowbreak{}safety}, \lean{dot\_\allowbreak{}classified\_\allowbreak{}effect\_\allowbreak{}safety'} & \rg \lean{DotToFCdot/\allowbreak{}Prediction} & - & - & 449, 484 & \rg unprimed form takes a semantic hypothesis \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}
-\scriptsize
-\setlength{\tabcolsep}{2.5pt}
-\renewcommand{\arraystretch}{0.9}
-\addtocounter{table}{-1}
-\caption{Table~\ref{tab:matrix}, part 3: the front-end pipelines, files in \lean{Frontend/} of each tree.}
-\centering
-\begin{tabular}{@{}p{0.29\linewidth}p{0.2\linewidth}rrrp{0.26\linewidth}@{}}
-\toprule
-name & file & K & CC & CL & note \\
-\midrule
-\rg \lean{compile} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 210 & 487 & 693 & \rg definition \\
-\rg \lean{compile\_\allowbreak{}checks}, \lean{compile\_\allowbreak{}uses\_\allowbreak{}checks}, \lean{compile\_\allowbreak{}erase} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 268, 274, 280 & 592, 599, 606 & 826, 832, 839 & \rg proof ignores the hypothesis \lean{h} \\
-\rg \lean{compile\_\allowbreak{}safe}, \lean{compile\_\allowbreak{}not\_\allowbreak{}stuck} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 328, 334 & 662, 668 & 930, 937 & \rg proof ignores \lean{h} \\
-\rg \lean{compile\_\allowbreak{}capture\_\allowbreak{}prediction} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 360 & 694 & 963 & \rg proof ignores \lean{h} \\
-\rg \lean{compile\_\allowbreak{}effect\_\allowbreak{}safety} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 376 & 711 & 1002 & \rg CL adds \lean{noProj?} and \lean{stt.inspects = some x} \\
-\rg \lean{compile\_\allowbreak{}lvl\_\allowbreak{}safety} & \rg \lean{Frontend/\allowbreak{}Pipeline} & - & 730 & 1018 & \rg  \\
-\rg \lean{compile\_\allowbreak{}faithful}, \lean{compile\_\allowbreak{}faithful\_\allowbreak{}written} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 294, 482 & 619, 942 & 878, 1348 & \rg read \lean{h} \\
-\rg \lean{compile\_\allowbreak{}full} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 451 & 870 & 1258 & \rg about \lean{compile} \\
-\rg \lean{compileE\_\allowbreak{}fills}, \lean{compileE\_\allowbreak{}skel}, \lean{compileE\_\allowbreak{}slot} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 512, 551, 599 & 970, 1009, 1067 & 1380, 1421, 1479 & \rg about \lean{compileE} \\
-\rg \lean{elab\_\allowbreak{}complete\_\allowbreak{}direct}, \lean{compile\_\allowbreak{}complete\_\allowbreak{}direct} & \rg \lean{Frontend/\allowbreak{}Pipeline} & 1605, 1618 & 2867, 2880 & 3323, 3363 & \rg direct sites \\
-\rg \lean{certify?} & \rg \lean{Frontend/\allowbreak{}Typer} & - & 1162 & 1343 & \rg definition \\
-\rg \lean{certify?\_\allowbreak{}sound}, \lean{certify?\_\allowbreak{}isSome} & \rg \lean{Frontend/\allowbreak{}Pipeline} & - & 743, 763 & - & \rg CL restates \lean{compile\_rejected\_goal} (\lean{Frontend/Examples.lean:1650}) \\
-\rg \lean{escape\_\allowbreak{}rejected\_\allowbreak{}at} & \rg \lean{Frontend/\allowbreak{}Search} & - & 77 & 75 & \rg  \\
-\rg \lean{compile\_\allowbreak{}classified\_\allowbreak{}effect\_\allowbreak{}safety}, \lean{compile\_\allowbreak{}filtered\_\allowbreak{}effect\_\allowbreak{}safety} & \rg \lean{Frontend/\allowbreak{}Pipeline} & - & - & 1109, 1159 & \rg  \\
-\rg \lean{Alg.answer}, \lean{Alg.sound\_shape}, \lean{Alg.sound\_cap}, \lean{Alg.sound} & \rg \lean{Frontend/\allowbreak{}Alg} & 858, 950, 954 & 999 & 1336 & \rg K states soundness in three parts \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}
-\scriptsize
-\setlength{\tabcolsep}{2.5pt}
-\renewcommand{\arraystretch}{0.9}
-\addtocounter{table}{-1}
-\caption{Table~\ref{tab:matrix}, part 4: examples whose statements differ between trees.}
-\centering
-\begin{tabular}{@{}p{0.29\linewidth}p{0.2\linewidth}rrrp{0.26\linewidth}@{}}
-\toprule
-name & file & K & CC & CL & note \\
-\midrule
-\rg \lean{C1\_\allowbreak{}typed}, \lean{C6\_\allowbreak{}run}, \lean{C6\_\allowbreak{}safe} & \rg \lean{FCdot/\allowbreak{}Examples} & 1016, 1210, 1295 & 1046, 1240, 1327 & 1046, 1240, 1330 & \rg transcribed in CC and CL \\
-\rg \lean{X4\_\allowbreak{}no\_\allowbreak{}escape} & \rg \lean{FCdot/\allowbreak{}Examples} & - & 2212 & 2194 & \rg CC: all evidence. CL: member-free evidence only. \\
-\rg \lean{W5\_\allowbreak{}no\_\allowbreak{}escape} & \rg \lean{FCdot/\allowbreak{}Examples} & - & 3348 & 3066 & \rg at \lean{k1} only. CC: all source evidence. CL: member-free only. \\
-\rg \lean{two\_\allowbreak{}calls\_\allowbreak{}incomparable} & \rg \lean{FCdot/\allowbreak{}Examples} & - & 2600 & 2571 & \rg CC: four conjuncts. CL: two. \\
-\rg \lean{two\_\allowbreak{}calls\_\allowbreak{}incomparable\_\allowbreak{}rooted}, \lean{X4Ctx\_\allowbreak{}plain} & \rg \lean{FCdot/\allowbreak{}Examples} & - & 2721, 2205 & - & \rg  \\
-\rg \lean{C2\_\allowbreak{}never\_\allowbreak{}reads\_\allowbreak{}k1} & \rg \lean{Frontend/\allowbreak{}Examples} & 1521 & 1933 & 2228 & \rg  \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Comments that disagree with the report}\label{sec:mech-stale}
-
-The following comments in the trees disagree with the Lean or with this report. They are listed here and not fixed. Line numbers are those of \lean{de9b596}.
-\begin{enumerate}
-\item \lean{Captures/FCdot/Prediction.lean:29-32}, \lean{CapturesCC/FCdot/Prediction.lean:24-27} and \lean{Classifiers/FCdot/Prediction.lean:24-27} say that no form, entry or slot of the normalizer is involved in \lean{step\_uses}. The cases \lean{appCastRefl}, \lean{appCast}, \lean{unboxRefl} and \lean{unboxCast} use the field \lean{formsTyped} of a typed store (\lean{Captures/FCdot/Prediction.lean:205, 215, 237, 248}).
-\item \lean{Captures/FCdot/Typing.lean:330-331}, \lean{CapturesCC/FCdot/Typing.lean:442} and \lean{Classifiers/FCdot/Typing.lean:596} say that a value is pure and its capture set empty. The rule \lean{Value.HasType.lam} types a lambda at $\capt{(\pit{T}{U})}{A}$ for its annotation $A$.
-\item \lean{Captures/FCdot/Typing.lean:71-72}, \lean{CapturesCC/FCdot/Typing.lean:75-76} and \lean{Classifiers/FCdot/Typing.lean:88-89} remark on a chain with a box in it at the rule \lean{capvar}. The remark belongs to the atom wrappers of the second box design (Section~\ref{sec:history}). Atoms have no box wrapper.
-\item \lean{Captures/FCdot/Context.lean:22-25} says that resolution reads only the bounds \lean{root} and \lean{star}. \lean{Ctx.capsAtom} also reads \lean{upper} and \lean{inst} (\lean{Captures/FCdot/Resolution.lean:584-585}). No rule or step of \treeK creates such a binder.
-\item \lean{CapturesCC/DotMNF/Typing.lean:673-675} and \lean{Classifiers/DotMNF/Typing.lean:840-841} call \lean{Subcap.inst} the rule \lean{cinstr} of Capless. The rule derives $\subcj{\Gamma}{C}{\cset{\kappa}}$ from \lean{Ctx.InstOf}, and Capless calls that rule \lean{cinstl} (\lean{Capless/Subcapturing.lean:28-30}). Capless has both directions, and the source here has this one.
-\item \lean{Classifiers/FCdot/Context.lean:44-47} describes \lean{CapBound.classifier} as the strict reading, in which a binder with no declared classifier reads as the root classifier. The rule \lean{kcls} fires at classified binders only (Section~\ref{sec:history}).
-\item \lean{CapturesCC/DotMNF/Syntax.lean:205-211} and \lean{Classifiers/DotMNF/Syntax.lean:242-248} describe the reading of $\cany$ as reset at every former, with no level needed. These two trees thread one set down, as \lean{Shape.expand} and \lean{Ty.expand} in the same files say (Section~\ref{sec:levels}).
-\item \lean{lean/Coercions/README.md:126-128} says that \lean{W5\_no\_escape} concerns subcapturings that read no capture bound and says nothing about derivations that read one. The theorem quantifies over all source subcapturing evidence at \lean{k1}, and \lean{Subcap.memberFree\_of\_plain} shows that in its context no evidence reads a bound.
-\end{enumerate}
