@@ -165,3 +165,5 @@ algebra.  It has no operational semantics.
 Each directory has a README.
 
 **`paper/`** is a tutorial report on the main line (acmart, `latexmk -pdf main.tex`) for a reader who knows System F but not DOT, with a table mapping its results to the Lean declarations.
+
+**`paper-captures/`** is its sequel, a tutorial report on `Captures/`, `CapturesCC/` and `Classifiers/` (`make`, which builds `paper/` first for its cross-references) for a reader of the first report who has not seen capture checking.  It proves capture prediction and effect safety on a fragment with one running program, then walks through the three trees and their front ends, and maps every result to its Lean declaration and tree.
