@@ -26,7 +26,7 @@ Its promise is that its run never inspects a variable with root $\kappa_1$. The 
 
 \subsection{\DOTMNF with use sets}\label{sec:source-calc}
 
-Figure~\ref{fig:source} gives the source, report~1's \DOTMNF with capture sets. A type is a shape with a capture set. The capture member $\dcap{C}{C_1}{C_2}$ sits at a type label $C$, as the compiler desugars a capture-set parameter. Type-member bounds are shapes, so a type member abstracts over a capturing type only through a box $\dbox{T}$. The unboxing $\dunbox{C}{x}$ names the set it charges.
+Figures~\ref{fig:source} and~\ref{fig:source-rules} give the source, report~1's \DOTMNF with capture sets. A type is a shape with a capture set. The capture member $\dcap{C}{C_1}{C_2}$ sits at a type label $C$, as the compiler desugars a capture-set parameter. Type-member bounds are shapes, so a type member abstracts over a capturing type only through a box $\dbox{T}$. The unboxing $\dunbox{C}{x}$ names the set it charges.
 
 \begin{figure}
 \footnotesize
@@ -60,50 +60,95 @@ $\begin{array}[t]{@{}lcl@{}}
 \insp{\mst{\sigma}{K}{\dunbox{C}{x}}} & = & x \\
 \mst{\sigma}{K}{\dunbox{C}{x}} & \step & \mst{\sigma}{K}{y} \quad \text{if } \sigma(x) = \dbox{y}
 \end{array}$
-\end{minipage}\par\medskip
-$\begin{array}{@{}l@{\quad}l@{\ \ }c@{\ \ }l@{}}
-\rn{Sc-Refl} & & & \subcj{\Gamma}{C}{C} \\
-\rn{Sc-Trans} & \subcj{\Gamma}{C_1}{C_2} \quad \subcj{\Gamma}{C_2}{C_3} & \Longrightarrow & \subcj{\Gamma}{C_1}{C_3} \\
-\rn{Sc-Elem} & C_1 \subseteq C_2 & \Longrightarrow & \subcj{\Gamma}{C_1}{C_2} \\
-\rn{Sc-Union} & \subcj{\Gamma}{C_1}{D} \quad \subcj{\Gamma}{C_2}{D} & \Longrightarrow & \subcj{\Gamma}{C_1 \cup C_2}{D} \\
-\rn{Sc-Var} & \Gamma(x) = \capt{S}{C} & \Longrightarrow & \subcj{\Gamma}{\cset{x}}{C} \\
-\rn{Sc-Sel-Lower} & \dtyuj{U'}{\Gamma}{x}{\capt{\dcap{C}{C_1}{C_2}}{D}} & \Longrightarrow & \subcj{\Gamma}{C_1}{\cset{x.C}} \\
-\rn{Sc-Sel-Upper} & \dtyuj{U'}{\Gamma}{x}{\capt{\dcap{C}{C_1}{C_2}}{D}} & \Longrightarrow & \subcj{\Gamma}{\cset{x.C}}{C_2} \\[3pt]
-\rn{Top} & & & \subj{\Gamma}{S}{\top} \\
-\rn{Bot} & & & \subj{\Gamma}{\bot}{S} \\
-\rn{Refl} & & & \subj{\Gamma}{S}{S} \\
-\rn{Trans} & \subj{\Gamma}{S_1}{S_2} \quad \subj{\Gamma}{S_2}{S_3} & \Longrightarrow & \subj{\Gamma}{S_1}{S_3} \\
-\rn{And$_1$} & & & \subj{\Gamma}{S_1 \wedge S_2}{S_1} \\
-\rn{And$_2$} & & & \subj{\Gamma}{S_1 \wedge S_2}{S_2} \\
-\rn{And} & \subj{\Gamma}{S}{S_1} \quad \subj{\Gamma}{S}{S_2} & \Longrightarrow & \subj{\Gamma}{S}{S_1 \wedge S_2} \\
-\rn{Fld} & \subj{\Gamma}{T}{T'} & \Longrightarrow & \subj{\Gamma}{\dfld{a}{T}}{\dfld{a}{T'}} \\
-\rn{Typ} & \subj{\Gamma}{S_1'}{S_1} \quad \subj{\Gamma}{S_2}{S_2'} & \Longrightarrow & \subj{\Gamma}{\dtyp{A}{S_1}{S_2}}{\dtyp{A}{S_1'}{S_2'}} \\
-\rn{CapMem} & \subcj{\Gamma}{C_1'}{C_1} \quad \subcj{\Gamma}{C_2}{C_2'} & \Longrightarrow & \subj{\Gamma}{\dcap{C}{C_1}{C_2}}{\dcap{C}{C_1'}{C_2'}} \\
-\rn{Boxed} & \subj{\Gamma}{T}{T'} & \Longrightarrow & \subj{\Gamma}{\dbox{T}}{\dbox{T'}} \\
-\rn{Sel-<:} & \dtyuj{U}{\Gamma}{x}{\capt{\dtyp{A}{S_1}{S_2}}{C}} & \Longrightarrow & \subj{\Gamma}{x.A}{S_2} \\
-\rn{<:-Sel} & \dtyuj{U}{\Gamma}{x}{\capt{\dtyp{A}{S_1}{S_2}}{C}} & \Longrightarrow & \subj{\Gamma}{S_1}{x.A} \\
-\rn{All} & \subj{\Gamma}{T_1'}{T_1} \quad \subj{\Gamma, x : T_1'}{T_2}{T_2'} & \Longrightarrow & \subj{\Gamma}{\dall{x}{T_1}{T_2}}{\dall{x}{T_1'}{T_2'}} \\
-\rn{Capt} & \subj{\Gamma}{S}{S'} \quad \subcj{\Gamma}{C}{C'} & \Longrightarrow & \subj{\Gamma}{\capt{S}{C}}{\capt{S'}{C'}} \\[3pt]
-\rn{Var} & \Gamma(x) = \capt{S}{C} & \Longrightarrow & \dtyuj{\cset{x}}{\Gamma}{x}{\capt{S}{\cset{x}}} \\
-\rn{All-I} & \dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : T_1}{t}{T_2} \quad T_1\ \mathit{wf} & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\lambda(x : T_1).\,t}{\capt{(\dall{x}{T_1}{T_2})}{U}} \\
-\rn{All-E} & \dtyuj{U}{\Gamma}{x}{\capt{(\dall{z}{T_1}{T_2})}{C}} \quad \dtyuj{U}{\Gamma}{y}{T_1} & \Longrightarrow & \dtyuj{U}{\Gamma}{x\,y}{T_2[z \mapsto y]} \\
-\rn{\{\}-I} & \dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d}{d}{S} \quad \Distinct\,d & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\dnew{x}{d}}{\capt{(\dmu{x}{S})}{U}} \\
-\rn{Box} & \dtyuj{U}{\Gamma}{x}{T} & \Longrightarrow & \dtyuj{\cempty}{\Gamma}{\dbox{x}}{\capt{(\dbox{T})}{\cempty}} \\
-\rn{\{\}-E} & \dtyuj{U}{\Gamma}{x}{\capt{\dfld{a}{T}}{C}} & \Longrightarrow & \dtyuj{U}{\Gamma}{x.a}{T} \\
-\rn{Let} & \dtyuj{U}{\Gamma}{t}{T} \quad \dtyuj{\weak{U}}{\Gamma, x : T}{u}{\weak{T'}} \quad T'\ \mathit{wf} & \Longrightarrow & \dtyuj{U}{\Gamma}{\klet x = t \kin u}{T'} \\
-\rn{Unbox} & \dtyuj{U}{\Gamma}{x}{\capt{(\dbox{\capt{S}{C}})}{D}} \quad \subcj{\Gamma}{C}{U} & \Longrightarrow & \dtyuj{U}{\Gamma}{\dunbox{C}{x}}{\capt{S}{C}} \\
-\rn{Rec-I} & \dtyuj{U}{\Gamma}{x}{\capt{(S[z \mapsto x])}{C}} \quad \Decl\,S & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}} \\
-\rn{Rec-E} & \dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}} \quad \Decl\,S & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{(S[z \mapsto x])}{C}} \\
-\rn{And-I} & \dtyuj{U}{\Gamma}{x}{\capt{S_1}{C}} \quad \dtyuj{U}{\Gamma}{x}{\capt{S_2}{C}} & \Longrightarrow & \dtyuj{U}{\Gamma}{x}{\capt{(S_1 \wedge S_2)}{C}} \\
-\rn{Sub} & \dtyuj{U}{\Gamma}{t}{T} \quad \subj{\Gamma}{T}{T'} \quad \subcj{\Gamma}{U}{U'} & \Longrightarrow & \dtyuj{U'}{\Gamma}{t}{T'} \\[3pt]
-\rn{Def-Typ} & & & \dtyuj{U}{\Gamma}{\ddeftyp{A}{S}}{\dtyp{A}{S}{S}} \\
-\rn{Def-Cap} & & & \dtyuj{U}{\Gamma}{\ddeftyp{C}{D}}{\dcap{C}{D}{D}} \\
-\rn{Def-Trm} & \dtyuj{U}{\Gamma}{t}{T} & \Longrightarrow & \dtyuj{U}{\Gamma}{\ddeftrm{a}{t}}{\dfld{a}{T}} \\
-\rn{Def-And} & \dtyuj{U}{\Gamma}{d_1}{S_1} \quad \dtyuj{U}{\Gamma}{d_2}{S_2} & \Longrightarrow & \dtyuj{U}{\Gamma}{d_1 \wedge d_2}{S_1 \wedge S_2}
-\end{array}$
+\end{minipage}
 \color{black}
-\caption{\DOTMNF with use sets and every rule. $\Gamma(x)$ is the type of $x$, $\weak{U}$ is $U$ under the new binder, and $C_1 \subseteq C_2$ says that every atom of $C_1$ occurs in $C_2$. $\insp{\mathit{st}}$ is undefined for every other state.}
+\caption{\DOTMNF with use sets, its syntax and its step. $\insp{\mathit{st}}$ is undefined for every other state.}
 \label{fig:source}
+\end{figure}
+
+\begin{figure}
+\footnotesize
+\mathsrc
+\begin{mathpar}
+\inferrule[Sc-Refl]{ }{\subcj{\Gamma}{C}{C}}
+\and
+\inferrule[Sc-Trans]{\subcj{\Gamma}{C_1}{C_2} \\ \subcj{\Gamma}{C_2}{C_3}}{\subcj{\Gamma}{C_1}{C_3}}
+\and
+\inferrule[Sc-Elem]{C_1 \subseteq C_2}{\subcj{\Gamma}{C_1}{C_2}}
+\and
+\inferrule[Sc-Union]{\subcj{\Gamma}{C_1}{D} \\ \subcj{\Gamma}{C_2}{D}}{\subcj{\Gamma}{C_1 \cup C_2}{D}}
+\and
+\inferrule[Sc-Var]{\Gamma(x) = \capt{S}{C}}{\subcj{\Gamma}{\cset{x}}{C}}
+\and
+\inferrule[Sc-Sel-Lower]{\dtyuj{U'}{\Gamma}{x}{\capt{\dcap{C}{C_1}{C_2}}{D}}}{\subcj{\Gamma}{C_1}{\cset{x.C}}}
+\and
+\inferrule[Sc-Sel-Upper]{\dtyuj{U'}{\Gamma}{x}{\capt{\dcap{C}{C_1}{C_2}}{D}}}{\subcj{\Gamma}{\cset{x.C}}{C_2}}
+\\
+\inferrule[Top]{ }{\subj{\Gamma}{S}{\top}}
+\and
+\inferrule[Bot]{ }{\subj{\Gamma}{\bot}{S}}
+\and
+\inferrule[Refl]{ }{\subj{\Gamma}{S}{S}}
+\and
+\inferrule[Trans]{\subj{\Gamma}{S_1}{S_2} \\ \subj{\Gamma}{S_2}{S_3}}{\subj{\Gamma}{S_1}{S_3}}
+\and
+\inferrule[And$_1$]{ }{\subj{\Gamma}{S_1 \wedge S_2}{S_1}}
+\and
+\inferrule[And$_2$]{ }{\subj{\Gamma}{S_1 \wedge S_2}{S_2}}
+\and
+\inferrule[And]{\subj{\Gamma}{S}{S_1} \\ \subj{\Gamma}{S}{S_2}}{\subj{\Gamma}{S}{S_1 \wedge S_2}}
+\and
+\inferrule[Fld]{\subj{\Gamma}{T}{T'}}{\subj{\Gamma}{\dfld{a}{T}}{\dfld{a}{T'}}}
+\and
+\inferrule[Typ]{\subj{\Gamma}{S_1'}{S_1} \\ \subj{\Gamma}{S_2}{S_2'}}{\subj{\Gamma}{\dtyp{A}{S_1}{S_2}}{\dtyp{A}{S_1'}{S_2'}}}
+\and
+\inferrule[CapMem]{\subcj{\Gamma}{C_1'}{C_1} \\ \subcj{\Gamma}{C_2}{C_2'}}{\subj{\Gamma}{\dcap{C}{C_1}{C_2}}{\dcap{C}{C_1'}{C_2'}}}
+\and
+\inferrule[Boxed]{\subj{\Gamma}{T}{T'}}{\subj{\Gamma}{\dbox{T}}{\dbox{T'}}}
+\and
+\inferrule[Sel-<:]{\dtyuj{U}{\Gamma}{x}{\capt{\dtyp{A}{S_1}{S_2}}{C}}}{\subj{\Gamma}{x.A}{S_2}}
+\and
+\inferrule[<:-Sel]{\dtyuj{U}{\Gamma}{x}{\capt{\dtyp{A}{S_1}{S_2}}{C}}}{\subj{\Gamma}{S_1}{x.A}}
+\and
+\inferrule[All]{\subj{\Gamma}{T_1'}{T_1} \\ \subj{\Gamma, x : T_1'}{T_2}{T_2'}}{\subj{\Gamma}{\dall{x}{T_1}{T_2}}{\dall{x}{T_1'}{T_2'}}}
+\and
+\inferrule[Capt]{\subj{\Gamma}{S}{S'} \\ \subcj{\Gamma}{C}{C'}}{\subj{\Gamma}{\capt{S}{C}}{\capt{S'}{C'}}}
+\\
+\inferrule[Var]{\Gamma(x) = \capt{S}{C}}{\dtyuj{\cset{x}}{\Gamma}{x}{\capt{S}{\cset{x}}}}
+\and
+\inferrule[All-I]{\dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : T_1}{t}{T_2} \\ T_1\ \mathit{wf}}{\dtyuj{\cempty}{\Gamma}{\lambda(x : T_1).\,t}{\capt{(\dall{x}{T_1}{T_2})}{U}}}
+\and
+\inferrule[All-E]{\dtyuj{U}{\Gamma}{x}{\capt{(\dall{z}{T_1}{T_2})}{C}} \\ \dtyuj{U}{\Gamma}{y}{T_1}}{\dtyuj{U}{\Gamma}{x\,y}{T_2[z \mapsto y]}}
+\and
+\inferrule[\{\}-I]{\dtyuj{\weak{U} \cup \cset{x}}{\Gamma, x : \capt{(\dmu{x}{S})}{U} \mathrel{:=} d}{d}{S} \\ \Distinct\,d}{\dtyuj{\cempty}{\Gamma}{\dnew{x}{d}}{\capt{(\dmu{x}{S})}{U}}}
+\and
+\inferrule[Box]{\dtyuj{U}{\Gamma}{x}{T}}{\dtyuj{\cempty}{\Gamma}{\dbox{x}}{\capt{(\dbox{T})}{\cempty}}}
+\and
+\inferrule[\{\}-E]{\dtyuj{U}{\Gamma}{x}{\capt{\dfld{a}{T}}{C}}}{\dtyuj{U}{\Gamma}{x.a}{T}}
+\and
+\inferrule[Let]{\dtyuj{U}{\Gamma}{t}{T} \\ \dtyuj{\weak{U}}{\Gamma, x : T}{u}{\weak{T'}} \\ T'\ \mathit{wf}}{\dtyuj{U}{\Gamma}{\klet x = t \kin u}{T'}}
+\and
+\inferrule[Unbox]{\dtyuj{U}{\Gamma}{x}{\capt{(\dbox{\capt{S}{C}})}{D}} \\ \subcj{\Gamma}{C}{U}}{\dtyuj{U}{\Gamma}{\dunbox{C}{x}}{\capt{S}{C}}}
+\and
+\inferrule[Rec-I]{\dtyuj{U}{\Gamma}{x}{\capt{(S[z \mapsto x])}{C}} \\ \Decl\,S}{\dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}}}
+\and
+\inferrule[Rec-E]{\dtyuj{U}{\Gamma}{x}{\capt{(\dmu{z}{S})}{C}} \\ \Decl\,S}{\dtyuj{U}{\Gamma}{x}{\capt{(S[z \mapsto x])}{C}}}
+\and
+\inferrule[And-I]{\dtyuj{U}{\Gamma}{x}{\capt{S_1}{C}} \\ \dtyuj{U}{\Gamma}{x}{\capt{S_2}{C}}}{\dtyuj{U}{\Gamma}{x}{\capt{(S_1 \wedge S_2)}{C}}}
+\and
+\inferrule[Sub]{\dtyuj{U}{\Gamma}{t}{T} \\ \subj{\Gamma}{T}{T'} \\ \subcj{\Gamma}{U}{U'}}{\dtyuj{U'}{\Gamma}{t}{T'}}
+\\
+\inferrule[Def-Typ]{ }{\dtyuj{U}{\Gamma}{\ddeftyp{A}{S}}{\dtyp{A}{S}{S}}}
+\and
+\inferrule[Def-Cap]{ }{\dtyuj{U}{\Gamma}{\ddeftyp{C}{D}}{\dcap{C}{D}{D}}}
+\and
+\inferrule[Def-Trm]{\dtyuj{U}{\Gamma}{t}{T}}{\dtyuj{U}{\Gamma}{\ddeftrm{a}{t}}{\dfld{a}{T}}}
+\and
+\inferrule[Def-And]{\dtyuj{U}{\Gamma}{d_1}{S_1} \\ \dtyuj{U}{\Gamma}{d_2}{S_2}}{\dtyuj{U}{\Gamma}{d_1 \wedge d_2}{S_1 \wedge S_2}}
+\end{mathpar}
+\color{black}
+\caption{Every rule of \DOTMNF with use sets. $\Gamma(x)$ is the type of $x$, $\weak{U}$ is $U$ under the new binder, and $C_1 \subseteq C_2$ says that every atom of $C_1$ occurs in $C_2$.}
+\label{fig:source-rules}
 \end{figure}
 
 In $\dtyuj{U}{\Gamma}{t}{T}$ the set $U$ is the use set (Section~\ref{sec:cc-uses}). \rn{All-I} checks the body at $\weak{U} \cup \cset{x}$ and gives the lambda the use set $\cempty$, so creating a closure uses nothing. \rn{\{\}-I} does the same for fields. \rn{Let} uses one $U$ for both premises, so the body's uses of $x$ must be absorbed into $\weak{U}$ by \rn{Sub}, which widens use sets on every term. \rn{Unbox} charges the boxed set $C$ against $U$, and \rn{Box} charges nothing.

@@ -152,21 +152,29 @@ The first equation goes through $\mathit{log}$, whose type $\CapT{\kappa_1}$ has
 \begin{figure}[t]
 \small
 \color{tgtcol}
-\[
-\begin{array}{@{}l@{\qquad}l@{}}
-\rn{C-Refl} & \inferrule{ }{\clej{\Gamma}{\ev{refl}\,C}{C}{C}} \\[6pt]
-\rn{C-Trans} & \inferrule{\clej{\Gamma}{f}{C_1}{C_2} \\ \clej{\Gamma}{g}{C_2}{C_3}}{\clej{\Gamma}{\ev{trans}\,f\,g}{C_1}{C_3}} \\[6pt]
-\rn{C-Elem} & \inferrule{C \subseteq D}{\clej{\Gamma}{\ev{elem}\,C\,D}{C}{D}} \\[6pt]
-\rn{C-Union} & \inferrule{\clej{\Gamma}{f}{C_1}{D} \\ \clej{\Gamma}{g}{C_2}{D}}{\clej{\Gamma}{\ev{union}\,f\,g}{C_1 \cup C_2}{D}} \\[6pt]
-\rn{C-Var} & \inferrule{\Gamma(x) = \capt{S}{C}}{\clej{\Gamma}{\ev{capvar}\,x}{\cset{x}}{C}} \\[10pt]
-\rn{T-Var} & \inferrule{\Gamma(x) = T}{\tmj{\Gamma}{x}{T}} \\[6pt]
-\rn{T-Val} & \inferrule{\valj{\Gamma}{v}{T}}{\tmj{\Gamma}{v}{T}} \\[6pt]
-\rn{T-App} & \inferrule{\Gamma(x) = \capt{(\pit[z]{T}{T'})}{C} \\ \Gamma(y) = T}{\tmj{\Gamma}{x\,y}{T'[z \mapsto y]}} \\[6pt]
-\rn{T-Let} & \inferrule{\tmj{\Gamma}{t}{T} \\ \tmj{\Gamma, x : T}{u}{\weak{T'}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}}}{\tmj{\Gamma}{\letc{x}{t}{u}{U}{f}}{T'}} \\[10pt]
-\rn{V-Lam} & \inferrule{\tmj{\Gamma, x : T}{t}{T'} \\ \clej{\Gamma, x : T}{g}{\uses{t}}{\weak{A} \cup \cset{x}}}{\valj{\Gamma}{\lamc{A}{x}{T}{t}{g}}{\capt{(\pit[x]{T}{T'})}{A}}} \\[6pt]
-\rn{V-Unit} & \inferrule{ }{\valj{\Gamma}{\unitv}{\Unit}}
-\end{array}
-\]
+\begin{mathpar}
+\inferrule[C-Refl]{ }{\clej{\Gamma}{\ev{refl}\,C}{C}{C}}
+\and
+\inferrule[C-Trans]{\clej{\Gamma}{f}{C_1}{C_2} \\ \clej{\Gamma}{g}{C_2}{C_3}}{\clej{\Gamma}{\ev{trans}\,f\,g}{C_1}{C_3}}
+\and
+\inferrule[C-Elem]{C \subseteq D}{\clej{\Gamma}{\ev{elem}\,C\,D}{C}{D}}
+\and
+\inferrule[C-Union]{\clej{\Gamma}{f}{C_1}{D} \\ \clej{\Gamma}{g}{C_2}{D}}{\clej{\Gamma}{\ev{union}\,f\,g}{C_1 \cup C_2}{D}}
+\and
+\inferrule[C-Var]{\Gamma(x) = \capt{S}{C}}{\clej{\Gamma}{\ev{capvar}\,x}{\cset{x}}{C}}
+\\
+\inferrule[T-Var]{\Gamma(x) = T}{\tmj{\Gamma}{x}{T}}
+\and
+\inferrule[T-Val]{\valj{\Gamma}{v}{T}}{\tmj{\Gamma}{v}{T}}
+\and
+\inferrule[T-App]{\Gamma(x) = \capt{(\pit[z]{T}{T'})}{C} \\ \Gamma(y) = T}{\tmj{\Gamma}{x\,y}{T'[z \mapsto y]}}
+\and
+\inferrule[T-Let]{\tmj{\Gamma}{t}{T} \\ \tmj{\Gamma, x : T}{u}{\weak{T'}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}}}{\tmj{\Gamma}{\letc{x}{t}{u}{U}{f}}{T'}}
+\\
+\inferrule[V-Lam]{\tmj{\Gamma, x : T}{t}{T'} \\ \clej{\Gamma, x : T}{g}{\uses{t}}{\weak{A} \cup \cset{x}}}{\valj{\Gamma}{\lamc{A}{x}{T}{t}{g}}{\capt{(\pit[x]{T}{T'})}{A}}}
+\and
+\inferrule[V-Unit]{ }{\valj{\Gamma}{\unitv}{\Unit}}
+\end{mathpar}
 \color{black}
 \caption{Typing of the fragment: capture evidence, terms and values. $\weak{X}$ is $X$ read under the new binder, which $X$ does not mention.}
 \label{fig:mini-typing}

@@ -14,16 +14,20 @@ A program runs against a store. The store holds the capture binders of the platf
 \begin{figure}[t]
 \small
 \color{tgtcol}
+\begin{mathpar}
+\inferrule[S-Nil]{ }{\storej{\cdot}{\cdot}}
+\and
+\inferrule[S-Val]{\storej{\sigma}{\Gamma} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, x = v}{\Gamma, x : T}}
+\and
+\inferrule[S-Cap]{\storej{\sigma}{\Gamma}}{\storej{\sigma, \kappa}{\Gamma, \kappa : \cstar}}
+\\
+\inferrule[K-Nil]{ }{\contj{\Gamma}{\cdot}{T}{T}}
+\and
+\inferrule[K-Let]{\tmj{\Gamma, x : T}{u}{\weak{T'}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \\ \contj{\Gamma}{K}{T'}{T''}}{\contj{\Gamma}{K \triangleright \frlet{x}{u}{U}{f}}{T}{T''}}
+\\
+\inferrule[St]{\storej{\sigma}{\Gamma} \\ \tmj{\Gamma}{t}{T} \\ \contj{\Gamma}{K}{T}{T'}}{\statej{\mst{\sigma}{K}{t}}{T'}}
+\end{mathpar}
 \[
-\begin{array}{@{}l@{}}
-\begin{array}{@{}p{5.5em}@{}l@{}}
-\rn{S-Nil} & \inferrule{ }{\storej{\cdot}{\cdot}} \\[6pt]
-\rn{S-Val} & \inferrule{\storej{\sigma}{\Gamma} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, x = v}{\Gamma, x : T}} \\[6pt]
-\rn{S-Cap} & \inferrule{\storej{\sigma}{\Gamma}}{\storej{\sigma, \kappa}{\Gamma, \kappa : \cstar}} \\[10pt]
-\rn{K-Nil} & \inferrule{ }{\contj{\Gamma}{\cdot}{T}{T}} \\[6pt]
-\rn{K-Let} & \inferrule{\tmj{\Gamma, x : T}{u}{\weak{T'}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \\ \contj{\Gamma}{K}{T'}{T''}}{\contj{\Gamma}{K \triangleright \frlet{x}{u}{U}{f}}{T}{T''}} \\[10pt]
-\rn{St} & \inferrule{\storej{\sigma}{\Gamma} \\ \tmj{\Gamma}{t}{T} \\ \contj{\Gamma}{K}{T}{T'}}{\statej{\mst{\sigma}{K}{t}}{T'}}
-\end{array} \\[12pt]
 \begin{array}{@{}p{5.5em}@{}l@{\enspace}c@{\enspace}l@{}}
 \rn{E-Let} & \mst{\sigma}{K}{\letc{x}{t}{u}{U}{f}} & \step & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{t} \\
 \rn{E-Alloc} & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{v} & \step & \mst{(\sigma, x = v)}{K}{u} \\
@@ -31,13 +35,17 @@ A program runs against a store. The store holds the capture binders of the platf
 \rn{E-Rename} & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{y} & \step & \mst{\sigma}{K}{u[x \mapsto y]} \\
 \rn{E-App} & \mst{\sigma}{K}{x\,y} & \step & \mst{\sigma}{K}{t[z \mapsto y]} \\
 & & & \quad \text{if } \sigma(x) = \lamc{A}{z}{T}{t}{g}
-\end{array} \\[12pt]
+\end{array}
+\]
+\begin{mathpar}
+\inferrule[Run-Refl]{ }{\mathit{st} \steps \mathit{st}}
+\and
+\inferrule[Run-Step]{\mathit{st} \steps \mathit{st}' \\ \mathit{st}' \step \mathit{st}''}{\mathit{st} \steps \mathit{st}''}
+\end{mathpar}
+\[
 \begin{array}{@{}p{5.5em}@{}l@{}}
-\rn{Run-Refl} & \inferrule{ }{\mathit{st} \steps \mathit{st}} \\[6pt]
-\rn{Run-Step} & \inferrule{\mathit{st} \steps \mathit{st}' \\ \mathit{st}' \step \mathit{st}''}{\mathit{st} \steps \mathit{st}''} \\[10pt]
 \text{Final state} & \mst{\sigma}{\cdot}{v} \\
 \text{Final state} & \mst{\sigma}{\cdot}{x}
-\end{array}
 \end{array}
 \]
 \color{black}

@@ -9,7 +9,6 @@
 \providecommand{\admstep}[2]{#1 \sqsubseteq^{=}_{\mathsf{k}} #2}
 \providecommand{\kempty}[1]{\mathit{empty}(#1)}
 \providecommand{\clchild}[2]{\mathsf{child}_{#1}(#2)}
-\providecommand{\yields}{\mathrel{\Longrightarrow}}
 \providecommand{\tstate}{\tgt{\mathit{ts}}}
 
 Scala's capture checker can also say what kind of capabilities a value may use. A capability class may extend a classifier, such as \lean{Control}, and a capture set can keep only the capabilities of one classifier, or exclude them. This section adds classifiers to \treeCC, as the tree \treeCL does. Every theorem of this section is in \treeCL.
@@ -113,28 +112,42 @@ by \lean{K1x\_roots\_ctl}, \lean{K1x\_roots\_io} and \lean{K3x\_roots}, all thre
 \text{Templates} & \tau & ::= & \cdots \mid \ev{kindC}\,p\,j\,\chi \mid \ev{kindCle}\,p\,H\,p'\,g\,\chi
 \end{array}
 \]
-\[
-\begin{array}{@{}l@{\quad}l@{}}
-\rn{Kd-Nil} & \yields \kindj{\Gamma}{\ev{nil}}{\cempty}{\chi} \\
-\rn{Kd-Cons} & \kindj{\Gamma}{g}{\cset{c}}{\chi} \quad \kindj{\Gamma}{h}{C}{\chi} \yields \kindj{\Gamma}{\ev{cons}\,g\,h}{\cset{c} \cup C}{\chi} \\
-\rn{Kd-Proj} & \subkind{\kindof{c}}{\chi} \yields \kindj{\Gamma}{\ev{kproj}\,c}{\cset{c}}{\chi} \\
-\rn{Kd-Cls} & \baseof{c} : \clsb{k} \in \Gamma \quad (\kcont{k}{\kindof{c}} \Rightarrow \kcont{k}{\chi}) \yields \kindj{\Gamma}{\ev{kcls}\,c}{\cset{c}}{\chi} \\
-\rn{Kd-Var} & \atomj{\Gamma}{b}{\capt{S}{C}} \quad \baseof{c} = \rt{b} \quad \kindj{\Gamma}{g}{\restr{C}{\kindof{c}}}{\chi} \yields \kindj{\Gamma}{\ev{kvar}\,b\,g}{\cset{c}}{\chi} \\
-\rn{Kd-CVar} & (\baseof{c} \instb{C} \in \Gamma \text{ or } \baseof{c} : \mathsf{upper}\,C \in \Gamma) \quad \kindj{\Gamma}{g}{\restr{C}{\kindof{c}}}{\chi} \\
-& \qquad \yields \kindj{\Gamma}{\ev{kcvar}\,c\,g}{\cset{c}}{\chi} \\
-\rn{Kd-Member} & \atomj{\Gamma}{b}{\capt{S}{D}} \quad \shpj{\Gamma}{e}{S}{\obj{\tel}} \quad \tat{\tel}{i}{\pkind{C}{\chi}} \\
-& \qquad \yields \kindj{\Gamma}{\ev{kmember}\,b\,e\,i}{C[\self \mapsto \rt{b}]}{\chi} \\
-\rn{Kd-ProjS} & \kindj{\Gamma}{g}{C}{\chi} \yields \kindj{\Gamma}{\ev{kprojS}\,g\,C\,\chi'}{\restr{C}{\chi'}}{\chi} \\
-\rn{Kd-Sub} & \kindj{\Gamma}{g}{C}{\chi_1} \quad \subkind{\chi_1}{\chi_2} \yields \kindj{\Gamma}{\ev{ksub}\,g\,\chi_1}{C}{\chi_2} \\
-\rn{Kd-Le} & \clej{\Gamma}{f}{C}{D} \quad \kindj{\Gamma}{g}{D}{\chi} \yields \kindj{\Gamma}{\ev{kle}\,f\,g}{C}{\chi} \\[3pt]
-\rn{C-Unproj} & \yields \clej{\Gamma}{\ev{unprojC}\,C\,\chi}{\restr{C}{\chi}}{C} \\
-\rn{C-Proj} & \kindj{\Gamma}{g}{C}{\chi} \yields \clej{\Gamma}{\ev{projC}\,g\,C\,\chi}{C}{\restr{C}{\chi}} \\
-\rn{C-ProjMono} & \clej{\Gamma}{f}{C}{D} \yields \clej{\Gamma}{\ev{projMono}\,f\,\chi}{\restr{C}{\chi}}{\restr{D}{\chi}} \\[3pt]
-\rn{M-Kind} & \tat{\tel}{j}{\pkind{C}{\chi_1}} \quad \Gamma \vdash p : D \le C \quad \admstep{\chi_1}{\chi_2} \yields \morj{\Gamma}{\ev{kindC}\,p\,j\,\chi_2}{\tel}{\pkind{D}{\chi_2}} \\
-\rn{M-KindLe} & \tel \vdash H : \plec{C_1}{C_2} \quad \Gamma \vdash p : D \le C_1 \quad \Gamma \vdash p' : C_2 \le \weak{A} \quad \kindj{\Gamma}{g}{A}{\chi} \\
-& \qquad \yields \morj{\Gamma}{\ev{kindCle}\,p\,H\,p'\,g\,\chi}{\tel}{\pkind{D}{\chi}}
-\end{array}
-\]
+\begin{mathpar}
+\inferrule[Kd-Nil]{ }{\kindj{\Gamma}{\ev{nil}}{\cempty}{\chi}}
+\and
+\inferrule[Kd-Cons]{\kindj{\Gamma}{g}{\cset{c}}{\chi} \\ \kindj{\Gamma}{h}{C}{\chi}}{\kindj{\Gamma}{\ev{cons}\,g\,h}{\cset{c} \cup C}{\chi}}
+\and
+\inferrule[Kd-Proj]{\subkind{\kindof{c}}{\chi}}{\kindj{\Gamma}{\ev{kproj}\,c}{\cset{c}}{\chi}}
+\and
+\inferrule[Kd-Cls]{\baseof{c} : \clsb{k} \in \Gamma \\ (\kcont{k}{\kindof{c}} \Rightarrow \kcont{k}{\chi})}{\kindj{\Gamma}{\ev{kcls}\,c}{\cset{c}}{\chi}}
+\and
+\inferrule[Kd-Var]{\atomj{\Gamma}{b}{\capt{S}{C}} \\ \baseof{c} = \rt{b} \\ \kindj{\Gamma}{g}{\restr{C}{\kindof{c}}}{\chi}}
+  {\kindj{\Gamma}{\ev{kvar}\,b\,g}{\cset{c}}{\chi}}
+\and
+\inferrule[Kd-CVar]{(\baseof{c} \instb{C} \in \Gamma \text{ or } \baseof{c} : \mathsf{upper}\,C \in \Gamma) \\ \kindj{\Gamma}{g}{\restr{C}{\kindof{c}}}{\chi}}
+  {\kindj{\Gamma}{\ev{kcvar}\,c\,g}{\cset{c}}{\chi}}
+\and
+\inferrule[Kd-Member]{\atomj{\Gamma}{b}{\capt{S}{D}} \\ \shpj{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\pkind{C}{\chi}}}
+  {\kindj{\Gamma}{\ev{kmember}\,b\,e\,i}{C[\self \mapsto \rt{b}]}{\chi}}
+\and
+\inferrule[Kd-ProjS]{\kindj{\Gamma}{g}{C}{\chi}}{\kindj{\Gamma}{\ev{kprojS}\,g\,C\,\chi'}{\restr{C}{\chi'}}{\chi}}
+\and
+\inferrule[Kd-Sub]{\kindj{\Gamma}{g}{C}{\chi_1} \\ \subkind{\chi_1}{\chi_2}}{\kindj{\Gamma}{\ev{ksub}\,g\,\chi_1}{C}{\chi_2}}
+\and
+\inferrule[Kd-Le]{\clej{\Gamma}{f}{C}{D} \\ \kindj{\Gamma}{g}{D}{\chi}}{\kindj{\Gamma}{\ev{kle}\,f\,g}{C}{\chi}}
+\\
+\inferrule[C-Unproj]{ }{\clej{\Gamma}{\ev{unprojC}\,C\,\chi}{\restr{C}{\chi}}{C}}
+\and
+\inferrule[C-Proj]{\kindj{\Gamma}{g}{C}{\chi}}{\clej{\Gamma}{\ev{projC}\,g\,C\,\chi}{C}{\restr{C}{\chi}}}
+\and
+\inferrule[C-ProjMono]{\clej{\Gamma}{f}{C}{D}}{\clej{\Gamma}{\ev{projMono}\,f\,\chi}{\restr{C}{\chi}}{\restr{D}{\chi}}}
+\\
+\inferrule[M-Kind]{\tat{\tel}{j}{\pkind{C}{\chi_1}} \\ \Gamma \vdash p : D \le C \\ \admstep{\chi_1}{\chi_2}}
+  {\morj{\Gamma}{\ev{kindC}\,p\,j\,\chi_2}{\tel}{\pkind{D}{\chi_2}}}
+\and
+\inferrule[M-KindLe]{\tel \vdash H : \plec{C_1}{C_2} \\ \Gamma \vdash p : D \le C_1 \\ \Gamma \vdash p' : C_2 \le \weak{A} \\ \kindj{\Gamma}{g}{A}{\chi}}
+  {\morj{\Gamma}{\ev{kindCle}\,p\,H\,p'\,g\,\chi}{\tel}{\pkind{D}{\chi}}}
+\end{mathpar}
 \color{black}
 \caption{Kinding evidence: the new syntax, the ten kinding rules, the three new capture rules, and the two templates for kinding propositions. Here $g$ and $h$ range over kinding evidence and $f$ over capture inclusion. A template proves one proposition of the target telescope from the source telescope $\tel$, as in Figure~\ref{fig:target-capev}, and the hole $H$ and the sides $p$, $p'$ are those of the capture templates there. The binder $\mathsf{upper}\ C$ is in the syntax, and no rule or step constructs it.}
 \label{fig:cl-kinding}

@@ -48,39 +48,60 @@ Section~\ref{sec:cc-later} quoted the escape of \lstinline{withFile}, where the 
 \uses{\letex{\kappa}{x}{t}{u}{U}{g}{f}} & = & \uses{t} \cup U \\
 \uses{K \triangleright \ev{castE}\,\eta} & = & \uses{K} \\
 \uses{K \triangleright \frletex{\kappa}{x}{u}{U}{g}{f}} & = & \uses{K} \cup U
-\end{array} \\[6pt]
-\begin{array}{@{}p{6.2em}@{}l@{}}
-\rn{C-Level} & r = \topc \text{ or } \Gamma \text{ binds } r : \scopeb \qquad \lvlle{\Gamma}{c}{r} \ \Longrightarrow\ \clej{\Gamma}{\ev{level}\,c\,r}{\cset{c}}{\cset{r}} \\
-\rn{CE-Inst} & \Gamma \text{ binds } \kappa \instb{C} \ \Longrightarrow\ \ceqj{\Gamma}{\ev{instC}\,\kappa\,C}{\cset{\kappa}}{C} \\
-\rn{Sh-Pi} & \lej{\mathit{scope}(\Gamma)}{d}{T_2}{T_1} \qquad \elej{\mathit{body}(\Gamma, T_2)}{\eta}{E_1}{E_2} \ \Longrightarrow\ \shpj{\Gamma}{\ev{pi}\,d\,\eta}{\pit[\kappa, x]{T_1}{E_1}}{\pit[\kappa, x]{T_2}{E_2}} \\
-\rn{Ans-Plain} & \lej{\Gamma}{d}{T}{T'} \ \Longrightarrow\ \elej{\Gamma}{\ev{plain}\,d}{T}{T'} \\
-\rn{Ans-Pack} & \clej{\Gamma}{g}{C}{C_0} \qquad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \elej{\Gamma}{\ev{pack}\,C\,g\,d}{T'}{\exc{\kappa}{C_0}{T}} \\
-\rn{Ans-Cong} & \clej{\Gamma}{g}{C_0}{C_0'} \qquad \lej{\mathit{scope}(\Gamma)}{d}{T}{T'} \ \Longrightarrow\ \elej{\Gamma}{\ev{cong}\,g\,d}{\exc{\kappa}{C_0}{T}}{\exc{\kappa}{C_0'}{T'}} \\
-\rn{Ans-Trans} & \elej{\Gamma}{\eta}{E_1}{E_2} \qquad \elej{\Gamma}{\eta'}{E_2}{E_3} \ \Longrightarrow\ \elej{\Gamma}{\ev{trans}\,\eta\,\eta'}{E_1}{E_3} \\
-\rn{T-PackA} & \atomj{\Gamma}{a}{T'} \quad \clej{\Gamma}{g}{C}{C_0} \quad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \tmj{\Gamma}{\ev{pack}\,C\,g\,d\,a}{\exc{\kappa}{C_0}{T}} \\
-\rn{T-PackV} & \valj{\Gamma}{v}{T'} \quad \clej{\Gamma}{g}{C}{C_0} \quad \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T} \ \Longrightarrow\ \tmj{\Gamma}{\ev{pack}\,C\,g\,d\,v}{\exc{\kappa}{C_0}{T}} \\
-\rn{T-App} & \atomj{\Gamma}{a}{\capt{(\pit[\kappa, x]{T}{E})}{C}} \quad \atomj{\Gamma}{b}{T[\kappa \mapsto \rt{b}]} \ \Longrightarrow\ \tmj{\Gamma}{a\,b}{E[\kappa \mapsto \rt{b}, x \mapsto b]} \\
-\rn{T-CastE} & \tmj{\Gamma}{t}{E} \qquad \elej{\Gamma}{\eta}{E}{E'} \ \Longrightarrow\ \tmj{\Gamma}{\ev{castE}\,t\,\eta}{E'} \\
-\rn{T-Let} & \tmj{\Gamma}{t}{T} \quad \tmj{\Gamma, x : T}{u}{\weak{E}} \quad \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \ \Longrightarrow\ \tmj{\Gamma}{\letc{x}{t}{u}{U}{f}}{E} \\
-\rn{T-LetEx} & \tmj{\Gamma}{t}{\exc{\kappa}{C_0}{T}} \qquad \clej{\Gamma}{g}{C_0}{U} \qquad \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \\
- & \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}} \ \Longrightarrow\ \tmj{\Gamma}{\letex{\kappa}{x}{t}{u}{U}{g}{f}}{E} \\
-\rn{V-Lam} & \tmj{\mathit{body}(\Gamma, T)}{t}{E} \qquad \clej{\mathit{body}(\Gamma, T)}{g}{\uses{t}}{\weak{A} \cup \cset{x}} \\
- & \qquad \Longrightarrow\ \valj{\Gamma}{\lamcc{A}{\varrho}{\kappa, x}{T}{t}{g}}{\capt{(\pit[\kappa, x]{T}{E})}{A}} \\
-\rn{V-Obj} & \mathit{obj}(\Gamma, T) \vdash^{\weak{A}}_{\!f} F \ \Longrightarrow\ \valj{\Gamma}{\litc{A}{W}{W^{c}}{F}}{T} \quad \text{where } T = \capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A} \\
-\rn{S-Cap} & \storej{\sigma}{\Gamma} \qquad B \ne \scopeb \ \Longrightarrow\ \storej{\sigma, \kappa : B}{\Gamma, \kappa : B}
 \end{array}
 \end{array}
 \]
+\begin{mathpar}
+\inferrule[C-Level]{r = \topc \text{ or } \Gamma \text{ binds } r : \scopeb \\ \lvlle{\Gamma}{c}{r}}{\clej{\Gamma}{\ev{level}\,c\,r}{\cset{c}}{\cset{r}}}
+\and
+\inferrule[CE-Inst]{\Gamma \text{ binds } \kappa \instb{C}}{\ceqj{\Gamma}{\ev{instC}\,\kappa\,C}{\cset{\kappa}}{C}}
+\\
+\inferrule[Sh-Pi]{\lej{\mathit{scope}(\Gamma)}{d}{T_2}{T_1} \\ \elej{\mathit{body}(\Gamma, T_2)}{\eta}{E_1}{E_2}}{\shpj{\Gamma}{\ev{pi}\,d\,\eta}{\pit[\kappa, x]{T_1}{E_1}}{\pit[\kappa, x]{T_2}{E_2}}}
+\and
+\inferrule[Ans-Plain]{\lej{\Gamma}{d}{T}{T'}}{\elej{\Gamma}{\ev{plain}\,d}{T}{T'}}
+\and
+\inferrule[Ans-Pack]{\clej{\Gamma}{g}{C}{C_0} \\ \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T}}{\elej{\Gamma}{\ev{pack}\,C\,g\,d}{T'}{\exc{\kappa}{C_0}{T}}}
+\and
+\inferrule[Ans-Cong]{\clej{\Gamma}{g}{C_0}{C_0'} \\ \lej{\mathit{scope}(\Gamma)}{d}{T}{T'}}{\elej{\Gamma}{\ev{cong}\,g\,d}{\exc{\kappa}{C_0}{T}}{\exc{\kappa}{C_0'}{T'}}}
+\and
+\inferrule[Ans-Trans]{\elej{\Gamma}{\eta}{E_1}{E_2} \\ \elej{\Gamma}{\eta'}{E_2}{E_3}}{\elej{\Gamma}{\ev{trans}\,\eta\,\eta'}{E_1}{E_3}}
+\end{mathpar}
 \color{black}
-\caption{What \treeCC adds to the syntax and the typing rules of Figures~\ref{fig:target-syntax} to~\ref{fig:target-capev}: the universal capability, existential answers, packed atoms and values, answer casts, unpacking, the rules \rn{C-Level} and \rn{CE-Inst}, answer inclusion, and the changed rules for functions, lets, lambdas, literals, calls and stores. An atom term is now a packed atom, and the Lean types packed atoms and values by judgments of their own, which \rn{T-PackA} and \rn{T-PackV} combine with the term rule. The contexts $\mathit{scope}$, $\mathit{body}$ and $\mathit{obj}$ are in Section~\ref{sec:levels-scopes}. Here $\weak{X}$ reads $X$ under all the binders that the context of the premise adds. The other rules carry over with answers where they had types.}
+\caption{What \treeCC adds to the syntax and the typing rules of Figures~\ref{fig:target-syntax} to~\ref{fig:target-capev}: the universal capability, existential answers, packed atoms and values, answer casts, unpacking, the rules \rn{C-Level} and \rn{CE-Inst}, answer inclusion, and the changed rule for functions. Figure~\ref{fig:cc-rules} gives the typing rules for the new terms and values and the other changed rules. The contexts $\mathit{scope}$ and $\mathit{body}$ are in Section~\ref{sec:levels-scopes}. Here $\weak{X}$ reads $X$ under all the binders that the context of the premise adds.}
 \label{fig:cc}
 \end{figure}
 
 \begin{figure}[t]
 \footnotesize
 \color{tgtcol}
+\begin{mathpar}
+\inferrule[T-PackA]{\atomj{\Gamma}{a}{T'} \\ \clej{\Gamma}{g}{C}{C_0} \\ \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T}}{\tmj{\Gamma}{\ev{pack}\,C\,g\,d\,a}{\exc{\kappa}{C_0}{T}}}
+\and
+\inferrule[T-PackV]{\valj{\Gamma}{v}{T'} \\ \clej{\Gamma}{g}{C}{C_0} \\ \lej{\mathit{scope}(\Gamma, C)}{d}{\weak{T'}}{T}}{\tmj{\Gamma}{\ev{pack}\,C\,g\,d\,v}{\exc{\kappa}{C_0}{T}}}
+\and
+\inferrule[T-App]{\atomj{\Gamma}{a}{\capt{(\pit[\kappa, x]{T}{E})}{C}} \\ \atomj{\Gamma}{b}{T[\kappa \mapsto \rt{b}]}}{\tmj{\Gamma}{a\,b}{E[\kappa \mapsto \rt{b}, x \mapsto b]}}
+\and
+\inferrule[T-CastE]{\tmj{\Gamma}{t}{E} \\ \elej{\Gamma}{\eta}{E}{E'}}{\tmj{\Gamma}{\ev{castE}\,t\,\eta}{E'}}
+\and
+\inferrule[T-Let]{\tmj{\Gamma}{t}{T} \\ \tmj{\Gamma, x : T}{u}{\weak{E}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}}}{\tmj{\Gamma}{\letc{x}{t}{u}{U}{f}}{E}}
+\and
+\inferrule[T-LetEx]{\tmj{\Gamma}{t}{\exc{\kappa}{C_0}{T}} \\ \clej{\Gamma}{g}{C_0}{U} \\ \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \\ \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}}}{\tmj{\Gamma}{\letex{\kappa}{x}{t}{u}{U}{g}{f}}{E}}
+\\
+\inferrule[V-Lam]{\tmj{\mathit{body}(\Gamma, T)}{t}{E} \\ \clej{\mathit{body}(\Gamma, T)}{g}{\uses{t}}{\weak{A} \cup \cset{x}}}{\valj{\Gamma}{\lamcc{A}{\varrho}{\kappa, x}{T}{t}{g}}{\capt{(\pit[\kappa, x]{T}{E})}{A}}}
+\and
+\inferrule[V-Obj]{\mathit{obj}(\Gamma, T) \vdash^{\weak{A}}_{\!f} F}{\valj{\Gamma}{\litc{A}{W}{W^{c}}{F}}{T} \quad \text{where } T = \capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A}}
+\and
+\inferrule[S-Cap]{\storej{\sigma}{\Gamma} \\ B \ne \scopeb}{\storej{\sigma, \kappa : B}{\Gamma, \kappa : B}}
+\end{mathpar}
+\color{black}
+\caption{The typing rules of \treeCC for packed atoms and values, answer casts and unpacking, and its changed rules for lets, lambdas, literals, calls and stores. An atom term is now a packed atom, and the Lean types packed atoms and values by judgments of their own, which \rn{T-PackA} and \rn{T-PackV} combine with the term rule. The contexts $\mathit{scope}$, $\mathit{body}$ and $\mathit{obj}$ are in Section~\ref{sec:levels-scopes}. Here $\weak{X}$ reads $X$ under all the binders that the context of the premise adds. The other rules carry over with answers where they had types.}
+\label{fig:cc-rules}
+\end{figure}
+
+\begin{figure}[t]
+\footnotesize
+\color{tgtcol}
 \[
-\begin{array}{@{}l@{}}
 \begin{array}{@{}lcl@{}}
 \ent{b} & = & [\varrho \mapsto \topc, \kappa \mapsto \rt{b}, z \mapsto b] \qquad \text{for the closure's binders } \varrho, \kappa, z \\
 L & = & \frletex{\kappa}{x}{u}{U}{g}{f} \\
@@ -90,12 +111,17 @@ L & = & \frletex{\kappa}{x}{u}{U}{g}{f} \\
 \appE{\omega}{\ev{pack}\,C\,g\,d} & = & \ev{pack}\,C\,g\,d\,\omega \\
 \appE{\omega}{\ev{trans}\,\eta\,\eta'} & = & \appE{(\appE{\omega}{\eta})}{\eta'} \\
 \appE{\bar{a}}{\eta} & = & \bar{a} \qquad \text{in every other case, and likewise for a value}
-\end{array} \\[6pt]
+\end{array}
+\]
+\begin{mathpar}
+\inferrule[K-Let]{\tmj{\Gamma, x : T}{u}{\weak{E}} \\ \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \\ \contj{\Gamma}{K}{E}{T''}}{\contj{\Gamma}{K \triangleright \frlet{x}{u}{U}{f}}{T}{T''}}
+\and
+\inferrule[K-CastE]{\elej{\Gamma}{\eta}{E}{E'} \\ \contj{\Gamma}{K}{E'}{T''}}{\contj{\Gamma}{K \triangleright \ev{castE}\,\eta}{E}{T''}}
+\and
+\inferrule[K-LetEx]{\clej{\Gamma}{g}{C_0}{U} \\ \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \\ \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}} \\ \contj{\Gamma}{K}{E}{T''}}{\contj{\Gamma}{K \triangleright L}{\exc{\kappa}{C_0}{T}}{T''}}
+\end{mathpar}
+\[
 \begin{array}{@{}p{6.2em}@{}l@{}}
-\rn{K-Let} & \tmj{\Gamma, x : T}{u}{\weak{E}} \quad \clej{\Gamma, x : T}{f}{\uses{u}}{\weak{U}} \quad \contj{\Gamma}{K}{E}{T''} \ \Longrightarrow\ \contj{\Gamma}{K \triangleright \frlet{x}{u}{U}{f}}{T}{T''} \\
-\rn{K-CastE} & \elej{\Gamma}{\eta}{E}{E'} \qquad \contj{\Gamma}{K}{E'}{T''} \ \Longrightarrow\ \contj{\Gamma}{K \triangleright \ev{castE}\,\eta}{E}{T''} \\
-\rn{K-LetEx} & \clej{\Gamma}{g}{C_0}{U} \qquad \tmj{\Gamma, \kappa : \cstar, x : T}{u}{\weak{E}} \qquad \clej{\Gamma, \kappa : \cstar, x : T}{f}{\uses{u}}{\weak{U} \cup \cset{\kappa}} \\
- & \contj{\Gamma}{K}{E}{T''} \ \Longrightarrow\ \contj{\Gamma}{K \triangleright L}{\exc{\kappa}{C_0}{T}}{T''} \\[6pt]
 \rn{E-App} & \mst{\sigma}{K}{x\,b} \step \mst{\sigma}{K}{t\,\ent{b}} \qquad \text{if } \sigma(x) = \lamcc{A}{\varrho}{\kappa, z}{T}{t}{g} \\
 \rn{E-AppCast} & \mst{\sigma}{K}{a\,b} \step \mst{\sigma}{K}{\ev{castE}\,(t\,\ent{b'})\,(\eta\,\ent{b})} \qquad \text{where } b' = \ev{cast}\,b\,(d\,\ent{b}) \\
  & \qquad \text{if } \sigma(\rt{a}) = \lamcc{A}{\varrho}{\kappa, z}{T}{t}{g},\ a \text{ is not a variable and } \chn{\sigma}{a}{n}{\form{pi}\,d\,\eta} \\
@@ -110,14 +136,13 @@ L & = & \frletex{\kappa}{x}{u}{U}{g}{f} \\
 \rn{E-UnpackV} & \mst{\sigma}{K \triangleright L}{\ev{pack}\,C\,g_0\,d\,v} \step \mst{\sigma, \kappa \instb{C}, \mathit{core}(v')}{\weak{K}}{\mathit{adjust}(u, v')} \\
  & \qquad \text{where } v' = \ev{cast}\,v\,d' \text{ and } d' \text{ is as for \rn{E-Unpack}}
 \end{array}
-\end{array}
 \]
 \color{black}
-\caption{The machine of \treeCC where it differs from Figure~\ref{fig:target-rules}: the entering substitution, the answer cast $\appE{\omega}{\eta}$ of an atom or value $\omega$, the continuation rules at answers, and the steps that enter a scope, cast an answer or unpack. $\contj{\Gamma}{K}{E}{T''}$ says that $K$ accepts an answer of type $E$ and produces a result of type $T''$. A packed atom is not an atom. The first equation that applies is used, and the last covers the cases no typed state reaches. \rn{E-AppCastRefl} substitutes $\ent{b}$ as \rn{E-App} does. In \rn{E-Unpack} and \rn{E-UnpackV}, $\weak{K}$ reads $K$ under the binders that the step appends to the store.}
+\caption{The machine of \treeCC where it differs from Figure~\ref{fig:target-machine}: the entering substitution, the answer cast $\appE{\omega}{\eta}$ of an atom or value $\omega$, the continuation rules at answers, and the steps that enter a scope, cast an answer or unpack. $\contj{\Gamma}{K}{E}{T''}$ says that $K$ accepts an answer of type $E$ and produces a result of type $T''$. A packed atom is not an atom. The first equation that applies is used, and the last covers the cases no typed state reaches. \rn{E-AppCastRefl} substitutes $\ent{b}$ as \rn{E-App} does. In \rn{E-Unpack} and \rn{E-UnpackV}, $\weak{K}$ reads $K$ under the binders that the step appends to the store.}
 \label{fig:cc-machine}
 \end{figure}
 
-Figures~\ref{fig:cc} and~\ref{fig:cc-machine} give what \treeCC adds. A capture set may contain the universal capability $\topc$, the compiler's top-level $\cany$ read as a constant. A capture binder $\kappa : B$ has one of the four bounds of Figure~\ref{fig:target-syntax}, and \treeCC gives each a meaning. A scope binder $\varrho : \scopeb$ is the local $\cany$ of a scope. A star binder $\kappa : \cstar$ stands for itself, as in \treeK. An instance binder $\kappa \instb{C}$ stands for $C$. No rule constructs the fourth form, $\kappa : \mathsf{upper}\,C$. Scope and star binders are opaque. Four contexts open a scope:
+Figures~\ref{fig:cc}, \ref{fig:cc-rules} and~\ref{fig:cc-machine} give what \treeCC adds. A capture set may contain the universal capability $\topc$, the compiler's top-level $\cany$ read as a constant. A capture binder $\kappa : B$ has one of the four bounds of Figure~\ref{fig:target-syntax}, and \treeCC gives each a meaning. A scope binder $\varrho : \scopeb$ is the local $\cany$ of a scope. A star binder $\kappa : \cstar$ stands for itself, as in \treeK. An instance binder $\kappa \instb{C}$ stands for $C$. No rule constructs the fourth form, $\kappa : \mathsf{upper}\,C$. Scope and star binders are opaque. Four contexts open a scope:
 \[
 \begin{array}{@{}lcl@{}}
 \mathit{scope}(\Gamma) & = & \Gamma, \varrho : \scopeb, \kappa : \cstar \\
@@ -156,12 +181,11 @@ Capture inclusion gains \rn{C-Level}. Both of its sides are singletons, and a la
 Four rules change for scopes, \rn{Sh-Pi}, \rn{V-Lam}, \rn{V-Obj} and \rn{T-App}. A call checks its argument $b$ at the domain with $\kappa$ at $\rt{b}$, so a parameter's $\cany$ is instantiated at the argument itself, not at a fresh capability. The README of \treeCC records this as a departure from the compiler. \rn{T-Let} and \rn{K-Let} take a body at an answer. \rn{S-Cap} stores any capture binder but a scope binder, and store extension appends only instance and bounded binders.
 
 The source of \treeCC has the same scopes, and the translation sends each source binder to its target counterpart. The source reads $\cany$ and $\cfresh$ before typing, as the enclosing scope binder and an existential, and names no $\topc$. So its level rule has a scope binder on the right. It also has an instance rule:
-\[
-\begin{array}{@{}l@{\quad}l@{\ \ }c@{\ \ }l@{}}
-\rn{Sc-Level} & \src{\Gamma \text{ binds } \varrho : \scopeb} \quad \src{\lvlle{\Gamma}{c}{\varrho}} & \Longrightarrow & \subcj{\Gamma}{\cset{c}}{\cset{\varrho}} \\
-\rn{Sc-Inst} & \src{\Gamma \text{ binds } \kappa \instb{C}} & \Longrightarrow & \subcj{\Gamma}{C}{\cset{\kappa}}
-\end{array}
-\]
+\begin{mathpar}
+\inferrule[Sc-Level]{\src{\Gamma \text{ binds } \varrho : \scopeb} \\ \src{\lvlle{\Gamma}{c}{\varrho}}}{\subcj{\Gamma}{\cset{c}}{\cset{\varrho}}}
+\and
+\inferrule[Sc-Inst]{\src{\Gamma \text{ binds } \kappa \instb{C}}}{\subcj{\Gamma}{C}{\cset{\kappa}}}
+\end{mathpar}
 A translated capture set never contains $\topc$ (\lean{CaptureSet.top\_not\_mem\_translate}). Theorem~\ref{thm:source-effect} uses that over a platform a root of $C$ is a member of $C$ (\lean{Platform.root\_iff}). In \treeCC that lemma assumes $\topc \notin C$, and this fact discharges it.
 
 \subsection{The escape in the calculus}\label{sec:levels-escape}

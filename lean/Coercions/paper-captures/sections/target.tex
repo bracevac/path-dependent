@@ -1,7 +1,6 @@
 % unit U4
 \section{The Full \treeK Target}\label{sec:target}
 % unit macros
-\providecommand{\yields}{\mathrel{\Longrightarrow}}
 \mathtgt
 
 This section gives the whole target of \treeK. It adds to the fragment of Section~\ref{sec:mini} what \Rone adds to its own, now with capture sets, and three things more: capture names with capture members, a store in the theorem about capture evidence, and boxes. Figures~\ref{fig:target-syntax} to~\ref{fig:target-capev} give the calculus where it differs from report~1's Figures~\ref{R1-fig:target-syntax} to~\ref{R1-fig:machine}. Its theorems are proven in \treeK, and Table~\ref{tab:matrix} lists those that another tree lacks or states differently.
@@ -77,35 +76,55 @@ The promise is that a call of $\mathit{run}$ is charged to the member's bound $\
 
 A type is a shape with a capture set, $\capt{S}{C}$, and report~1's types are the shapes, with the box $\boxt{T}$ of Section~\ref{sec:target-boxes} added. Report~1's inclusion evidence becomes shape inclusion $e$, and a type inclusion $\ev{capt}\,e\,f$ pairs it with capture inclusion $f$. The function shape takes type inclusions for its domain and codomain (\rn{Sh-Pi}), so a cast checks the capture sets on both sides of an arrow. Casts supply the subsumption that the fragment did without. A capture set may contain a capture name $\sel{x}{\ell}$, the capture set named $\ell$ in the block of $x$, and telescopes gain capture inclusions and equalities.
 
-Atoms gain $\ev{recap}\,a\,f$, which keeps the shape of $a$ and takes any capture set that $f$ puts above $\cset{\rt{a}}$ (\rn{A-Recap}). With $f = \ev{refl}\,\cset{x}$ it types $x$ at $\capt{S}{\cset{x}}$, the variable rule of capture calculi (Section~\ref{sec:source}). Every wrapper keeps the root, so \rn{C-Var} and \rn{C-Member} read the same variable however an atom is wrapped (\lean{C4\_capvar}, \lean{C4\_member}, decided). A projection has the block name of the field at its capture name (\rn{T-Proj}). A literal carries an annotation $A$ and capture witnesses $W^{c}$, and each of its fields carries closing evidence against $A$ and the self (\rn{F-Cons}). Figure~\ref{fig:target-rules} gives the rules that are new or changed. Its steps read two head forms that report~1's Figure~\ref{R1-fig:forms} lacks: $\form{eqv}\,\varphi$ for closed equality evidence, which report~1 folds into $\form{id}$, and $\form{boxed}\,d$ for an inclusion of boxes (Section~\ref{sec:mech-trees}).
+Atoms gain $\ev{recap}\,a\,f$, which keeps the shape of $a$ and takes any capture set that $f$ puts above $\cset{\rt{a}}$ (\rn{A-Recap}). With $f = \ev{refl}\,\cset{x}$ it types $x$ at $\capt{S}{\cset{x}}$, the variable rule of capture calculi (Section~\ref{sec:source}). Every wrapper keeps the root, so \rn{C-Var} and \rn{C-Member} read the same variable however an atom is wrapped (\lean{C4\_capvar}, \lean{C4\_member}, decided). A projection has the block name of the field at its capture name (\rn{T-Proj}). A literal carries an annotation $A$ and capture witnesses $W^{c}$, and each of its fields carries closing evidence against $A$ and the self (\rn{F-Cons}). Figures~\ref{fig:target-rules} and~\ref{fig:target-machine} give the rules and steps that are new or changed. The steps of Figure~\ref{fig:target-machine} read two head forms that report~1's Figure~\ref{R1-fig:forms} lacks: $\form{eqv}\,\varphi$ for closed equality evidence, which report~1 folds into $\form{id}$, and $\form{boxed}\,d$ for an inclusion of boxes (Section~\ref{sec:mech-trees}).
 
 No rule for terms adds a capture binder to a context, and no step allocates one. So no term abstracts over a capture set, and DOT quantifies over capture sets through members.
 
 \begin{figure}[t]
 \small
 \color{tgtcol}
-\[
-\begin{array}{@{}l@{\quad}l@{}}
-\rn{L-Capt} & \shpj{\Gamma}{e}{S}{S'} \quad \clej{\Gamma}{f}{C}{C'} \yields \lej{\Gamma}{\ev{capt}\,e\,f}{\capt{S}{C}}{\capt{S'}{C'}} \\
-\rn{Sh-Pi} & \lej{\Gamma}{d}{T_2}{T_1} \quad \lej{\Gamma, x : T_2}{d'}{T'_1}{T'_2} \yields \shpj{\Gamma}{\ev{pi}\,d\,d'}{\pit{T_1}{T'_1}}{\pit{T_2}{T'_2}} \\
-\rn{Sh-Boxed} & \lej{\Gamma}{d}{T}{T'} \yields \shpj{\Gamma}{\ev{boxed}\,d}{\boxt{T}}{\boxt{T'}} \\[3pt]
-\rn{A-Unfold} & \atomj{\Gamma}{a}{\capt{(\obj{\tel})}{C}} \yields \atomj{\Gamma}{\ev{unfold}\,a}{\capt{(\obj{\weak{(\tel[\self \mapsto \rt{a}])}})}{C}} \\
-\rn{A-Fold} & \atomj{\Gamma}{a}{\capt{(\obj{\weak{(\tel[\self \mapsto \rt{a}])}})}{C}} \yields \atomj{\Gamma}{\ev{fold}\,\tel\,a}{\capt{(\obj{\tel})}{C}} \\
-\rn{A-Both} & \atomj{\Gamma}{a}{\capt{(\obj{\tel_1})}{C}} \quad \atomj{\Gamma}{b}{\capt{(\obj{\tel_2})}{C}} \quad \rt{b} = \rt{a} \\
-& \qquad \yields \atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\capt{(\obj{\tel_1 \mathbin{+\!\!+} \tel_2})}{C}} \\
-\rn{A-Recap} & \atomj{\Gamma}{a}{\capt{S}{C}} \quad \clej{\Gamma}{f}{\cset{\rt{a}}}{C'} \yields \atomj{\Gamma}{\ev{recap}\,a\,f}{\capt{S}{C'}} \\[3pt]
-\rn{T-App} & \atomj{\Gamma}{a}{\capt{(\pit[z]{T}{T'})}{C}} \quad \atomj{\Gamma}{b}{T} \yields \tmj{\Gamma}{a\,b}{T'[z \mapsto \rt{b}]} \\
-\rn{T-Proj} & \atomj{\Gamma}{a}{T} \quad \hasj{\Gamma}{h}{\rt{a}}{\ell} \yields \tmj{\Gamma}{\ev{proj}\,a\,\ell\,h}{\capt{(\sel{\rt{a}}{\ell})}{\cset{\sel{\rt{a}}{\ell}}}} \\
-\rn{T-Unbox} & \atomj{\Gamma}{a}{\capt{(\boxt{\capt{S}{C}})}{D}} \quad \clej{\Gamma}{f}{C}{U} \yields \tmj{\Gamma}{\unboxc{a}{U}{f}}{\capt{S}{C}} \\[3pt]
-\rn{V-Obj} & \Gamma, \self : \capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A} \mathrel{:=} \langle W, W^{c}, \dom F\rangle \vdash^{A}_{\!f} F \\
-& \qquad \yields \valj{\Gamma}{\litc{A}{W}{W^{c}}{F}}{\capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A}} \\
-\rn{V-Box} & \atomj{\Gamma}{a}{T} \yields \valj{\Gamma}{\ev{box}\,a}{\capt{(\boxt{T})}{\cempty}} \\
-\rn{F-Cons} & \Gamma \vdash^{A}_{\!f} F \quad \tmj{\Gamma}{t}{\capt{(\sel{\self}{\ell})}{\cset{\sel{\self}{\ell}}}} \quad \clej{\Gamma}{g}{\uses{t}}{\weak{A} \cup \cset{\self}} \yields \Gamma \vdash^{A}_{\!f} F, \ell = t\,\ann{g} \\[3pt]
-\rn{S-Val} & \storej{\sigma}{\Gamma} \quad v \text{ is not a cast} \quad \valj{\Gamma}{v}{T} \yields \storej{\sigma, x = v}{\Gamma, x : T \mathrel{:=} \langle \mathit{wit}(v), \mathit{wit}^{c}(v), \mathit{fields}(v)\rangle} \\
-\rn{S-Cap} & \storej{\sigma}{\Gamma} \yields \storej{\sigma, \kappa : B}{\Gamma, \kappa : B} \\
-\rn{K-Cast} & \lej{\Gamma}{d}{T}{T'} \quad \contj{\Gamma}{K}{T'}{T''} \yields \contj{\Gamma}{K \triangleright \ev{cast}\,d}{T}{T''}
-\end{array}
-\]
+\begin{mathpar}
+\inferrule[L-Capt]{\shpj{\Gamma}{e}{S}{S'} \\ \clej{\Gamma}{f}{C}{C'}}{\lej{\Gamma}{\ev{capt}\,e\,f}{\capt{S}{C}}{\capt{S'}{C'}}}
+\and
+\inferrule[Sh-Pi]{\lej{\Gamma}{d}{T_2}{T_1} \\ \lej{\Gamma, x : T_2}{d'}{T'_1}{T'_2}}{\shpj{\Gamma}{\ev{pi}\,d\,d'}{\pit{T_1}{T'_1}}{\pit{T_2}{T'_2}}}
+\and
+\inferrule[Sh-Boxed]{\lej{\Gamma}{d}{T}{T'}}{\shpj{\Gamma}{\ev{boxed}\,d}{\boxt{T}}{\boxt{T'}}}
+\\
+\inferrule[A-Unfold]{\atomj{\Gamma}{a}{\capt{(\obj{\tel})}{C}}}{\atomj{\Gamma}{\ev{unfold}\,a}{\capt{(\obj{\weak{(\tel[\self \mapsto \rt{a}])}})}{C}}}
+\and
+\inferrule[A-Fold]{\atomj{\Gamma}{a}{\capt{(\obj{\weak{(\tel[\self \mapsto \rt{a}])}})}{C}}}{\atomj{\Gamma}{\ev{fold}\,\tel\,a}{\capt{(\obj{\tel})}{C}}}
+\and
+\inferrule[A-Both]{\atomj{\Gamma}{a}{\capt{(\obj{\tel_1})}{C}} \\ \atomj{\Gamma}{b}{\capt{(\obj{\tel_2})}{C}} \\ \rt{b} = \rt{a}}{\atomj{\Gamma}{\ev{both}\,\tel_1\,\tel_2\,a\,b}{\capt{(\obj{\tel_1 \mathbin{+\!\!+} \tel_2})}{C}}}
+\and
+\inferrule[A-Recap]{\atomj{\Gamma}{a}{\capt{S}{C}} \\ \clej{\Gamma}{f}{\cset{\rt{a}}}{C'}}{\atomj{\Gamma}{\ev{recap}\,a\,f}{\capt{S}{C'}}}
+\\
+\inferrule[T-App]{\atomj{\Gamma}{a}{\capt{(\pit[z]{T}{T'})}{C}} \\ \atomj{\Gamma}{b}{T}}{\tmj{\Gamma}{a\,b}{T'[z \mapsto \rt{b}]}}
+\and
+\inferrule[T-Proj]{\atomj{\Gamma}{a}{T} \\ \hasj{\Gamma}{h}{\rt{a}}{\ell}}{\tmj{\Gamma}{\ev{proj}\,a\,\ell\,h}{\capt{(\sel{\rt{a}}{\ell})}{\cset{\sel{\rt{a}}{\ell}}}}}
+\and
+\inferrule[T-Unbox]{\atomj{\Gamma}{a}{\capt{(\boxt{\capt{S}{C}})}{D}} \\ \clej{\Gamma}{f}{C}{U}}{\tmj{\Gamma}{\unboxc{a}{U}{f}}{\capt{S}{C}}}
+\\
+\inferrule[V-Obj]{\Gamma, \self : \capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A} \mathrel{:=} \langle W, W^{c}, \dom F\rangle \vdash^{A}_{\!f} F}{\valj{\Gamma}{\litc{A}{W}{W^{c}}{F}}{\capt{(\obj{\ofLit{W, W^{c}}{\dom F}})}{A}}}
+\and
+\inferrule[V-Box]{\atomj{\Gamma}{a}{T}}{\valj{\Gamma}{\ev{box}\,a}{\capt{(\boxt{T})}{\cempty}}}
+\and
+\inferrule[F-Cons]{\Gamma \vdash^{A}_{\!f} F \\ \tmj{\Gamma}{t}{\capt{(\sel{\self}{\ell})}{\cset{\sel{\self}{\ell}}}} \\ \clej{\Gamma}{g}{\uses{t}}{\weak{A} \cup \cset{\self}}}{\Gamma \vdash^{A}_{\!f} F, \ell = t\,\ann{g}}
+\end{mathpar}
+\color{black}
+\caption{The rules of \treeK for inclusions, atoms, terms, values and fields that are new or changed. \rn{T-Let} and \rn{V-Lam} are those of Figure~\ref{fig:mini-typing}. The other rules are those of report~1's Figures~\ref{R1-fig:evidence} and~\ref{R1-fig:terms} at shapes, without the rules for $\ev{pi}$ and $\ev{leTrans}$, and an atom premise of $\ev{member}$ takes any capture set. Report~1's rules for variable and cast atoms are \rn{A-Var} and \rn{A-Cast} here. $\vdash^{A}_{\!f}$ types the fields of a literal annotated $A$.}
+\label{fig:target-rules}
+\end{figure}
+
+\begin{figure}[t]
+\small
+\color{tgtcol}
+\begin{mathpar}
+\inferrule[S-Val]{\storej{\sigma}{\Gamma} \\ v \text{ is not a cast} \\ \valj{\Gamma}{v}{T}}{\storej{\sigma, x = v}{\Gamma, x : T \mathrel{:=} \langle \mathit{wit}(v), \mathit{wit}^{c}(v), \mathit{fields}(v)\rangle}}
+\and
+\inferrule[S-Cap]{\storej{\sigma}{\Gamma}}{\storej{\sigma, \kappa : B}{\Gamma, \kappa : B}}
+\and
+\inferrule[K-Cast]{\lej{\Gamma}{d}{T}{T'} \\ \contj{\Gamma}{K}{T'}{T''}}{\contj{\Gamma}{K \triangleright \ev{cast}\,d}{T}{T''}}
+\end{mathpar}
 \[
 \begin{array}{@{}l@{\quad}l@{\ }c@{\ }l@{}}
 \rn{E-Alloc} & \mst{\sigma}{K \triangleright \frlet{x}{u}{U}{f}}{v} &\step& \mst{(\sigma, x = \mathit{core}(v))}{\weak{K}}{\mathit{adjust}(u, v)} \\
@@ -118,8 +137,8 @@ No rule for terms adds a capture binder to a context, and no step allocates one.
 \end{array}
 \]
 \color{black}
-\caption{The rules and steps of \treeK that are new or changed. \rn{T-Let}, \rn{V-Lam}, \rn{S-Nil}, \rn{K-Nil}, \rn{K-Let}, \rn{St}, \rn{E-Let}, \rn{Run-Refl} and \rn{Run-Step} are those of Figures~\ref{fig:mini-typing} and~\ref{fig:mini-machine}. The other rules and steps are those of report~1's Figures~\ref{R1-fig:evidence} to~\ref{R1-fig:machine} at shapes, without the rules for $\ev{pi}$ and $\ev{leTrans}$, and an atom premise of $\ev{member}$ takes any capture set. Report~1's rules for variable and cast atoms are \rn{A-Var} and \rn{A-Cast} here. Its other steps are \rn{E-CastPush}, \rn{E-CastVal}, \rn{E-CastAtom}, \rn{E-App} through a variable, \rn{E-AppCast} through a chain $\form{pi}\,d\,c$, and \rn{E-Proj}. $\mathit{core}$ and $\mathit{adjust}$ are those of its Figure~\ref{R1-fig:mini-machine}. Substituting an atom, as in $u[x \mapsto a]$, puts $a$ where an atom stands and $\rt{a}$ in types and capture sets, as in report~1. $\vdash^{A}_{\!f}$ types the fields of a literal annotated $A$. $\mathit{wit}(v)$, $\mathit{wit}^{c}(v)$ and $\mathit{fields}(v)$ are the witnesses, capture witnesses and field labels of $v$, empty for a lambda and a box.}
-\label{fig:target-rules}
+\caption{The rules of \treeK for stores and continuations and the steps that are new or changed. \rn{S-Nil}, \rn{K-Nil}, \rn{K-Let}, \rn{St}, \rn{E-Let}, \rn{Run-Refl} and \rn{Run-Step} are those of Figure~\ref{fig:mini-machine}. The other steps are those of report~1's Figure~\ref{R1-fig:machine} at shapes, and here they are \rn{E-CastPush}, \rn{E-CastVal}, \rn{E-CastAtom}, \rn{E-App} through a variable, \rn{E-AppCast} through a chain $\form{pi}\,d\,c$, and \rn{E-Proj}. $\mathit{core}$ and $\mathit{adjust}$ are those of report~1's Figure~\ref{R1-fig:mini-machine}. Substituting an atom, as in $u[x \mapsto a]$, puts $a$ where an atom stands and $\rt{a}$ in types and capture sets, as in report~1. $\mathit{wit}(v)$, $\mathit{wit}^{c}(v)$ and $\mathit{fields}(v)$ are the witnesses, capture witnesses and field labels of $v$, empty for a lambda and a box.}
+\label{fig:target-machine}
 \end{figure}
 
 \subsection{Capture names and capture members}\label{sec:target-members}
@@ -137,37 +156,54 @@ C2's client shows the charge (\lean{C2\_client}, decided). In the context $\kapp
 \]
 Here $r$ has the type $\capt{(\pit[w]{\Unit}{\Unit})}{\cset{\sel{x}{C}}}$, since $h_2$, $e_3$, $f_4$ and $f_1$ are $\ev{member}\,x\,(\ev{refl}\,\mathit{Obj})\,i$ at $i = 2, 3, 4, 1$. The avoidance evidence charges the call. \rn{C-Var} puts $\cset{r}$ below $\cset{\sel{x}{C}}$, and $f_1$ reads the member's upper bound at $x$, $\cset{\sel{x}{C}} \le \cset{\kappa_1,\kappa_2}$. The client is checked once, for every object of type $\mathit{Obj}$.
 
-\begin{figure}[t]
+\begin{figure}[tp]
 \small
 \color{tgtcol}
-\[
-\begin{array}{@{}l@{\quad}l@{}}
-\rn{C-Refl} & \yields \clej{\Gamma}{\ev{refl}\,C}{C}{C} \\
-\rn{C-Trans} & \clej{\Gamma}{f}{C_1}{C_2} \quad \clej{\Gamma}{g}{C_2}{C_3} \yields \clej{\Gamma}{\ev{trans}\,f\,g}{C_1}{C_3} \\
-\rn{C-Elem} & C \subseteq D \yields \clej{\Gamma}{\ev{elem}\,C\,D}{C}{D} \\
-\rn{C-Union} & \clej{\Gamma}{f}{C_1}{D} \quad \clej{\Gamma}{g}{C_2}{D} \yields \clej{\Gamma}{\ev{union}\,f\,g}{C_1 \cup C_2}{D} \\
-\rn{C-Var} & \atomj{\Gamma}{a}{\capt{S}{C}} \yields \clej{\Gamma}{\ev{capvar}\,a}{\cset{\rt{a}}}{C} \\
-\rn{C-Member} & \atomj{\Gamma}{a}{\capt{S}{D}} \quad \shpj{\Gamma}{e}{S}{\obj{\tel}} \quad \tat{\tel}{i}{\plec{C_1}{C_2}} \\
-& \qquad \yields \clej{\Gamma}{\ev{member}\,a\,e\,i}{C_1[\self \mapsto \rt{a}]}{C_2[\self \mapsto \rt{a}]} \\
-\rn{C-EqToLe} & \ceqj{\Gamma}{\psi}{C}{D} \yields \clej{\Gamma}{\ev{eqToLe}\,\psi}{C}{D} \\[3pt]
-\rn{CE-Refl} & \yields \ceqj{\Gamma}{\ev{refl}\,C}{C}{C} \\
-\rn{CE-Symm} & \ceqj{\Gamma}{\psi}{C}{D} \yields \ceqj{\Gamma}{\ev{symm}\,\psi}{D}{C} \\
-\rn{CE-Trans} & \ceqj{\Gamma}{\psi}{C_1}{C_2} \quad \ceqj{\Gamma}{\psi'}{C_2}{C_3} \yields \ceqj{\Gamma}{\ev{trans}\,\psi\,\psi'}{C_1}{C_3} \\
-\rn{CE-Def} & \Gamma(x) \ni \ell \mathrel{:=_{c}} C \yields \ceqj{\Gamma}{\ev{defC}\,x\,\ell}{\cset{\sel{x}{\ell}}}{C} \\
-\rn{CE-Member} & \atomj{\Gamma}{a}{\capt{S}{D}} \quad \shpj{\Gamma}{e}{S}{\obj{\tel}} \quad \tat{\tel}{i}{\peqc{C_1}{C_2}} \\
-& \qquad \yields \ceqj{\Gamma}{\ev{member}\,a\,e\,i}{C_1[\self \mapsto \rt{a}]}{C_2[\self \mapsto \rt{a}]} \\[3pt]
-\rn{H-LeC} & \tat{\tel}{j}{\plec{X}{Y}} \yields \tel \vdash \ev{leC}\,j : \plec{X}{Y} \\
-\rn{H-EqC} & \tat{\tel}{j}{\peqc{X}{Y}} \yields \tel \vdash \ev{eqC}\,j : \plec{X}{Y} \\
-\rn{H-EqSymC} & \tat{\tel}{j}{\peqc{Y}{X}} \yields \tel \vdash \ev{eqSymC}\,j : \plec{X}{Y} \\[3pt]
-\rn{Sd-Closed} & \clej{\Gamma}{f}{C}{D} \yields \Gamma \vdash \ev{closed}\,f : \weak{C} \le \weak{D} \\
-\rn{Sd-Incl} & X \subseteq Y \yields \Gamma \vdash \ev{incl}\,X\,Y : X \le Y \\
-\rn{Sd-Nil} & \yields \Gamma \vdash [\,] : X \le X \\
-\rn{Sd-Cons} & \Gamma \vdash \theta : X \le Y \quad \Gamma \vdash p : Y \le Z \yields \Gamma \vdash \theta :: p : X \le Z \\[3pt]
-\rn{M-LeC} & \tel \vdash H : \plec{X}{Y} \quad \Gamma \vdash p : D_1 \le X \quad \Gamma \vdash p' : Y \le D_2 \yields \morj{\Gamma}{\ev{leC}\,p\,H\,p'}{\tel}{\plec{D_1}{D_2}} \\
-\rn{M-EqC} & \tat{\tel}{j}{\peqc{C_1}{C_2}} \yields \morj{\Gamma}{\ev{eqC}\,j\,\mathit{false}}{\tel}{\peqc{C_1}{C_2}} \\
-\rn{M-EqSymC} & \tat{\tel}{j}{\peqc{C_1}{C_2}} \yields \morj{\Gamma}{\ev{eqC}\,j\,\mathit{true}}{\tel}{\peqc{C_2}{C_1}}
-\end{array}
-\]
+\begin{mathpar}
+\inferrule[C-Refl]{ }{\clej{\Gamma}{\ev{refl}\,C}{C}{C}}
+\and
+\inferrule[C-Trans]{\clej{\Gamma}{f}{C_1}{C_2} \\ \clej{\Gamma}{g}{C_2}{C_3}}{\clej{\Gamma}{\ev{trans}\,f\,g}{C_1}{C_3}}
+\and
+\inferrule[C-Elem]{C \subseteq D}{\clej{\Gamma}{\ev{elem}\,C\,D}{C}{D}}
+\and
+\inferrule[C-Union]{\clej{\Gamma}{f}{C_1}{D} \\ \clej{\Gamma}{g}{C_2}{D}}{\clej{\Gamma}{\ev{union}\,f\,g}{C_1 \cup C_2}{D}}
+\and
+\inferrule[C-Var]{\atomj{\Gamma}{a}{\capt{S}{C}}}{\clej{\Gamma}{\ev{capvar}\,a}{\cset{\rt{a}}}{C}}
+\and
+\inferrule[C-Member]{\atomj{\Gamma}{a}{\capt{S}{D}} \\ \shpj{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\plec{C_1}{C_2}}}{\clej{\Gamma}{\ev{member}\,a\,e\,i}{C_1[\self \mapsto \rt{a}]}{C_2[\self \mapsto \rt{a}]}}
+\and
+\inferrule[C-EqToLe]{\ceqj{\Gamma}{\psi}{C}{D}}{\clej{\Gamma}{\ev{eqToLe}\,\psi}{C}{D}}
+\\
+\inferrule[CE-Refl]{ }{\ceqj{\Gamma}{\ev{refl}\,C}{C}{C}}
+\and
+\inferrule[CE-Symm]{\ceqj{\Gamma}{\psi}{C}{D}}{\ceqj{\Gamma}{\ev{symm}\,\psi}{D}{C}}
+\and
+\inferrule[CE-Trans]{\ceqj{\Gamma}{\psi}{C_1}{C_2} \\ \ceqj{\Gamma}{\psi'}{C_2}{C_3}}{\ceqj{\Gamma}{\ev{trans}\,\psi\,\psi'}{C_1}{C_3}}
+\and
+\inferrule[CE-Def]{\Gamma(x) \ni \ell \mathrel{:=_{c}} C}{\ceqj{\Gamma}{\ev{defC}\,x\,\ell}{\cset{\sel{x}{\ell}}}{C}}
+\and
+\inferrule[CE-Member]{\atomj{\Gamma}{a}{\capt{S}{D}} \\ \shpj{\Gamma}{e}{S}{\obj{\tel}} \\ \tat{\tel}{i}{\peqc{C_1}{C_2}}}{\ceqj{\Gamma}{\ev{member}\,a\,e\,i}{C_1[\self \mapsto \rt{a}]}{C_2[\self \mapsto \rt{a}]}}
+\\
+\inferrule[H-LeC]{\tat{\tel}{j}{\plec{X}{Y}}}{\tel \vdash \ev{leC}\,j : \plec{X}{Y}}
+\and
+\inferrule[H-EqC]{\tat{\tel}{j}{\peqc{X}{Y}}}{\tel \vdash \ev{eqC}\,j : \plec{X}{Y}}
+\and
+\inferrule[H-EqSymC]{\tat{\tel}{j}{\peqc{Y}{X}}}{\tel \vdash \ev{eqSymC}\,j : \plec{X}{Y}}
+\\
+\inferrule[Sd-Closed]{\clej{\Gamma}{f}{C}{D}}{\Gamma \vdash \ev{closed}\,f : \weak{C} \le \weak{D}}
+\and
+\inferrule[Sd-Incl]{X \subseteq Y}{\Gamma \vdash \ev{incl}\,X\,Y : X \le Y}
+\and
+\inferrule[Sd-Nil]{ }{\Gamma \vdash [\,] : X \le X}
+\and
+\inferrule[Sd-Cons]{\Gamma \vdash \theta : X \le Y \\ \Gamma \vdash p : Y \le Z}{\Gamma \vdash \theta :: p : X \le Z}
+\\
+\inferrule[M-LeC]{\tel \vdash H : \plec{X}{Y} \\ \Gamma \vdash p : D_1 \le X \\ \Gamma \vdash p' : Y \le D_2}{\morj{\Gamma}{\ev{leC}\,p\,H\,p'}{\tel}{\plec{D_1}{D_2}}}
+\and
+\inferrule[M-EqC]{\tat{\tel}{j}{\peqc{C_1}{C_2}}}{\morj{\Gamma}{\ev{eqC}\,j\,\mathit{false}}{\tel}{\peqc{C_1}{C_2}}}
+\and
+\inferrule[M-EqSymC]{\tat{\tel}{j}{\peqc{C_1}{C_2}}}{\morj{\Gamma}{\ev{eqC}\,j\,\mathit{true}}{\tel}{\peqc{C_2}{C_1}}}
+\end{mathpar}
 \[
 \begin{array}{@{}lcl@{}}
 \rootsn{\Gamma}{n}{\cempty} & = & \cempty \\
