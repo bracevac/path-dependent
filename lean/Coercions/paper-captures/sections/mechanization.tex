@@ -32,14 +32,14 @@ theorems & K & CC & CL & note \\
 \rg \lean{certify?\_sound}, \lean{certify?\_isSome} & - & $\checkmark$ & - & \rg CL has \lean{compile\_rejected\_goal} instead \\
 \rg \lean{level\_inversion}, \lean{atom\_level\_inversion}, \lean{no\_inner\_escape}, \lean{Store.\allowbreak{}Typed.\allowbreak{}rootFree}, \lean{Store.\allowbreak{}Typed.\allowbreak{}confined}, \lean{Ctx.\allowbreak{}roots\_eq\_caps\_of\_rootFree}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}enter}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}singleC}, \lean{ex\_stays\_ex}, \lean{no\_ex\_le\_ty}, \lean{scope\_order} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the target (Section~\ref{sec:levels}) \\
 \rg \lean{source\_lvl\_safety}, \lean{Subcap.\allowbreak{}translate\_memberFree}, \lean{CaptureSet.\allowbreak{}top\_not\_mem\_translate}, \lean{compile\_lvl\_safety}, \lean{escape\_rejected\_at} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the source and the front end \\
-\rg \lean{lvl\_safety} & - & $\checkmark$ & $\checkmark$ & \rg CC on the resolved set, CL on leaves \\
+\rg \lean{lvl\_safety} & - & $\checkmark$ & $\checkmark$ & \rg CC on the resolved set, CL on roots \\
 \rg \lean{lvl\_canon} & - & - & $\checkmark$ & \rg deleted from CC, restated in CL (Section~\ref{sec:history}) \\
 \rg \lean{kind\_canon}, \lean{classified\_prediction}, \lean{classified\_effect\_safety}, \lean{Store.\allowbreak{}Ext.\allowbreak{}kindLe}, \lean{Ctx.\allowbreak{}KindLe.\allowbreak{}mono}, \lean{CapBound.\allowbreak{}cls\_not\_appendable}, \lean{Kind.\allowbreak{}Subkind.\allowbreak{}contains}, \lean{Classifier.\allowbreak{}subclass\_or\_disjoint}, \lean{dot\_classified\_effect\_safety}, \lean{dot\_classified\_effect\_safety'}, \lean{Ctx.\allowbreak{}roots\_proj}, \lean{Kind.\allowbreak{}contains\_subtract\_of}, \lean{checkKindCo\_iff\_hasType}, \lean{CapKind.\allowbreak{}translate\_typed}, \lean{compile\_classified\_effect\_safety}, \lean{compile\_consistent}, \lean{compile\_realized} & - & - & $\checkmark$ & \rg classifiers (Section~\ref{sec:classifiers}) \\
 \rg \lean{cap\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC adds the case \lean{level}, and CL adds \lean{unprojC}, \lean{projC} and \lean{projMono} \\
 \rg \lean{capeq\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL add the case \lean{instC} \\
 \rg \lean{step\_uses} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg 12 cases in K, 18 in CC and CL \\
 \rg \lean{erase\_reflect'} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL state it at answer types \\
-\rg \lean{capture\_prediction}, \lean{effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg leaves after expansion in CC and CL \\
+\rg \lean{capture\_prediction}, \lean{effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg roots after expansion in CC and CL \\
 \rg \lean{dot\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL assume a plain type \\
 \rg \lean{Platform.\allowbreak{}root\_iff} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg no premise in K, $\topc \notin C$ in CC, and also no filtered atom in CL \\
 \rg \lean{dot\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg the hypothesis on $\kappa$ differs (Section~\ref{sec:source-thms}) \\
@@ -95,7 +95,7 @@ Table~\ref{tab:mini-lean} maps each statement of Section~\ref{sec:mini} to the d
 miniature & Lean in \treeK & file and line & difference \\
 \midrule
 \rg grammar of Figure~\ref{fig:mini-syntax} & \rg \lean{Tm}, \lean{Value}, \lean{CapCo}, \lean{CapAtom} & \rg \lean{Syntax}: 573, 589, 340, 28 & \rg atoms have wrappers \\
-\rg leaves, covered by, same leaves & \rg \lean{Ctx.caps}, \lean{Ctx.capsAtom}, \lean{Ctx.roots}, \lean{Ctx.Root}, \lean{CapLe}, \lean{RootsEq} & \rg \lean{Resolution}: 568, 578, 1019, 1027, 1035, 1039 & \rg fuel \\
+\rg roots, covered by, same roots & \rg \lean{Ctx.caps}, \lean{Ctx.capsAtom}, \lean{Ctx.roots}, \lean{Ctx.Root}, \lean{CapLe}, \lean{RootsEq} & \rg \lean{Resolution}: 568, 578, 1019, 1027, 1035, 1039 & \rg fuel \\
 \rg $\mathit{uses}$, $\mathit{insp}$, $\mathit{annot}$ & \rg \lean{Tm.uses}, \lean{usesK}, \lean{State.uses}, \lean{Tm.inspects}, \lean{State.inspects}, \lean{Value.annot} & \rg \lean{Syntax}: 675, 699, 656. \lean{Machine}: 108, 133, 136 & \rg none \\
 \rg rules of Figures~\ref{fig:mini-typing} and~\ref{fig:mini-machine} & \rg \lean{CapCo.HasType}, \lean{Tm.HasType}, \lean{Value.HasType}, \lean{Store.Typed}, \lean{Cont.Typed}, \lean{State.Typed} & \rg \lean{Typing}: 65, 299, 332. \lean{Store}: 84. \lean{Machine}: 67, 93 & \rg opaque and transparent binders \\
 \rg \rn{E-Let}, \rn{E-Alloc}, \rn{E-Rename}, \rn{E-App} & \rg \lean{Step} with the constructors \lean{let}, \lean{alloc}, \lean{rename}, \lean{appVar} of its twelve & \rg \lean{Machine}: 179-195 & \rg \lean{core}, \lean{adjust}, three application steps \\
@@ -127,7 +127,7 @@ miniature & Lean in \treeK & file and line & difference \\
 
 \subsection{Names}\label{sec:mech-names}
 
-Table~\ref{tab:names} maps the words of this report to the names of the Lean, as report~1's Table~\ref{R1-tab:names} maps its results to the declarations of the vanilla development. The Lean calls the leaves of a capture set its roots, and its comments call star and classified binders rigid. In the report a root is only the $\rt{a}$ of report~1, the variable under the wrappers of an atom. An example that \treeCC and \treeCL share is cited from \treeCC unless the text names \treeCL.
+Table~\ref{tab:names} maps the words of this report to the names of the Lean, as report~1's Table~\ref{R1-tab:names} maps its results to the declarations of the vanilla development. The Lean uses the word root in three senses. \lean{Atom.root} is the root of an atom. \lean{Ctx.roots} and \lean{Ctx.Root} are the roots of a capture set, as in this report. The bound \lean{CapBound.root} is a scope binder, and \lean{Ctx.IsRoot}, \lean{Ctx.rootAtom} and \lean{Store.Typed.rootFree} speak of scope capabilities and scope binders, not of the roots of a set. The Lean's comments call star and classified binders rigid. An example that \treeCC and \treeCL share is cited from \treeCC unless the text names \treeCL.
 
 \begin{table}
 \scriptsize
@@ -140,7 +140,7 @@ Table~\ref{tab:names} maps the words of this report to the names of the Lean, as
 report & Lean \\
 \midrule
 \rg root of an atom, $\rt{a}$ & \rg \lean{Atom.root} \\
-\rg leaves of a set, $\leaves{\Gamma}{C}$ & \rg \lean{Ctx.roots}, \lean{Ctx.Root}, after expansion in \treeCC and \treeCL \\
+\rg roots of a set, $\roots{\Gamma}{C}$ & \rg \lean{Ctx.roots}, \lean{Ctx.Root}, after expansion in \treeCC and \treeCL \\
 \rg star binder, $\kappa : \cstar$ & \rg \lean{CapBound.star} \\
 \rg scope binder, $\varrho : \scopeb$ & \rg \lean{CapBound.root}, constructed in \treeCC and \treeCL only \\
 \rg classified binder, $\kappa : \clsb{k}$ & \rg \lean{CapBound.cls} (CL) \\

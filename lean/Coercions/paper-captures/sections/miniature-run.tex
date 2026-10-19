@@ -70,14 +70,14 @@ t_2 & = & \letc{r}{\mathit{log}\,\mathit{unit}}{v_{\mathit{inner}}}{\cempty}{\ev
 \]
 \rn{E-Let} pushes $K_0$, and the state calls $\mathit{c1}$ (row~1). \rn{E-App} runs the body of $v_{\mathit{c1}}$ at $\mathit{unit}$, which is $t_2$. Its let pushes the frame of $K_1$ and calls $\mathit{log}$ (row~3), which returns its argument. \rn{E-Rename} puts $\mathit{unit}$ for $r$ in $v_{\mathit{inner}}$, which does not mention $r$ (row~5). \rn{E-Alloc} stores $v_{\mathit{inner}}$ at $\mathit{inner}$. The context of the new store $\sigma_1$ is $\Gamma_2$, since $v_{\mathit{inner}}$ has type $T_{\mathit{inner}}$ in $\Gamma_1$. The body $\mathit{inner}\,\mathit{unit}$ calls the stored closure, which calls $\mathit{console}$ (row~7). One more step by \rn{E-App} returns $\mathit{unit}$ in a final state. This last step is on paper.
 
-Leaves are computed in $\Gamma_1$ for rows~0 to~5 and in $\Gamma_2$ for rows~6 and~7. The seven steps are built by hand, and the typing of $\sigma_1$ in $\Gamma_2$ is decided. The leaf $\kappa_2$ of the inspected $\mathit{console}$ in row~7 is built by hand, and the other leaves in the table are on paper.
+Roots are computed in $\Gamma_1$ for rows~0 to~5 and in $\Gamma_2$ for rows~6 and~7. The seven steps are built by hand, and the typing of $\sigma_1$ in $\Gamma_2$ is decided. The root $\kappa_2$ of the inspected $\mathit{console}$ in row~7 is built by hand, and the other roots in the table are on paper.
 
 \begin{table}[t]
 \footnotesize
 \setlength{\tabcolsep}{2.5pt}
 \begin{tabular}{@{}c l c c l l l l p{24mm}@{}}
 \toprule
-$k$ & term & $K$ & $\sigma$ & use set & leaves & inspects & step & \raggedright case of Lemma~\ref{lem:mini-step} \tabularnewline
+$k$ & term & $K$ & $\sigma$ & use set & roots & inspects & step & \raggedright case of Lemma~\ref{lem:mini-step} \tabularnewline
 \midrule
 0 & $\mathit{prog}_1$ & $\cdot$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & none & \rn{E-Let} & \raggedright equal sets \tabularnewline
 1 & $\mathit{c1}\,\mathit{unit}$ & $K_0$ & $\sigma_0$ & $\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}}$ & $\cset{\kappa_1, \kappa_2}$ & $\mathit{c1}$ ($\kappa_1$) & \rn{E-App} & \raggedright closing evidence of $v_{\mathit{c1}}$ at $\mathit{unit}$ \tabularnewline
@@ -89,14 +89,14 @@ $k$ & term & $K$ & $\sigma$ & use set & leaves & inspects & step & \raggedright 
 7 & $\mathit{console}\,\mathit{unit}$ & $\cdot$ & $\sigma_1$ & $\cset{\mathit{console}, \mathit{unit}}$ & $\cset{\kappa_2}$ & $\mathit{console}$ ($\kappa_2$) & & \tabularnewline
 \bottomrule
 \end{tabular}
-\caption{The run of $\mathit{prog}_1$. Row $k$ is state $k$ and the step taken from it. Use sets are shown as sets, without duplicates. An inspected variable is shown with its leaves. The last column names the case of Lemma~\ref{lem:mini-step} that bounds the next row by this one. The table stops at state~7, which inspects $\mathit{console}$.}
+\caption{The run of $\mathit{prog}_1$. Row $k$ is state $k$ and the step taken from it. Use sets are shown as sets, without duplicates. An inspected variable is shown with its roots. The last column names the case of Lemma~\ref{lem:mini-step} that bounds the next row by this one. The table stops at state~7, which inspects $\mathit{console}$.}
 \label{tab:mini-run}
 \end{table}
 
 \FloatBarrier
 \subsection{One step}\label{sec:mini-step}
 
-Preservation has the form it has in report~1. What is new is its use-set half: one step never adds a leaf to the use set of a state. Both halves read the typed store through one lemma and move evidence by substitution, which comes first.
+Preservation has the form it has in report~1. What is new is its use-set half: one step never adds to the roots of the use set of a state. Both halves read the typed store through one lemma and move evidence by substitution, which comes first.
 
 \begin{lemma}[Substitution and weakening]\label{lem:mini-subst}
 \leavevmode
@@ -121,10 +121,10 @@ Let $\storej{\sigma}{\Gamma}$ and $\sigma(x) = v$.
 \end{lemma}
 
 \begin{proof}
-Let $\sigma = \sigma', x = v, \sigma''$. Inversion of the store typing gives $\Gamma = \Gamma', x : T_0, \Gamma''$ with $\valj{\Gamma'}{v}{T_0}$, and weakening, Lemma~\ref{lem:mini-subst}(d), gives $\valj{\Gamma}{v}{T_0}$. Inversion of \rn{V-Lam} or \rn{V-Unit} in $\Gamma$ shows that the capture set of $T_0$ is $\annot{v}$, and for a closure it gives the premises of (b). Lemma~\ref{lem:mini-var} gives the leaves in (a).
+Let $\sigma = \sigma', x = v, \sigma''$. Inversion of the store typing gives $\Gamma = \Gamma', x : T_0, \Gamma''$ with $\valj{\Gamma'}{v}{T_0}$, and weakening, Lemma~\ref{lem:mini-subst}(d), gives $\valj{\Gamma}{v}{T_0}$. Inversion of \rn{V-Lam} or \rn{V-Unit} in $\Gamma$ shows that the capture set of $T_0$ is $\annot{v}$, and for a closure it gives the premises of (b). Lemma~\ref{lem:mini-var} gives the roots in (a).
 \end{proof}
 
-Part (a) is what the textbook route of Section~\ref{sec:problem-textbook} wanted from inverting subcapturing at a call: the variable of a closure has the leaves of its annotation. Here it holds by construction, because the store binds a closure at its own type.
+Part (a) is what the textbook route of Section~\ref{sec:problem-textbook} wanted from inverting subcapturing at a call: the variable of a closure has the roots of its annotation. Here it holds by construction, because the store binds a closure at its own type.
 
 \begin{theorem}[Preservation]\label{thm:mini-pres}
 If $\statej{\mathit{st}}{T}$ and $\mathit{st} \step \mathit{st}'$, then $\statej{\mathit{st}'}{T}$.
@@ -150,23 +150,23 @@ Every step keeps the store or appends one location, so $\sext{\sigma}{\sigma'}$.
 \end{itemize}
 \end{proof}
 
-Each case discharges evidence that the typing of its redex carries: the avoidance evidence of the frame at \rn{E-Rename} and \rn{E-Alloc}, the closing evidence of the closure at \rn{E-App}. No derivation of capture evidence is inverted. The last column of Table~\ref{tab:mini-run} names these cases. At row~1, for instance, the closing evidence of $v_{\mathit{c1}}$ at $\mathit{unit}$ proves $\cset{\mathit{log}, \mathit{unit}} \le \cset{\mathit{log}} \cup \cset{\mathit{unit}}$, and $\cset{\mathit{c1}}$ has the leaves of $\cset{\mathit{log}}$.
+Each case discharges evidence that the typing of its redex carries: the avoidance evidence of the frame at \rn{E-Rename} and \rn{E-Alloc}, the closing evidence of the closure at \rn{E-App}. No derivation of capture evidence is inverted. The last column of Table~\ref{tab:mini-run} names these cases. At row~1, for instance, the closing evidence of $v_{\mathit{c1}}$ at $\mathit{unit}$ proves $\cset{\mathit{log}, \mathit{unit}} \le \cset{\mathit{log}} \cup \cset{\mathit{unit}}$, and $\cset{\mathit{c1}}$ has the roots of $\cset{\mathit{log}}$.
 
 \begin{example}[The allocation step]\label{ex:mini-alloc}
-State~5 is $\mst{\sigma_0}{K_0}{v_{\mathit{inner}}}$. Its use set is $\cset{\mathit{console}, \mathit{log}}$, the set that $K_0$ declares, with leaves $\cset{\kappa_1, \kappa_2}$ in $\Gamma_1$. \rn{E-Alloc} stores $v_{\mathit{inner}}$ at $\mathit{inner}$ and runs $\mathit{inner}\,\mathit{unit}$. The avoidance evidence $f_1$ of the frame was typed in $\Gamma_1, \mathit{inner} : T_{\mathit{inner}}$ when $\mathit{prog}_1$ was checked, with $\mathit{inner}$ the variable of a let (Example~\ref{ex:mini-typing}). That context is now $\Gamma_2$, the context of the store $\sigma_1$. So $f_1$ proves $\cset{\mathit{inner}, \mathit{unit}} \le \cset{\mathit{console}, \mathit{log}}$ about the location $\mathit{inner}$. Its part $\ev{capvar}\,\mathit{inner}$ proves $\cset{\mathit{inner}} \le \cset{\mathit{console}}$, and by Lemma~\ref{lem:mini-store}(a) the leaves of $\mathit{inner}$ are those of the annotation $\cset{\mathit{console}}$ of the stored closure, $\cset{\kappa_2}$. Theorem~\ref{thm:mini-cap} puts them among the leaves $\cset{\kappa_1, \kappa_2}$ of the declared set. The leaves of the state drop to $\cset{\kappa_2}$. The frame declared $\mathit{log}$, which its body never calls, and the step forgets it. The step and the leaves of $\cset{\mathit{console}}$ in $\Gamma_2$ are built by hand. The typing of $\sigma_1$ in $\Gamma_2$ is decided. The rest of the example is on paper.
+State~5 is $\mst{\sigma_0}{K_0}{v_{\mathit{inner}}}$. Its use set is $\cset{\mathit{console}, \mathit{log}}$, the set that $K_0$ declares, with roots $\cset{\kappa_1, \kappa_2}$ in $\Gamma_1$. \rn{E-Alloc} stores $v_{\mathit{inner}}$ at $\mathit{inner}$ and runs $\mathit{inner}\,\mathit{unit}$. The avoidance evidence $f_1$ of the frame was typed in $\Gamma_1, \mathit{inner} : T_{\mathit{inner}}$ when $\mathit{prog}_1$ was checked, with $\mathit{inner}$ the variable of a let (Example~\ref{ex:mini-typing}). That context is now $\Gamma_2$, the context of the store $\sigma_1$. So $f_1$ proves $\cset{\mathit{inner}, \mathit{unit}} \le \cset{\mathit{console}, \mathit{log}}$ about the location $\mathit{inner}$. Its part $\ev{capvar}\,\mathit{inner}$ proves $\cset{\mathit{inner}} \le \cset{\mathit{console}}$, and by Lemma~\ref{lem:mini-store}(a) the roots of $\mathit{inner}$ are those of the annotation $\cset{\mathit{console}}$ of the stored closure, $\cset{\kappa_2}$. Theorem~\ref{thm:mini-cap} puts them among the roots $\cset{\kappa_1, \kappa_2}$ of the declared set. The roots of the state drop to $\cset{\kappa_2}$. The frame declared $\mathit{log}$, which its body never calls, and the step forgets it. The step and the roots of $\cset{\mathit{console}}$ in $\Gamma_2$ are built by hand. The typing of $\sigma_1$ in $\Gamma_2$ is decided. The rest of the example is on paper.
 \end{example}
 
 \FloatBarrier
 \subsection{Along a run}\label{sec:mini-run}
 
-Along a run the store grows, and the leaves of a use set are computed in a new context after each allocation. One lemma relates the old leaves to the new ones. Figure~\ref{fig:mini-proof} then shows the whole argument.
+Along a run the store grows, and the roots of a use set are computed in a new context after each allocation. One lemma relates the old roots to the new ones. Figure~\ref{fig:mini-proof} then shows the whole argument.
 
-\begin{lemma}[Leaves under store extension]\label{lem:mini-ext}
-Let $\storej{\sigma}{\Gamma}$, $\storej{\sigma'}{\Gamma'}$ and $\sext{\sigma}{\sigma'}$. Then $\Gamma' = \Gamma, \Gamma''$ for some $\Gamma''$, and $\leaves{\Gamma'}{C} = \leaves{\Gamma}{C}$ for every capture set $C$ whose atoms are bound in $\Gamma$. Hence, for such $C$ and $D$, $\caple{\Gamma}{C}{D}$ gives $\caple{\Gamma'}{C}{D}$, and $\kappa$ is a leaf of $C$ in $\Gamma'$ if and only if it is one in $\Gamma$.
+\begin{lemma}[Roots under store extension]\label{lem:mini-ext}
+Let $\storej{\sigma}{\Gamma}$, $\storej{\sigma'}{\Gamma'}$ and $\sext{\sigma}{\sigma'}$. Then $\Gamma' = \Gamma, \Gamma''$ for some $\Gamma''$, and $\roots{\Gamma'}{C} = \roots{\Gamma}{C}$ for every capture set $C$ whose atoms are bound in $\Gamma$. Hence, for such $C$ and $D$, $\caple{\Gamma}{C}{D}$ gives $\caple{\Gamma'}{C}{D}$, and $\kappa$ is a root of $C$ in $\Gamma'$ if and only if it is one in $\Gamma$.
 \end{lemma}
 
 \begin{proof}
-Let $\sigma' = \sigma, \sigma''$. Store typing types each entry in the context of the entries before it, so the typing of $\sigma'$ types $\sigma$ as before, and $\Gamma' = \Gamma, \Gamma''$. The equations for leaves read the binder of an atom and the part of the context before it. For an atom bound in $\Gamma$, both are the same in $\Gamma'$.
+Let $\sigma' = \sigma, \sigma''$. Store typing types each entry in the context of the entries before it, so the typing of $\sigma'$ types $\sigma$ as before, and $\Gamma' = \Gamma, \Gamma''$. The equations for roots read the binder of an atom and the part of the context before it. For an atom bound in $\Gamma$, both are the same in $\Gamma'$.
 \end{proof}
 
 \begin{theorem}[Capture prediction]\label{thm:mini-pred}
@@ -182,17 +182,17 @@ If $\insp{\mathit{st}} = x$, then $x$ is an atom of $\uses{\mathit{st}}$, so $\c
 \end{remark}
 
 \begin{theorem}[Effect safety]\label{thm:mini-effect}
-Let $\statej{\mathit{st}}{T}$, let $\Gamma$ be the context of the store of $\mathit{st}$, and let $\kappa$ be a capture variable bound in $\Gamma$ that is not a leaf of $\uses{\mathit{st}}$ in $\Gamma$. Let $\mathit{st} \steps \mathit{st}'$, where the store $\sigma'$ of $\mathit{st}'$ has $\storej{\sigma'}{\Gamma'}$, and let $\insp{\mathit{st}'} = x$. Then $\kappa \notin \leaves{\Gamma'}{\cset{x}}$.
+Let $\statej{\mathit{st}}{T}$, let $\Gamma$ be the context of the store of $\mathit{st}$, and let $\kappa$ be a capture variable bound in $\Gamma$ that is not a root of $\uses{\mathit{st}}$ in $\Gamma$. Let $\mathit{st} \steps \mathit{st}'$, where the store $\sigma'$ of $\mathit{st}'$ has $\storej{\sigma'}{\Gamma'}$, and let $\insp{\mathit{st}'} = x$. Then $\kappa \notin \roots{\Gamma'}{\cset{x}}$.
 \end{theorem}
 
 \begin{proof}
-Suppose $\kappa \in \leaves{\Gamma'}{\cset{x}}$. Remark~\ref{rem:mini-insp} makes $\kappa$ a leaf of $\uses{\mathit{st}'}$ in $\Gamma'$, Theorem~\ref{thm:mini-pred} a leaf of $\uses{\mathit{st}}$ in $\Gamma'$, and Lemma~\ref{lem:mini-ext} a leaf of $\uses{\mathit{st}}$ in $\Gamma$, since the atoms of $\uses{\mathit{st}}$ are bound in $\Gamma$. That contradicts the hypothesis on $\kappa$.
+Suppose $\kappa \in \roots{\Gamma'}{\cset{x}}$. Remark~\ref{rem:mini-insp} makes $\kappa$ a root of $\uses{\mathit{st}'}$ in $\Gamma'$, Theorem~\ref{thm:mini-pred} a root of $\uses{\mathit{st}}$ in $\Gamma'$, and Lemma~\ref{lem:mini-ext} a root of $\uses{\mathit{st}}$ in $\Gamma$, since the atoms of $\uses{\mathit{st}}$ are bound in $\Gamma$. That contradicts the hypothesis on $\kappa$.
 \end{proof}
 
-For $\mathit{prog}_1$ the theorem says nothing about $\kappa_2$, which is a leaf of the initial use set. Capture prediction says more. At state~7 the run inspects $\mathit{console}$, whose leaf is $\kappa_2$, and Remark~\ref{rem:mini-insp} with Theorem~\ref{thm:mini-pred} puts $\kappa_2$ among the leaves of the initial use set. This instance is built by hand.
+For $\mathit{prog}_1$ the theorem says nothing about $\kappa_2$, which is a root of the initial use set. Capture prediction says more. At state~7 the run inspects $\mathit{console}$, whose root is $\kappa_2$, and Remark~\ref{rem:mini-insp} with Theorem~\ref{thm:mini-pred} puts $\kappa_2$ among the roots of the initial use set. This instance is built by hand.
 
 \begin{example}[The second program]\label{ex:mini-prog2}
-The state $\mst{\sigma_0}{\cdot}{\mathit{prog}_2}$ is typed, and $\kappa_2$ is not a leaf of $\uses{\mathit{prog}_2}$, whose leaves in $\Gamma_1$ are $\cset{\kappa_1}$ (Example~\ref{ex:mini-leaves}). By Theorem~\ref{thm:mini-effect}, no state reached from $\mathit{prog}_2$ inspects a variable with leaf $\kappa_2$. This instance, for every run, is built by hand. On paper, the run applies the rules of the first six steps of Table~\ref{tab:mini-run} to the frames of $\mathit{prog}_2$. It inspects $\mathit{c1}$ and $\mathit{log}$, whose leaf is $\kappa_1$, stores $v_{\mathit{inner}}$ at $\mathit{inner}$, and ends in the final state $\mst{\sigma_1}{\cdot}{\mathit{unit}}$. Its last store holds a closure that would call $\mathit{console}$, and no state inspects its location. So the theorem is not vacuous here: the run inspects two variables, and neither has leaf $\kappa_2$.
+The state $\mst{\sigma_0}{\cdot}{\mathit{prog}_2}$ is typed, and $\kappa_2$ is not a root of $\uses{\mathit{prog}_2}$, whose roots in $\Gamma_1$ are $\cset{\kappa_1}$ (Example~\ref{ex:mini-roots}). By Theorem~\ref{thm:mini-effect}, no state reached from $\mathit{prog}_2$ inspects a variable with root $\kappa_2$. This instance, for every run, is built by hand. On paper, the run applies the rules of the first six steps of Table~\ref{tab:mini-run} to the frames of $\mathit{prog}_2$. It inspects $\mathit{c1}$ and $\mathit{log}$, whose root is $\kappa_1$, stores $v_{\mathit{inner}}$ at $\mathit{inner}$, and ends in the final state $\mst{\sigma_1}{\cdot}{\mathit{unit}}$. Its last store holds a closure that would call $\mathit{console}$, and no state inspects its location. So the theorem is not vacuous here: the run inspects two variables, and neither has root $\kappa_2$.
 \end{example}
 
 \begin{figure}[t]

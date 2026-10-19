@@ -22,7 +22,7 @@ The reactor of Section~\ref{sec:target}, written in \DOTMNF, reads
 \klet \mathit{ga} = c\,a \kin \klet \mathit{gb} = c\,b \kin \mathit{gb}
 \end{array}
 \]
-Its promise is that its run never inspects a variable with leaf $\kappa_1$. The derivation \lean{C2\_typed} of \treeK, built by hand, has use set $\cset{\kappa_1, \kappa_2}$. The typer of Section~\ref{sec:frontends} finds $\cset{\kappa_2}$ (\lean{C2\_type}, decided), the use set that Theorem~\ref{thm:source-effect} needs at $\kappa_1$. \leanin{C2\_never\_reads\_k1}{\treeK}, built by hand, is that instance. It says little, because the run inspects only $c$, which closes over nothing (on paper). Section~\ref{sec:frontends} gives a variant whose run inspects more.
+Its promise is that its run never inspects a variable with root $\kappa_1$. The derivation \lean{C2\_typed} of \treeK, built by hand, has use set $\cset{\kappa_1, \kappa_2}$. The typer of Section~\ref{sec:frontends} finds $\cset{\kappa_2}$ (\lean{C2\_type}, decided), the use set that Theorem~\ref{thm:source-effect} needs at $\kappa_1$. \leanin{C2\_never\_reads\_k1}{\treeK}, built by hand, is that instance. It says little, because the run inspects only $c$, which closes over nothing (on paper). Section~\ref{sec:frontends} gives a variant whose run inspects more.
 
 \subsection{\DOTMNF with use sets}\label{sec:source-calc}
 
@@ -285,14 +285,14 @@ The match gives items~1 and~3, and preservation (Theorem~\ref{thm:target-meta}) 
 \end{proof}
 
 \begin{theorem}[Effect safety for \DOTMNF, \leanin{dot\_effect\_safety}{\treeK}]\label{thm:source-effect}
-Let $\plat$, $\src{h}$ and the run be as in Theorem~\ref{thm:source-safety}. Let $\kappa$ be a capture variable bound in $\plat$ that is not an element of the list $\trans{U}$, and let $\insp{\src{\mathit{st}}} = x$. Then there are $\tstate$, $\sigma'$, $\Gamma'$ and $\pi$ with items~1 to~5 of Theorem~\ref{thm:source-pred} and $\pi(\kappa) \notin \leaves{\Gamma'}{\cset{x}}$.
+Let $\plat$, $\src{h}$ and the run be as in Theorem~\ref{thm:source-safety}. Let $\kappa$ be a capture variable bound in $\plat$ that is not an element of the list $\trans{U}$, and let $\insp{\src{\mathit{st}}} = x$. Then there are $\tstate$, $\sigma'$, $\Gamma'$ and $\pi$ with items~1 to~5 of Theorem~\ref{thm:source-pred} and $\pi(\kappa) \notin \roots{\Gamma'}{\cset{x}}$.
 \end{theorem}
 
 \begin{proof}[Proof sketch]
-Erasure keeps the inspected variable on both machines, and the matched state is not a cast redex, so it inspects $x$. Over a platform the leaves of a set are its atoms, so $\kappa$ is not a leaf of $\trans{U}$, and by Theorem~\ref{thm:target-canon} applied to $\transu{h}$ not a leaf of $\uses{\trans{h}}$. Effect safety in the target, Theorem~\ref{thm:mini-effect} in full (\leanin{effect\_safety}{\treeK}), concludes.
+Erasure keeps the inspected variable on both machines, and the matched state is not a cast redex, so it inspects $x$. Over a platform the roots of a set are its atoms, so $\kappa$ is not a root of $\trans{U}$, and by Theorem~\ref{thm:target-canon} applied to $\transu{h}$ not a root of $\uses{\trans{h}}$. Effect safety in the target, Theorem~\ref{thm:mini-effect} in full (\leanin{effect\_safety}{\treeK}), concludes.
 \end{proof}
 
-Effect safety covers only the variable that the next step inspects. Its hypotheses differ between the trees. $\insp{\src{\mathit{st}}} = x$ is syntactic in all three. The hypothesis on $\kappa$ is about $\trans{U}$ in all three, so it does not see an $\cany$ in $U$, which the translation drops. It is syntactic in \treeK and \treeCC. Over a platform, $\kappa \notin \trans{U}$ means $\kappa \notin \leaves{\trans{\platctx}}{\trans{U}}$, by \lean{Platform.root\_iff} (in \treeCC with a premise that Section~\ref{sec:levels} explains). \treeCL states this semantic hypothesis instead, because there a set may hold a filtered capability, whose leaf $\kappa$ is not an element of the set (Section~\ref{sec:cl-filter}). Only \treeCL concludes that $\tstate$ inspects $x$, although every proof derives it.
+Effect safety covers only the variable that the next step inspects. Its hypotheses differ between the trees. $\insp{\src{\mathit{st}}} = x$ is syntactic in all three. The hypothesis on $\kappa$ is about $\trans{U}$ in all three, so it does not see an $\cany$ in $U$, which the translation drops. It is syntactic in \treeK and \treeCC. Over a platform, $\kappa \notin \trans{U}$ means $\kappa \notin \roots{\trans{\platctx}}{\trans{U}}$, by \lean{Platform.root\_iff} (in \treeCC with a premise that Section~\ref{sec:levels} explains). \treeCL states this semantic hypothesis instead, because there a set may hold a filtered capability, whose root $\kappa$ is not an element of the set (Section~\ref{sec:cl-filter}). Only \treeCL concludes that $\tstate$ inspects $x$, although every proof derives it.
 
 \subsection{What is not proved}\label{sec:source-open}
 

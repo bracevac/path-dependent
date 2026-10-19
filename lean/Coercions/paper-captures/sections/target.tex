@@ -170,35 +170,35 @@ Here $r$ has the type $\capt{(\pit[w]{\Unit}{\Unit})}{\cset{\sel{x}{C}}}$, since
 \]
 \[
 \begin{array}{@{}lcl@{}}
-\leavesn{\Gamma}{n}{\cempty} & = & \cempty \\
-\leavesn{\Gamma}{n}{\cset{c} \cup C} & = & \leavesn{\Gamma}{n}{c} \cup \leavesn{\Gamma}{n}{C} \\
-\leavesn{\Gamma}{n}{x} & = & \leavesn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', x : \capt{S}{C}, \Gamma'' \text{, opaque or transparent} \\
-\leavesn{\Gamma}{n}{\kappa} & = & \cset{\kappa} \quad \text{if } \Gamma = \Gamma', \kappa : \cstar, \Gamma'' \\
-\leavesn{\Gamma}{n}{\kappa} & = & \cset{\kappa} \quad \text{if } \Gamma = \Gamma', \kappa : \scopeb, \Gamma'' \\
-\leavesn{\Gamma}{n}{\kappa} & = & \leavesn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', \kappa : \mathsf{upper}\,C, \Gamma'' \\
-\leavesn{\Gamma}{n}{\kappa} & = & \leavesn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', \kappa \instb{C}, \Gamma'' \\
-\leavesn{\Gamma}{0}{\sel{x}{\ell}} & = & \cempty \\
-\leavesn{\Gamma}{n+1}{\sel{x}{\ell}} & = & \leavesn{\Gamma}{n}{C} \quad \text{if } \Gamma(x) \ni \ell \mathrel{:=_{c}} C \\
-\leavesn{\Gamma}{n+1}{\sel{x}{\ell}} & = & \cempty \quad \text{if } x \text{ is opaque in } \Gamma \\[3pt]
-c \in \leaves{\Gamma}{C} & :\Leftrightarrow & c \in \leavesn{\Gamma}{n}{C} \text{ for some } n
+\rootsn{\Gamma}{n}{\cempty} & = & \cempty \\
+\rootsn{\Gamma}{n}{\cset{c} \cup C} & = & \rootsn{\Gamma}{n}{c} \cup \rootsn{\Gamma}{n}{C} \\
+\rootsn{\Gamma}{n}{x} & = & \rootsn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', x : \capt{S}{C}, \Gamma'' \text{, opaque or transparent} \\
+\rootsn{\Gamma}{n}{\kappa} & = & \cset{\kappa} \quad \text{if } \Gamma = \Gamma', \kappa : \cstar, \Gamma'' \\
+\rootsn{\Gamma}{n}{\kappa} & = & \cset{\kappa} \quad \text{if } \Gamma = \Gamma', \kappa : \scopeb, \Gamma'' \\
+\rootsn{\Gamma}{n}{\kappa} & = & \rootsn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', \kappa : \mathsf{upper}\,C, \Gamma'' \\
+\rootsn{\Gamma}{n}{\kappa} & = & \rootsn{\Gamma'}{n}{C} \quad \text{if } \Gamma = \Gamma', \kappa \instb{C}, \Gamma'' \\
+\rootsn{\Gamma}{0}{\sel{x}{\ell}} & = & \cempty \\
+\rootsn{\Gamma}{n+1}{\sel{x}{\ell}} & = & \rootsn{\Gamma}{n}{C} \quad \text{if } \Gamma(x) \ni \ell \mathrel{:=_{c}} C \\
+\rootsn{\Gamma}{n+1}{\sel{x}{\ell}} & = & \cempty \quad \text{if } x \text{ is opaque in } \Gamma \\[3pt]
+c \in \roots{\Gamma}{C} & :\Leftrightarrow & c \in \rootsn{\Gamma}{n}{C} \text{ for some } n
 \end{array}
 \]
 \color{black}
-\caption{Capture evidence in full, with the capture templates of object coercions and the leaves of a capture set with names and fuel. $\preccurlyeq_\Gamma$ and $\approx_\Gamma$ are defined from leaves as in Figure~\ref{fig:mini-syntax}. The first equation that applies is used.}
+\caption{Capture evidence in full, with the capture templates of object coercions and the roots of a capture set with names and fuel. $\preccurlyeq_\Gamma$ and $\approx_\Gamma$ are defined from roots as in Figure~\ref{fig:mini-syntax}. The first equation that applies is used.}
 \label{fig:target-capev}
 \end{figure}
 
-\subsection{Leaves with names}\label{sec:target-leaves}
+\subsection{Roots with names}\label{sec:target-roots}
 
-The leaves at the end of Figure~\ref{fig:target-capev} extend those of Figure~\ref{fig:mini-syntax} in two ways. First, a capture name follows the capture witness of its binder and spends one unit of fuel. A witness may name a label of its own block, so names can form a cycle. A cycle contributes no leaf, as report~1's cyclic alias resolves to $\top$. A capture name of an opaque binder has no leaves, but over a store every term binder is transparent.
+The roots at the end of Figure~\ref{fig:target-capev} extend those of Figure~\ref{fig:mini-syntax} in two ways. First, a capture name follows the capture witness of its binder and spends one unit of fuel. A witness may name a label of its own block, so names can form a cycle. A cycle contributes no root, as report~1's cyclic alias resolves to $\top$. A capture name of an opaque binder has no roots, but over a store every term binder is transparent.
 
-Second, a capture binder bound $\cstar$ or $\scopeb$ is its own leaf, and one bound $\mathsf{upper}\,C$ or $\instb{C}$ has the leaves of $C$. These bounds are the scope, bounded and instance binders of \treeCC (Section~\ref{sec:levels-scopes}), and all three trees have them. No clause returns a term variable or a capture name, so every leaf is a capture binder bound $\cstar$ or $\scopeb$. \treeK constructs only $\cstar$, for the platform, but \rn{S-Cap} accepts any bound, and the theorems below hold over stores with any bounds.
+Second, a capture binder bound $\cstar$ or $\scopeb$ is its own root, and one bound $\mathsf{upper}\,C$ or $\instb{C}$ has the roots of $C$. These bounds are the scope, bounded and instance binders of \treeCC (Section~\ref{sec:levels-scopes}), and all three trees have them. No clause returns a term variable or a capture name, so every root is a capture binder bound $\cstar$ or $\scopeb$. \treeK constructs only $\cstar$, for the platform, but \rn{S-Cap} accepts any bound, and the theorems below hold over stores with any bounds.
 
 \subsection{Canonical forms of closed capture evidence}\label{sec:target-canon}
 
-Report~1's Theorem~\ref{R1-thm:canon} assumes a typed store, $\storej{\sigma}{\Gamma}$, and normalizes closed evidence to a typed head form. The normalizer drops the capture half of $\ev{capt}\,e\,f$, and the canonical form of capture evidence is a fact about leaves, as in Theorem~\ref{thm:mini-cap}. That theorem held in every context. With capture members it cannot, since under a binder of type $\obj{[\,\plec{\cset{\kappa}}{\cempty}\,]}$ one $\ev{member}$ proves $\cset{\kappa} \le \cempty$, and $\kappa$ is a leaf of $\cset{\kappa}$ only (Example~\ref{ex:target-bad}). Over a typed store it holds again.
+Report~1's Theorem~\ref{R1-thm:canon} assumes a typed store, $\storej{\sigma}{\Gamma}$, and normalizes closed evidence to a typed head form. The normalizer drops the capture half of $\ev{capt}\,e\,f$, and the canonical form of capture evidence is a fact about roots, as in Theorem~\ref{thm:mini-cap}. That theorem held in every context. With capture members it cannot, since under a binder of type $\obj{[\,\plec{\cset{\kappa}}{\cempty}\,]}$ one $\ev{member}$ proves $\cset{\kappa} \le \cempty$, and $\kappa$ is a root of $\cset{\kappa}$ only (Example~\ref{ex:target-bad}). Over a typed store it holds again.
 
-The member cases read a view of an atom, which has one proposition form per proposition of its type (report~1's Figure~\ref{R1-fig:forms}). At a capture proposition the form carries no data, and its typedness is the proposition at the root, read as a fact about leaves. We call such a form a capture entry. A capture entry gets its fact from the store. A stored literal has one capture entry per capture witness, with the fact of \rn{CE-Def}, and a capture template composes its sides with the source capture entry.
+The member cases read a view of an atom, which has one proposition form per proposition of its type (report~1's Figure~\ref{R1-fig:forms}). At a capture proposition the form carries no data, and its typedness is the proposition at the root of the atom, read as a fact about the roots of capture sets. We call such a form a capture entry. A capture entry gets its fact from the store. A stored literal has one capture entry per capture witness, with the fact of \rn{CE-Def}, and a capture template composes its sides with the source capture entry.
 
 \begin{theorem}[Canonical forms of closed capture evidence, \leanin{cap\_canon}{\treeK}]\label{thm:target-canon}
 Let $\storej{\sigma}{\Gamma}$.
@@ -215,7 +215,7 @@ By one mutual induction on typing derivations, together with report~1's Theorem~
 \begin{itemize}
 \item \rn{C-Refl}, \rn{C-Trans}, \rn{C-Elem} and \rn{C-Union} as in Theorem~\ref{thm:mini-cap}. \rn{C-Var} is item 3, and \rn{C-EqToLe} is item 2.
 \item \rn{C-Member} and \rn{CE-Member}, the only cases that read the store. Report~1's theorem gives the view of $a$ and the form of $e$, and pushes the view through the form to a typed view of the target telescope. Its entry at $i$ is a capture entry, and its typedness is the conclusion, $\caple{\Gamma}{C_1[\self \mapsto \rt{a}]}{C_2[\self \mapsto \rt{a}]}$, or $\approx_\Gamma$ for an equality.
-\item \rn{CE-Refl}, \rn{CE-Symm} and \rn{CE-Trans}: $\approx_\Gamma$ is an equivalence. \rn{CE-Def}: a defined capture name has the leaves of its witness, by the name clause (\lean{Ctx.Root\_name}).
+\item \rn{CE-Refl}, \rn{CE-Symm} and \rn{CE-Trans}: $\approx_\Gamma$ is an equivalence. \rn{CE-Def}: a defined capture name has the roots of its witness, by the name clause (\lean{Ctx.Root\_name}).
 \item Item 3. \rn{A-Var} is Lemma~\ref{lem:mini-var}, now at every fuel (\lean{Ctx.Root\_var}). \rn{A-Cast} is items 3 and 4, \rn{A-Fold}, \rn{A-Unfold} and \rn{A-Both} keep the capture set, and \rn{A-Recap} is item 1. Item 4. \rn{L-Capt} is item 1 at its capture half. \qedhere
 \end{itemize}
 \end{proof}
@@ -234,11 +234,11 @@ In the member case of item 1, the fact $\capeqv{\Gamma}{\cset{\sel{y}{C}}}{\cset
 \end{example}
 
 \begin{corollary}[No closed escape of a star binder, \leanin{Store.Typed.no\_cap\_escape}{\treeK}]\label{cor:target-star}
-Let $\storej{\sigma}{\Gamma}$ and $\Gamma(\kappa) = \cstar$. If $\kappa \notin \leaves{\Gamma}{D}$ then no $f$ has $\clej{\Gamma}{f}{\cset{\kappa}}{D}$. In particular no $f$ has $\clej{\Gamma}{f}{\cset{\kappa}}{\cempty}$ (\lean{Store.Typed.no\_cap\_star\_le\_nil}).
+Let $\storej{\sigma}{\Gamma}$ and $\Gamma(\kappa) = \cstar$. If $\kappa \notin \roots{\Gamma}{D}$ then no $f$ has $\clej{\Gamma}{f}{\cset{\kappa}}{D}$. In particular no $f$ has $\clej{\Gamma}{f}{\cset{\kappa}}{\cempty}$ (\lean{Store.Typed.no\_cap\_star\_le\_nil}).
 \end{corollary}
 
 \begin{proof}
-$\kappa$ is a leaf of $\cset{\kappa}$, so item 1 of Theorem~\ref{thm:target-canon} would make it a leaf of $D$.
+$\kappa$ is a root of $\cset{\kappa}$, so item 1 of Theorem~\ref{thm:target-canon} would make it a root of $D$.
 \end{proof}
 
 \begin{example}[Bad capture bounds, revisited]\label{ex:target-bad}
@@ -249,7 +249,7 @@ The target typing of C3, the closure of Section~\ref{sec:problem-bad}, is over o
 \qquad \ann{\ev{elem}\,\cset{z}\,\cset{z}}\ \ann{\ev{elem}\,\cempty\,\cset{x}} .
 \end{array}
 \]
-Its typing is decided (\lean{C3\_typed}), and so is $\ev{member}\,x\,(\ev{refl}\,\mathit{Bad})\,0 : \cset{\kappa} \le \cempty$ under both binders (\lean{C3\_badBounds}). The unboxing takes $\kappa$ off the boxed value and charges $\cempty$. Over a typed store no atom $a$ has a type $\capt{\mathit{Bad}}{D}$, since $\ev{member}\,a\,(\ev{refl}\,\mathit{Bad})\,0$ would be closed evidence that Corollary~\ref{cor:target-star} rules out. A call of the outer lambda from a typed state would hand its body such an atom, so the body never runs. The Lean states the corollary at such a binder as \lean{C3\_no\_store}, by hand, and the rest is report~1's argument for bad bounds on paper, with leaves for head forms.
+Its typing is decided (\lean{C3\_typed}), and so is $\ev{member}\,x\,(\ev{refl}\,\mathit{Bad})\,0 : \cset{\kappa} \le \cempty$ under both binders (\lean{C3\_badBounds}). The unboxing takes $\kappa$ off the boxed value and charges $\cempty$. Over a typed store no atom $a$ has a type $\capt{\mathit{Bad}}{D}$, since $\ev{member}\,a\,(\ev{refl}\,\mathit{Bad})\,0$ would be closed evidence that Corollary~\ref{cor:target-star} rules out. A call of the outer lambda from a typed state would hand its body such an atom, so the body never runs. The Lean states the corollary at such a binder as \lean{C3\_no\_store}, by hand, and the rest is report~1's argument for bad bounds on paper, with the roots of capture sets in place of head forms.
 \end{example}
 
 \subsection{The use-set lemma and the rest of the metatheory}\label{sec:target-meta}
@@ -295,7 +295,7 @@ Step & Case \\
 
 \subsection{Boxes}\label{sec:target-boxes}
 
-Boxing hides a capture set and unboxing recovers it (Section~\ref{sec:cc-later}), and \treeK keeps both explicit. Boxing is a value, $\ev{box}\,a : \capt{(\boxt{T})}{\cempty}$ (\rn{V-Box}), so a container of capabilities can be pure, and a store location that holds a box has no leaves. Unboxing is a term, $\unboxc{a}{U}{f}$, with the charge $f : C \le U$ of the boxed set $C$ against the declared use set $U$ (\rn{T-Unbox}). The capture set $D$ of the box itself plays no part. \rn{E-UnboxRefl} hands back the stored atom at the chain $\form{id}$ or $\form{eqv}\,\varphi$, also at a bare variable. \rn{E-UnboxCast} hands it back under $d$ at the chain $\form{boxed}\,d$, as \rn{E-AppCast} hands a closure its argument under the domain coercion. Progress and the backward erasure simulation use the next theorem, and the use-set lemma uses its typed chain.
+Boxing hides a capture set and unboxing recovers it (Section~\ref{sec:cc-later}), and \treeK keeps both explicit. Boxing is a value, $\ev{box}\,a : \capt{(\boxt{T})}{\cempty}$ (\rn{V-Box}), so a container of capabilities can be pure, and a store location that holds a box has no roots. Unboxing is a term, $\unboxc{a}{U}{f}$, with the charge $f : C \le U$ of the boxed set $C$ against the declared use set $U$ (\rn{T-Unbox}). The capture set $D$ of the box itself plays no part. \rn{E-UnboxRefl} hands back the stored atom at the chain $\form{id}$ or $\form{eqv}\,\varphi$, also at a bare variable. \rn{E-UnboxCast} hands it back under $d$ at the chain $\form{boxed}\,d$, as \rn{E-AppCast} hands a closure its argument under the domain coercion. Progress and the backward erasure simulation use the next theorem, and the use-set lemma uses its typed chain.
 
 \begin{theorem}[Closed box inversion, \leanin{closed\_box\_inversion}{\treeK}]\label{thm:target-box}
 Let $\storej{\sigma}{\Gamma}$ and $\atomj{\Gamma}{a}{\capt{(\boxt{T})}{D}}$. Then $\sigma(\rt{a}) = \ev{box}\,b$ for some atom $b$, and $\chn{\sigma}{a}{n}{\Phi}$ for some $n$ and a head form $\Phi$ that is $\form{id}$, $\form{eqv}\,\varphi$ or $\form{boxed}\,d$.
@@ -307,13 +307,13 @@ C7 is a pure container of two boxed capabilities (\lean{C7\_client}, decided). I
 \]
 Both fields declare $\cempty$, so $o : \capt{\mathit{Pair}}{\cempty}$ is pure. The client binds $\ell_1$ of $o$ to $y : \capt{(\boxt{\CapT{\kappa_1}})}{\cempty}$ and opens it with $\unboxc{y}{\cset{\kappa_1}}{\ev{refl}\,\cset{\kappa_1}}$ in a let that declares $\cset{\kappa_1}$. With the declared sets $\cempty$ and the charge $\ev{elem}\,\cset{\kappa_1}\,\cempty$ the checker refuses the client (\lean{C7\_rejected}, decided).
 
-Effect safety never flags an unboxing, since $\rt{a}$ holds a box and has no leaves. The next theorem speaks of the atom it hands back.
+Effect safety never flags an unboxing. The unboxing inspects the variable $\rt{a}$, which holds a box, so $\cset{\rt{a}}$ has no roots. The next theorem speaks of the atom it hands back.
 
 \begin{theorem}[Effect safety at an unboxing, \leanin{effect\_safety\_unbox}{\treeK}]\label{thm:target-unbox}
-Let $\statej{\mathit{st}}{T}$, let $\storej{\sigma}{\Gamma}$ for the store $\sigma$ of $\mathit{st}$, and let $\kappa \notin \leaves{\Gamma}{\uses{\mathit{st}}}$. Let $\mathit{st} \steps \mst{\sigma'}{K'}{\unboxc{a}{U}{f}}$ with $\sigma'(\rt{a}) = \ev{box}\,b$, and let $\storej{\sigma'}{\Gamma'}$. Then $\sextr{\pi}{\sigma}{\sigma'}$ and $\pi(\kappa) \notin \leaves{\Gamma'}{\cset{\rt{b}}}$ for some renaming $\pi$.
+Let $\statej{\mathit{st}}{T}$, let $\storej{\sigma}{\Gamma}$ for the store $\sigma$ of $\mathit{st}$, and let $\kappa \notin \roots{\Gamma}{\uses{\mathit{st}}}$. Let $\mathit{st} \steps \mst{\sigma'}{K'}{\unboxc{a}{U}{f}}$ with $\sigma'(\rt{a}) = \ev{box}\,b$, and let $\storej{\sigma'}{\Gamma'}$. Then $\sextr{\pi}{\sigma}{\sigma'}$ and $\pi(\kappa) \notin \roots{\Gamma'}{\cset{\rt{b}}}$ for some renaming $\pi$.
 \end{theorem}
 
-Its proof takes the unboxing step from progress and applies capture prediction to the longer run.
+Here $\rt{b}$ is report~1's root of the atom $b$, a term variable, and the conclusion is about the roots of the capture set $\cset{\rt{b}}$. Its proof takes the unboxing step from progress and applies capture prediction to the longer run.
 
 \subsection{What is not proved}\label{sec:target-open}
 

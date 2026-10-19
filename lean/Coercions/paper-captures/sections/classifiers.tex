@@ -16,7 +16,7 @@ Scala's capture checker can also say what kind of capabilities a value may use. 
 
 \subsection{Programs and promises}\label{sec:cl-programs}
 
-Section~\ref{sec:cc-later} quoted the two signatures. \lean{runOnNewThread} refuses a \lean{Control} capability because such a capability is bound to the stack of the thread that created it (\texttt{classifiers.md}, line 126). \treeCL models both after Capless(K) \cite{pham2026classifying}. Its E1 is \lean{Try.apply} with the result filtered to the kind $\konly{\mathit{Control}}$. Its E2 is Capless(K)'s \lean{Future.apply}, whose body is kinded at $\kexcept{\mathit{ThreadLocal}}$. The Lean has no \lean{runOnNewThread} at $\kexcept{\mathit{Control}}$, and in both models the program never calls the body. The promise the Lean keeps is this: if the use set of a program is kinded at $\chi$, every leaf of a variable that a run inspects has a classifier that $\chi$ admits (Theorem~\ref{thm:cl-effect}).
+Section~\ref{sec:cc-later} quoted the two signatures. \lean{runOnNewThread} refuses a \lean{Control} capability because such a capability is bound to the stack of the thread that created it (\texttt{classifiers.md}, line 126). \treeCL models both after Capless(K) \cite{pham2026classifying}. Its E1 is \lean{Try.apply} with the result filtered to the kind $\konly{\mathit{Control}}$. Its E2 is Capless(K)'s \lean{Future.apply}, whose body is kinded at $\kexcept{\mathit{ThreadLocal}}$. The Lean has no \lean{runOnNewThread} at $\kexcept{\mathit{Control}}$, and in both models the program never calls the body. The promise the Lean keeps is this: if the use set of a program is kinded at $\chi$, every root of a variable that a run inspects has a classifier that $\chi$ admits (Theorem~\ref{thm:cl-effect}).
 
 \subsection{Classifiers and kinds}\label{sec:cl-kinds}
 
@@ -65,11 +65,11 @@ k \mathrel{\#} k' & \text{iff} & k \not\le k' \text{ and } k' \not\le k \\
 \capsr{\Gamma}{n}{\restr{c}{\chi}} & = & \cset{\restr{b}{\chi} \mid b \in \capsr{\Gamma}{n}{c}} \\
 \capsr{\Gamma}{n}{\kappa} & = & \cset{\kappa} & \text{if } \kappa : \clsb{k} \in \Gamma \\
 \expand{\Gamma}{\restr{c}{\chi}} & = & \cset{b \in \expand{\Gamma}{c} \mid \kcont{\clsof{\Gamma}{b}}{\chi}} \\
-\kindle{\Gamma}{C}{\chi} & \text{iff} & \kcont{\clsof{\Gamma}{c}}{\chi} \text{ for every } c \in \leaves{\Gamma}{C}
+\kindle{\Gamma}{C}{\chi} & \text{iff} & \kcont{\clsof{\Gamma}{c}}{\chi} \text{ for every } c \in \roots{\Gamma}{C}
 \end{array}
 \]
 \color{black}
-\caption{Classifiers, kinds and filtered sets. Each $\vec{k}_i$ is a list of classifiers, and $\iota$, $\iota'$ range over subtrees $\langle k, \vec{k}\rangle$. The cases of subtraction are tried in order. $\clsof{\Gamma}{c}$ is the declared classifier when $c$ is a classified binder, and $\top$ for every other atom. Resolution keeps the clauses of Figure~\ref{fig:target-capev} and Section~\ref{sec:levels-scopes} that are not shown, expansion and leaves keep those of Section~\ref{sec:levels-scopes}, and a classified binder is opaque.}
+\caption{Classifiers, kinds and filtered sets. Each $\vec{k}_i$ is a list of classifiers, and $\iota$, $\iota'$ range over subtrees $\langle k, \vec{k}\rangle$. The cases of subtraction are tried in order. $\clsof{\Gamma}{c}$ is the declared classifier when $c$ is a classified binder, and $\top$ for every other atom. Resolution keeps the clauses of Figure~\ref{fig:target-capev} and Section~\ref{sec:levels-scopes} that are not shown, expansion and roots keep those of Section~\ref{sec:levels-scopes}, and a classified binder is opaque.}
 \label{fig:cl-syntax}
 \end{figure}
 
@@ -77,23 +77,23 @@ A classifier is a node of a tree, built from indices: $\top$ is the top node and
 
 A kind is a union of subtrees, each a classifier minus excluded subtrees. Its operations are total functions, and containment, emptiness and subkinding are tests that return Booleans. Subtraction removes the subtrees of $\chi'$ from $\chi$ one at a time. \treeCL proves only its sound half: a classifier that $\chi$ contains and $\chi'$ does not is contained in $\chi \setminus \chi'$ (\leanin{Kind.contains\_subtract\_of}{\treeCL}). So $\subkind{\chi}{\chi'}$ and $\kcont{k}{\chi}$ give $\kcont{k}{\chi'}$ (\lean{Kind.Subkind.contains}), the only fact about subkinding the development uses. The converse is not proved, so the subkind test is not known to be reflexive or transitive, and a template that relates a kind to itself takes the step $\admstep{\chi}{\chi'}$.
 
-\subsection{Filtered capture sets and their leaves}\label{sec:cl-filter}
+\subsection{Filtered capture sets and their roots}\label{sec:cl-filter}
 
 The atom $\restr{c}{\chi}$ is Scala's \lean{c.only[A]}, or \lean{c.except[A]} with an exclusion kind. It is data. An atom with no declared classifier has classifier $\top$, which $\konly{\mathit{Control}}$ excludes and $\kexcept{k}$ admits for every $k \neq \top$ (\lean{CapBound.classifier}). Scala reads an unclassified capability the other way: \lean{c.only[A]} keeps it and \lean{c.except[A]} refuses it. In Example~\ref{ex:cl-k6} the kinding rules of Section~\ref{sec:cl-kinding} refuse it at an exclusion too. Classified binders $\kappa : \clsb{k}$ sit on the platform only. Store extension needs a binder that is not opaque, so no step allocates one (\lean{CapBound.cls\_not\_appendable}).
 
-\begin{lemma}[Leaves of a filtered set, \leanin{Ctx.roots\_proj}{\treeCL}]
-For every $\Gamma$, $n$, $C$ and $\chi$, $\leavesn{\Gamma}{n}{\restr{C}{\chi}} = \cset{b \in \leavesn{\Gamma}{n}{C} \mid \kcont{\clsof{\Gamma}{b}}{\chi}}$.
+\begin{lemma}[Roots of a filtered set, \leanin{Ctx.roots\_proj}{\treeCL}]
+For every $\Gamma$, $n$, $C$ and $\chi$, $\rootsn{\Gamma}{n}{\restr{C}{\chi}} = \cset{b \in \rootsn{\Gamma}{n}{C} \mid \kcont{\clsof{\Gamma}{b}}{\chi}}$.
 \end{lemma}
 
 Resolution carries the filter along, and the filter must act after expansion. Acting inside resolution, the filter would admit a scope capability that the expansion after it opens into binders the filter excludes. Section~\ref{sec:history} records that design.
 
-\begin{example}[Filtered leaves]\label{ex:cl-filter}
+\begin{example}[Filtered roots]\label{ex:cl-filter}
 Let $\Gamma_1 = \kappa_{\mathit{ctl}} : \clsb{\mathit{Control}},\ \kappa_{\mathit{io}} : \clsb{\mathit{IO}}$ and $\Gamma_2 = \kappa_{\mathit{tl}} : \clsb{\mathit{ThreadLocal}},\ \varrho : \scopeb,\ \kappa_{\mathit{ctl}} : \clsb{\mathit{Control}}$. Then
 \[
 \begin{array}{@{}lcl@{}}
-\leavesn{\Gamma_1}{0}{\cset{\restr{\kappa_{\mathit{ctl}}}{\konly{\mathit{Control}}}}} & = & \cset{\kappa_{\mathit{ctl}}} \\
-\leavesn{\Gamma_1}{0}{\cset{\restr{\kappa_{\mathit{io}}}{\konly{\mathit{Control}}}}} & = & \cempty \\
-\leavesn{\Gamma_2}{0}{\cset{\restr{\varrho}{\kexcept{\mathit{ThreadLocal}}}}} & = & \cset{\topc, \varrho}
+\rootsn{\Gamma_1}{0}{\cset{\restr{\kappa_{\mathit{ctl}}}{\konly{\mathit{Control}}}}} & = & \cset{\kappa_{\mathit{ctl}}} \\
+\rootsn{\Gamma_1}{0}{\cset{\restr{\kappa_{\mathit{io}}}{\konly{\mathit{Control}}}}} & = & \cempty \\
+\rootsn{\Gamma_2}{0}{\cset{\restr{\varrho}{\kexcept{\mathit{ThreadLocal}}}}} & = & \cset{\topc, \varrho}
 \end{array}
 \]
 by \lean{K1x\_roots\_ctl}, \lean{K1x\_roots\_io} and \lean{K3x\_roots}, all three built by hand.
@@ -140,10 +140,10 @@ by \lean{K1x\_roots\_ctl}, \lean{K1x\_roots\_io} and \lean{K3x\_roots}, all thre
 \label{fig:cl-kinding}
 \end{figure}
 
-A kinding judgment $\kindj{\Gamma}{g}{C}{\chi}$ says that $g$ shows every leaf of $C$ to have a classifier in $\chi$ (Figure~\ref{fig:cl-kinding}). \rn{Kd-Proj} and \rn{Kd-Cls} each merge two rules of Capless(K). \rn{Kd-Proj} kinds an atom whose own kind is below $\chi$, so at a bare atom $\chi$ must admit every classifier. \rn{Kd-Cls} kinds a classified binder whose classifier $\chi$ contains, or that the atom's own filter excludes, and it never reads the $\top$ of a star binder (Example~\ref{ex:cl-k6}). \rn{Kd-Member} reads a kinding proposition off an object type, as \rn{C-Member} reads a capture inclusion.
+A kinding judgment $\kindj{\Gamma}{g}{C}{\chi}$ says that $g$ shows every root of $C$ to have a classifier in $\chi$ (Figure~\ref{fig:cl-kinding}). \rn{Kd-Proj} and \rn{Kd-Cls} each merge two rules of Capless(K). \rn{Kd-Proj} kinds an atom whose own kind is below $\chi$, so at a bare atom $\chi$ must admit every classifier. \rn{Kd-Cls} kinds a classified binder whose classifier $\chi$ contains, or that the atom's own filter excludes, and it never reads the $\top$ of a star binder (Example~\ref{ex:cl-k6}). \rn{Kd-Member} reads a kinding proposition off an object type, as \rn{C-Member} reads a capture inclusion.
 
 \begin{theorem}[Canonical forms of closed kinding evidence, \leanin{kind\_canon}{\treeCL}]\label{thm:cl-kind}
-Let $\storej{\sigma}{\Gamma}$. If $\kindj{\Gamma}{g}{C}{\chi}$, then $\kindle{\Gamma}{C}{\chi}$: every leaf of $C$ in $\Gamma$ has a classifier in $\chi$.
+Let $\storej{\sigma}{\Gamma}$. If $\kindj{\Gamma}{g}{C}{\chi}$, then $\kindle{\Gamma}{C}{\chi}$: every root of $C$ in $\Gamma$ has a classifier in $\chi$.
 \end{theorem}
 
 The theorem needs no member-free hypothesis. It is proved inside \treeCL's copy of the mutual induction behind Theorem~\ref{thm:target-canon}, since \rn{Kd-Var} and \rn{Kd-Member} read atom typings and \rn{C-Proj} reads kinding. The three capture rules add cases to \lean{cap\_canon}, each the lemma above read one way. A checker decides kinding evidence, and \leanin{checkKindCo\_iff\_hasType}{\treeCL} says that it accepts exactly the derivable evidence. That is adequacy for the rules, not completeness of the rules (Example~\ref{ex:cl-k6}).
@@ -170,26 +170,26 @@ The translation of $\src{g}$ is typed kinding evidence (\leanin{CapKind.translat
 
 \subsection{Instances}\label{sec:cl-instances}
 
-An instance of effect safety is informative when its run inspects a variable that has a leaf, since only then does it say something. Any other instance holds for want of a leaf.
+An instance of effect safety is informative when its run inspects a variable that has a root, since only then does it say something. Any other instance holds for want of a root.
 
 \begin{example}[Try and Future, run]\label{ex:cl-try}
 E1 runs on the platform $\kappa_{\mathit{ctl}} : \clsb{\mathit{Control}},\ \kappa_{\mathit{io}} : \clsb{\mathit{IO}}$ and is
 \[
 \src{\klet b = \lambda(u : \Unit).\,u \kin \klet f = \mathit{Try.apply} \kin \klet r = f\,b \kin r} ,
 \]
-with $b$ and the program's use set at $\restr{\cset{\kappa_{\mathit{ctl}}, \kappa_{\mathit{io}}}}{\konly{\mathit{Control}}}$. \lean{E1\_typed} and the kinding \lean{E1\_kind} are built by hand with decided side conditions. The run inspects only $f$, which holds $\mathit{Try.apply}$, a closure annotated $\cempty$. So the inspected variable has no leaf (\lean{E1\_reads\_pure}, by hand), and the instance \lean{E1\_effect\_safety} of Theorem~\ref{thm:cl-source} (by hand) holds for want of a leaf. E2 is the same for $\mathit{Future.apply}$ (\lean{E2\_reads\_pure} and \lean{E2\_effect\_safety}, by hand).
+with $b$ and the program's use set at $\restr{\cset{\kappa_{\mathit{ctl}}, \kappa_{\mathit{io}}}}{\konly{\mathit{Control}}}$. \lean{E1\_typed} and the kinding \lean{E1\_kind} are built by hand with decided side conditions. The run inspects only $f$, which holds $\mathit{Try.apply}$, a closure annotated $\cempty$. So the inspected variable has no root (\lean{E1\_reads\_pure}, by hand), and the instance \lean{E1\_effect\_safety} of Theorem~\ref{thm:cl-source} (by hand) holds for want of a root. E2 is the same for $\mathit{Future.apply}$ (\lean{E2\_reads\_pure} and \lean{E2\_effect\_safety}, by hand).
 
 The informative instances do not call $\mathit{Try.apply}$ or $\mathit{Future.apply}$. E1r is
 \[
 \src{\klet u = \lambda(x : \Unit).\,x \kin \klet b = \lambda(x : \Unit).\,x \kin \klet r = b\,u \kin r}
 \]
-with $b$ at the filtered platform set, and its run inspects $b$ at the call. \lean{E1r\_read\_has\_root} applies \lean{E1r\_effect\_safety}, the instance of Theorem~\ref{thm:cl-source}, at the source state of the call (both by hand). It adds that $\kappa_{\mathit{ctl}}$ is a leaf of $b$ in the matched target state (\lean{E1r\_reads\_root}, by hand). So the theorem speaks of a leaf that exists, and it rules out $\kappa_{\mathit{io}}$, which the filter dropped. E2r does the same at $\kexcept{\mathit{ThreadLocal}}$ with the leaf $\kappa_{\mathit{io}}$ (\lean{E2r\_read\_has\_root}, by hand).
+with $b$ at the filtered platform set, and its run inspects $b$ at the call. \lean{E1r\_read\_has\_root} applies \lean{E1r\_effect\_safety}, the instance of Theorem~\ref{thm:cl-source}, at the source state of the call (both by hand). It adds that $\kappa_{\mathit{ctl}}$ is a root of $b$ in the matched target state (\lean{E1r\_reads\_root}, by hand). So the theorem speaks of a root that exists, and it rules out $\kappa_{\mathit{io}}$, which the filter dropped. E2r does the same at $\kexcept{\mathit{ThreadLocal}}$ with the root $\kappa_{\mathit{io}}$ (\lean{E2r\_read\_has\_root}, by hand).
 \end{example}
 
 \begin{example}[An incompleteness]\label{ex:cl-k6}
-Let $\Gamma = \kappa_{\mathit{tl}} : \clsb{\mathit{ThreadLocal}},\ \kappa_p : \cstar$. The star binder $\kappa_p$ declares no classifier, is its own only leaf, and has classifier $\top$, which $\kexcept{\mathit{ThreadLocal}}$ contains. So $\kindle{\Gamma}{\cset{\kappa_p}}{\kexcept{\mathit{ThreadLocal}}}$ (\lean{K6x\_kindLe}, by hand), and yet no evidence derives it (\lean{K6x\_no\_kindCo}, by hand). \rn{Kd-Cls} needs a declared classifier, and \rn{Kd-Proj} needs $\subkind{\konly{\top}}{\kexcept{\mathit{ThreadLocal}}}$, which fails, and the checker refuses both, decided. For all evidence, the proof renames $\kappa_p$ to the instance binder $\kappa_p \instb{\cset{\kappa_{\mathit{tl}}}}$, along which kinding evidence travels. In the image the only leaf of $\cset{\kappa_p}$ is $\kappa_{\mathit{tl}}$, which the kind excludes, and a store types the image, so Theorem~\ref{thm:cl-kind} refutes the evidence. A rule that read $\top$ off a star binder would derive this kinding and so lose its renaming lemma (Section~\ref{sec:history}).
+Let $\Gamma = \kappa_{\mathit{tl}} : \clsb{\mathit{ThreadLocal}},\ \kappa_p : \cstar$. The star binder $\kappa_p$ declares no classifier, is its own only root, and has classifier $\top$, which $\kexcept{\mathit{ThreadLocal}}$ contains. So $\kindle{\Gamma}{\cset{\kappa_p}}{\kexcept{\mathit{ThreadLocal}}}$ (\lean{K6x\_kindLe}, by hand), and yet no evidence derives it (\lean{K6x\_no\_kindCo}, by hand). \rn{Kd-Cls} needs a declared classifier, and \rn{Kd-Proj} needs $\subkind{\konly{\top}}{\kexcept{\mathit{ThreadLocal}}}$, which fails, and the checker refuses both, decided. For all evidence, the proof renames $\kappa_p$ to the instance binder $\kappa_p \instb{\cset{\kappa_{\mathit{tl}}}}$, along which kinding evidence travels. In the image the only root of $\cset{\kappa_p}$ is $\kappa_{\mathit{tl}}$, which the kind excludes, and a store types the image, so Theorem~\ref{thm:cl-kind} refutes the evidence. A rule that read $\top$ off a star binder would derive this kinding and so lose its renaming lemma (Section~\ref{sec:history}).
 \end{example}
 
 \subsection{What is not proved}\label{sec:cl-open}
 
-No theorem says that the Future program with a thread-local argument has no typing derivation, only that no source kinding derivation puts the thread-local capability at $\kexcept{\mathit{ThreadLocal}}$ (\lean{E2\_tl\_not\_capKind}, by hand). The model of $\mathit{Try.apply}$ never runs its body, since the field of the object it returns holds a new identity closure. Subtraction is proved sound, not complete, and subkinding is not known to be a preorder. Kinding is incomplete at a star binder, and the filter and the leaves read such a binder the other way from Scala. Theorem~\ref{thm:cl-kind} speaks of contexts that a store types, so it says nothing about kinding inside a lambda body, and the source theorems apply it at the platform only. Capless(K)'s kind-bounded capture binders, its merge of subsets, and its labels and handlers are not modelled (Section~\ref{sec:related}).
+No theorem says that the Future program with a thread-local argument has no typing derivation, only that no source kinding derivation puts the thread-local capability at $\kexcept{\mathit{ThreadLocal}}$ (\lean{E2\_tl\_not\_capKind}, by hand). The model of $\mathit{Try.apply}$ never runs its body, since the field of the object it returns holds a new identity closure. Subtraction is proved sound, not complete, and subkinding is not known to be a preorder. Kinding is incomplete at a star binder, and the filter and the roots read such a binder the other way from Scala. Theorem~\ref{thm:cl-kind} speaks of contexts that a store types, so it says nothing about kinding inside a lambda body, and the source theorems apply it at the platform only. Capless(K)'s kind-bounded capture binders, its merge of subsets, and its labels and handlers are not modelled (Section~\ref{sec:related}).

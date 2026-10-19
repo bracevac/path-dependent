@@ -3,7 +3,7 @@
 \mathplain
 \suppressfloats[t]
 
-Capture prediction for DOT follows, as type safety did in \Rone, from a translation into \FCdot in which every use of subtyping is explicit evidence and every binder declares the use set of its body. Beyond report~1 the argument needs two results. The first is a theorem about closed capture evidence: it relates only capture sets whose leaves are included (Theorem~\ref{thm:mini-cap} in the miniature, \lean{cap\_canon} in the trees). The second is the use-set half of preservation (Lemma~\ref{lem:mini-step}, \lean{step\_uses}), whose cases discharge the evidence that the typing of each redex carries. From the two, the leaves of the use set of a run never grow (Theorem~\ref{thm:mini-pred}), and a run never inspects a variable with a leaf outside them (Theorem~\ref{thm:mini-effect}). The proof uses no logical relation, no tight typing and no pushback measure.
+Capture prediction for DOT follows, as type safety did in \Rone, from a translation into \FCdot in which every use of subtyping is explicit evidence and every binder declares the use set of its body. Beyond report~1 the argument needs two results. The first is a theorem about closed capture evidence: it relates only capture sets whose roots are included (Theorem~\ref{thm:mini-cap} in the miniature, \lean{cap\_canon} in the trees). The second is the use-set half of preservation (Lemma~\ref{lem:mini-step}, \lean{step\_uses}), whose cases discharge the evidence that the typing of each redex carries. From the two, the roots of the use set of a run never grow (Theorem~\ref{thm:mini-pred}), and a run never inspects a variable with a root outside them (Theorem~\ref{thm:mini-effect}). The proof uses no logical relation, no tight typing and no pushback measure.
 
 \begin{table}[ht]
 \small
@@ -14,19 +14,19 @@ Capture prediction for DOT follows, as type safety did in \Rone, from a translat
 \toprule
 evidence & implies & theorem & trees \\
 \midrule
-capture evidence over a typed store & leaves included & \lean{cap\_canon} & K, CC, CL \\
-capture equality over a typed store & same leaves & \lean{capeq\_canon} & K, CC, CL \\
+capture evidence over a typed store & roots included & \lean{cap\_canon} & K, CC, CL \\
+capture equality over a typed store & same roots & \lean{capeq\_canon} & K, CC, CL \\
 use-set evidence of a translation & target use set covered by $\trans{U}$ & \raggedright \lean{HasTy.translate\_uses} with \lean{cap\_canon} & K, CC, CL \tabularnewline
-member-free capture evidence in any context & leaves included & \lean{root\_inversion} & CC \\
+member-free capture evidence in any context & roots included & \lean{root\_inversion} & CC \\
 member-free capture evidence for $C \le D$, and an atom $r$ & \raggedright $\lvlle{\Gamma}{\capsr{\Gamma}{n}{C}}{r}$ for all $n$ if $\lvlle{\Gamma}{\capsr{\Gamma}{m}{D}}{r}$ for all $m$ & \lean{level\_inversion} & CC, CL \tabularnewline
-kinding evidence over a typed store & classifiers of leaves & \lean{kind\_canon} & CL \\
+kinding evidence over a typed store & classifiers of roots & \lean{kind\_canon} & CL \\
 shape evidence over a typed store & typed head form & \lean{shape\_canon} & K, CC, CL \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{What the trees share.}
-The three trees share the five kinds of theorem of report~1 and the theorems about capture evidence. They differ in further theorems, as Table~\ref{tab:matrix} shows. The compiler's scoped reading of $\cany$ (\treeCC) and capability classifiers (\treeCL) keep the proof. They change what a leaf is. \treeCC adds \lean{level\_inversion}, a theorem about member-free evidence that needs no store, and \treeCL adds \lean{kind\_canon}, a theorem about kinding evidence. The files differ most in substitution (Section~\ref{sec:levels-run}). \lean{TypingSubst.lean} has 631 lines in \treeK and 2{,}986 in \treeCC, while \lean{CanonicalForms.lean} has 784 and 832. Table~\ref{tab:reading} lists, for each kind of evidence, the fact that it implies.
+The three trees share the five kinds of theorem of report~1 and the theorems about capture evidence. They differ in further theorems, as Table~\ref{tab:matrix} shows. The compiler's scoped reading of $\cany$ (\treeCC) and capability classifiers (\treeCL) keep the proof. They change what the roots of a capture set are. \treeCC adds \lean{level\_inversion}, a theorem about member-free evidence that needs no store, and \treeCL adds \lean{kind\_canon}, a theorem about kinding evidence. The files differ most in substitution (Section~\ref{sec:levels-run}). \lean{TypingSubst.lean} has 631 lines in \treeK and 2{,}986 in \treeCC, while \lean{CanonicalForms.lean} has 784 and 832. Table~\ref{tab:reading} lists, for each kind of evidence, the fact that it implies.
 
 \paragraph{Evidence from a compiler.}
 Report~1 ends with the remark that a compiler could emit evidence for the subsumption steps it takes, as GHC emits coercions, and have it checked. Capture checking is an instance. A subcapturing question of the compiler has evidence that erases, a checker decides the evidence, and a theorem says what checked evidence means. The front ends of Section~\ref{sec:frontends} run this on a model of the compiler's typer. The guarantee is narrower than a reader may hope. It concerns the variable that a step inspects, and it holds for the use set that a term declares. No theorem relates the model to the compiler.

@@ -21,7 +21,7 @@ Section~\ref{sec:cc-later} quoted the escape of \lstinline{withFile}, where the 
 
 \treeCC transcribes the running example of Section~\ref{sec:mini} and decides the typings of $\mathit{c1}$ and of both programs. A call now also sends the body's scope binder to the universal capability (Section~\ref{sec:levels-run}), but nothing in $\mathit{c1}$ mentions one. So the run of $\mathit{prog}_1$ takes the seven steps of Table~\ref{tab:mini-run} (\lean{C6\_run}, built by hand), and effect safety for $\mathit{prog}_2$ is an instance of the general theorem (\lean{C6\_safe}, built by hand).
 
-\subsection{Scopes, levels and leaves}\label{sec:levels-scopes}
+\subsection{Scopes, levels and the roots of a set}\label{sec:levels-scopes}
 
 \begin{figure}[t]
 \footnotesize
@@ -128,7 +128,7 @@ Figures~\ref{fig:cc} and~\ref{fig:cc-machine} give what \treeCC adds. A capture 
 \]
 In $\mathit{body}(\Gamma, T)$, $\varrho$ is the body's local $\cany$ and $x$ is the parameter. The arrow's capture binder $\kappa$ is what a parameter written $\cany$ reads as. A function shape $\pit[\kappa, x]{T}{E}$ binds $\kappa$ in $T$ and $E$ and binds $x$ in $E$. A lambda $\lamcc{A}{\varrho}{\kappa, x}{T}{t}{g}$ binds all three in $t$ and $g$. In $\mathit{obj}(\Gamma, T)$, $\varrho$ is the local $\cany$ of a class, bound before the self. $\mathit{scope}(\Gamma, C)$ is the scope a pack opens.
 
-A scope capability is $\topc$ or a scope binder. The level of an atom is the scope it belongs to, and $\topc$ is the outermost level. The function $\leavesn{\Gamma}{n}{C}$ of Figure~\ref{fig:target-capev} is renamed $\capsr{\Gamma}{n}{C}$ here and called resolution. It gains the clause for $\topc$ below. Leaves now apply expansion after resolution. Expansion opens each scope capability into $\topc$ and every opaque binder at or outside its level:
+A scope capability is $\topc$ or a scope binder. The level of an atom is the scope it belongs to, and $\topc$ is the outermost level. The function $\rootsn{\Gamma}{n}{C}$ of Figure~\ref{fig:target-capev} is renamed $\capsr{\Gamma}{n}{C}$ here and called resolution. It gains the clause for $\topc$ below. Roots now apply expansion after resolution. Expansion opens each scope capability into $\topc$ and every opaque binder at or outside its level:
 \[
 \begin{array}{@{}lcl@{}}
 \lvl{\Gamma}{\topc} & = & \topc \\
@@ -142,12 +142,12 @@ A scope capability is $\topc$ or a scope binder. The level of an atom is the sco
 \expand{\Gamma}{r} & = & \cset{\topc} \cup \{\kappa \mid \kappa \text{ is opaque in } \Gamma \text{ and } \lvlle{\Gamma}{\kappa}{r}\} \qquad \text{if } r \text{ is a scope capability} \\
 \expand{\Gamma}{c} & = & \cset{c} \qquad \text{for any other atom } c \\
 \expand{\Gamma}{C} & = & \textstyle\bigcup_{c \in C} \expand{\Gamma}{c} \\
-\leavesn{\Gamma}{n}{C} & = & \expand{\Gamma}{\capsr{\Gamma}{n}{C}}
+\rootsn{\Gamma}{n}{C} & = & \expand{\Gamma}{\capsr{\Gamma}{n}{C}}
 \end{array}
 \]
-We read $\lvlle{\Gamma}{c}{r}$ as ``$c$ is at or outside the level of $r$''. So a capability at the outermost level is at or outside every $r$, a capability inside some scope is never at or outside $\topc$, and $\topc$ is at or outside every $r$. In $\mathit{body}(\Gamma, T)$ the parameter and the arrow's binder both have level $\varrho$ (\lean{scope\_order}, decided). So a set that contains $\varrho$ has among its leaves $\topc$, $\varrho$, $\kappa$ and every opaque binder outside the body.
+We read $\lvlle{\Gamma}{c}{r}$ as ``$c$ is at or outside the level of $r$''. So a capability at the outermost level is at or outside every $r$, a capability inside some scope is never at or outside $\topc$, and $\topc$ is at or outside every $r$. In $\mathit{body}(\Gamma, T)$ the parameter and the arrow's binder both have level $\varrho$ (\lean{scope\_order}, decided). So a set that contains $\varrho$ has among its roots $\topc$, $\varrho$, $\kappa$ and every opaque binder outside the body.
 
-Capture prediction and effect safety, Theorems~\ref{thm:mini-pred} and~\ref{thm:mini-effect} in full, have the same Lean text in \treeCC as in \treeK, and their meaning changes with the leaves. Over a store a use set that contains $\topc$ covers every capability of the platform. Over a context with no scope binder, for a set whose resolution avoids $\topc$, expansion changes nothing and the leaves are those of \treeK (\lean{Ctx.roots\_eq\_caps\_of\_rootFree}).
+Capture prediction and effect safety, Theorems~\ref{thm:mini-pred} and~\ref{thm:mini-effect} in full, have the same Lean text in \treeCC as in \treeK, and their meaning changes with the roots. Over a store a use set that contains $\topc$ covers every capability of the platform. Over a context with no scope binder, for a set whose resolution avoids $\topc$, expansion changes nothing and the roots are those of \treeK (\lean{Ctx.roots\_eq\_caps\_of\_rootFree}). The Lean calls the bound of a scope binder \lean{CapBound.root}. So root-free in a Lean name, as here and in \lean{Store.Typed.rootFree}, means that no scope binder is bound.
 
 \subsection{The level rule and the changed rules}\label{sec:levels-rule}
 
@@ -162,7 +162,7 @@ The source of \treeCC has the same scopes, and the translation sends each source
 \rn{Sc-Inst} & \src{\Gamma \text{ binds } \kappa \instb{C}} & \Longrightarrow & \subcj{\Gamma}{C}{\cset{\kappa}}
 \end{array}
 \]
-A translated capture set never contains $\topc$ (\lean{CaptureSet.top\_not\_mem\_translate}). Theorem~\ref{thm:source-effect} uses that over a platform a leaf of $C$ is a member of $C$ (\lean{Platform.root\_iff}). In \treeCC that lemma assumes $\topc \notin C$, and this fact discharges it.
+A translated capture set never contains $\topc$ (\lean{CaptureSet.top\_not\_mem\_translate}). Theorem~\ref{thm:source-effect} uses that over a platform a root of $C$ is a member of $C$ (\lean{Platform.root\_iff}). In \treeCC that lemma assumes $\topc \notin C$, and this fact discharges it.
 
 \subsection{The escape in the calculus}\label{sec:levels-escape}
 
@@ -230,9 +230,9 @@ So over a store every set is at the outermost level. The Lean keeps the hypothes
 Let $\mathit{plain}(\Gamma)$ and let $r$ be a capture atom. If $\clej{\Gamma}{f}{C}{D}$ and $\lvlle{\Gamma}{\capsr{\Gamma}{m}{D}}{r}$ for every $m$, then $\lvlle{\Gamma}{\capsr{\Gamma}{n}{C}}{r}$ for every $n$.
 \end{theorem}
 
-In a plain context $\ev{member}$ finds only bounds and capture equality is syntactic. \treeCL does not have this theorem. The next one is about leaves:
+In a plain context $\ev{member}$ finds only bounds and capture equality is syntactic. \treeCL does not have this theorem. The next one is about the roots of capture sets. Its item~2 also uses $\rt{a}$, report~1's root of the atom $a$, which is a term variable:
 
-\begin{theorem}[Leaf inversion, \lean{root\_inversion} and \lean{atom\_root\_inversion} in \treeCC]\label{thm:root-inv}
+\begin{theorem}[Root inversion, \lean{root\_inversion} and \lean{atom\_root\_inversion} in \treeCC]\label{thm:root-inv}
 Let $\Gamma$ be a context.
 \begin{enumerate}
 \item If $\clej{\Gamma}{f}{C}{D}$ and $\mfree{f}$, then $\caple{\Gamma}{C}{D}$.
