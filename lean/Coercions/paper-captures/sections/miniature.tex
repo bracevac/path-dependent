@@ -2,27 +2,69 @@
 \section{The Proof in Miniature}\label{sec:mini}
 \mathtgt
 
-This section develops the whole proof of capture prediction on a fragment of the \treeK target. The fragment has closures, lets and calls, and capture sets made of term variables and capture variables. It has no casts, no objects beyond a unit literal, no boxes and no capture members. It is small enough to state every definition and to run one program by hand.
+This section shows the shape of the whole proof of capture prediction on a fragment of the \treeK target. The fragment has closures, lets and calls, and capture sets made of term variables and capture variables. It has no casts, no objects beyond a unit literal, no boxes and no capture members. It is small enough to state every definition and to run one program by hand.
 
-The fragment is not mechanized on its own. Its running example comes from the \Lean examples \lean{C1} and \lean{C6} of \treeK. Their typings are decided by the kernel and their run is built by hand. Section~\ref{sec:mech-mini} maps every statement of this section to its Lean counterpart. Section~\ref{sec:problem-ideas} named two ideas, and this section shows the first, use sets as data. The second idea, that closed capture evidence over a typed store relates roots, needs capture members, which Section~\ref{sec:target} adds.
+The fragment is not mechanized on its own, and Section~\ref{sec:mech-mini} maps each of its statements to the nearest declaration and says where they differ. Its running example is the pair of Lean examples \lean{C1} and \lean{C6} of \treeK, and a status in this section refers to them. Section~\ref{sec:problem-ideas} named two ideas, and this section shows the first, use sets as data, in full.
 
 \FloatBarrier
 \subsection{Overview}\label{sec:mini-overview}
 
-Before the definitions, here is the running example and what the section proves about it. Section~\ref{sec:mini-roots} defines capture sets, types and roots, and Section~\ref{sec:mini-typing} evidence, typing and use sets.
+\begin{figure}[t]
+\footnotesize
+\setlength{\unitlength}{1mm}
+\centering
+\begin{picture}(138,53)
+% row 1
+\put(2,45){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-var}\\variables}}}
+\put(58,45){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-subst}\\substitution}}}
+% row 2
+\put(2,30){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-cap}\\evidence}}}
+\put(30,30){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-store}\\typed store}}}
+% row 3
+\put(30,15){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-step}\\one step}}}
+\put(58,15){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-pres}\\preservation}}}
+\put(86,15){\framebox(24,8){\shortstack{Lemma~\ref{lem:mini-ext}\\extension}}}
+\put(114,15){\framebox(24,8){\shortstack{Remark~\ref{rem:mini-insp}\\inspection}}}
+% row 4
+\put(58,0){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-pred}\\prediction}}}
+\put(86,0){\framebox(24,8){\shortstack{Theorem~\ref{thm:mini-effect}\\effect safety}}}
+% arrows from row 1
+\put(14,45){\vector(0,-1){7}}
+\put(20,45){\vector(2,-1){14}}
+\put(62,45){\vector(-2,-1){14}}
+\put(64,45){\vector(-1,-2){11}}
+\put(72,45){\vector(0,-1){22}}
+% from row 2
+\put(19,30){\vector(2,-1){14}}
+\put(42,30){\vector(0,-1){7}}
+\put(50,30){\vector(2,-1){14}}
+% from row 3
+\put(47,15){\vector(2,-1){14}}
+\put(70,15){\vector(0,-1){7}}
+\put(93,15){\vector(-2,-1){14}}
+\put(98,15){\vector(0,-1){7}}
+\put(116,15){\vector(-1,-1){7}}
+% within row 4
+\put(82,4){\vector(1,0){4}}
+\end{picture}
+\caption{The proof on one page, with the results of Sections~\ref{sec:mini-canon} to~\ref{sec:mini-run}. An arrow from one result to another says that the second uses the first. The only result about what capture evidence means is Theorem~\ref{thm:mini-cap}. The only result that reads a stored value is Lemma~\ref{lem:mini-store}.}
+\label{fig:mini-proof}
+\end{figure}
+
+Before the definitions, here is the running example and what the section proves about it.
 
 \paragraph{The platform.}
-Two capture variables, $\kappa_1$ and $\kappa_2$, stand for two primitive capabilities, a log and a console (Section~\ref{sec:cc-types}). A capture variable stands for itself, as a type variable does in System~F. A program reaches each through a capability value, a closure that it calls. The capabilities $\mathit{log}$ and $\mathit{console}$ are identity closures on $\Unit$, each annotated with its capture variable:
+Two capture variables, $\kappa_1$ and $\kappa_2$, stand for two primitive capabilities, a log and a console (Section~\ref{sec:cc-types}). A program reaches each through a capability value, a closure that it calls. The capabilities $\mathit{log}$ and $\mathit{console}$ are identity closures on $\Unit$, each annotated with its capture variable:
 \[
 \begin{array}{@{}lcl@{}}
 v_{\mathit{log}} & = & \lamc{\cset{\kappa_1}}{w}{\Unit}{w}{\ev{elem}\,\cset{w}\,\cset{\kappa_1, w}} \\
 v_{\mathit{console}} & = & \lamc{\cset{\kappa_2}}{w}{\Unit}{w}{\ev{elem}\,\cset{w}\,\cset{\kappa_2, w}}
 \end{array}
 \]
-The annotation $\cset{\kappa_1}$ of $v_{\mathit{log}}$ says that calling it may use $\kappa_1$. The evidence in the brackets shows that its body uses nothing beyond the annotation and the parameter.
+They do nothing. A call of $v_{\mathit{log}}$ stands for writing to the log (Section~\ref{sec:cc-uses}). The annotation $\cset{\kappa_1}$ of $v_{\mathit{log}}$ says that calling it may use $\kappa_1$. The evidence in the brackets shows that its body uses nothing beyond the annotation and the parameter. Here $\ev{elem}\,C\,D$ proves $C \le D$ when every element of $C$ is in $D$.
 
 \paragraph{A closure that returns a closure.}
-The closure $\mathit{c1}$ takes a unit, calls $\mathit{log}$, and returns a closure that calls $\mathit{console}$:
+The closure $\mathit{c1}$ of Section~\ref{sec:cc-closures} takes a unit, calls $\mathit{log}$, and returns a closure that calls $\mathit{console}$:
 \[
 \begin{array}{@{}lcl@{}}
 v_{\mathit{inner}} & = & \lamc{\cset{\mathit{console}}}{z}{\Unit}{\mathit{console}\,z}{\ev{elem}\,\cset{\mathit{console}, z}\,\cset{\mathit{console}, z}} \\
@@ -30,10 +72,10 @@ v_{\mathit{c1}} & = & \lambda^{\cset{\mathit{log}}}(y : \Unit).\,(\letc{r}{\math
 & & \quad \ann{\ev{elem}\,\cset{\mathit{log}, y}\,\cset{\mathit{log}, y}}
 \end{array}
 \]
-Values are named $v_{\ldots}$, so that a value and the location that stores it never share a name. The annotation of $v_{\mathit{c1}}$ is $\cset{\mathit{log}}$, the term variable and not the capture variable $\kappa_1$ behind it. It does not mention $\mathit{console}$. This is the reading of Section~\ref{sec:cc-closures}: the capture set of a closure bounds what calling it may use.
+Values are named $v_{\ldots}$, so that a value and the location that stores it never share a name. The annotation $\cset{\mathit{log}}$ of $v_{\mathit{c1}}$ does not mention $\mathit{console}$, as Section~\ref{sec:cc-closures} explained. The let in its body declares in brackets that $v_{\mathit{inner}}$ uses nothing, with evidence $\ev{elem}\,\cempty\,\cempty$.
 
 \paragraph{Two programs.}
-The store $\sigma_0$ holds the two capture binders, the two capabilities, the literal $\unitv$ at $\mathit{unit}$, and $\mathit{c1}$. Two programs run from it:
+The store $\sigma_0$ starts with $\kappa_1$ and $\kappa_2$, which bring the capture variables into scope and hold no value. Then come the two capabilities, the literal $\unitv$ at $\mathit{unit}$, and $\mathit{c1}$. Two programs run from it:
 \[
 \begin{array}{@{}lcl@{}}
 \sigma_0 & = & \kappa_1,\ \kappa_2,\ \mathit{log} = v_{\mathit{log}},\ \mathit{console} = v_{\mathit{console}},\ \mathit{unit} = \unitv,\ \mathit{c1} = v_{\mathit{c1}} \\
@@ -41,18 +83,18 @@ The store $\sigma_0$ holds the two capture binders, the two capabilities, the li
 \mathit{prog}_2 & = & \letc{\mathit{inner}}{\mathit{c1}\,\mathit{unit}}{\mathit{unit}}{\cempty}{\ev{capvar}\,\mathit{unit}}
 \end{array}
 \]
-Both call $\mathit{c1}$ and bind the closure it returns to $\mathit{inner}$. The first program calls $\mathit{inner}$. The second drops it and returns $\mathit{unit}$. Each let declares in its brackets the use set of its body, $\cset{\mathit{console}, \mathit{log}}$ and $\cempty$, with evidence that the uses of the body fit it. Example~\ref{ex:mini-typing} builds the evidence $f_1$.
+Both call $\mathit{c1}$ and bind the closure it returns to $\mathit{inner}$. The first program calls $\mathit{inner}$. The second drops it and returns $\mathit{unit}$. The two lets declare the use sets $\cset{\mathit{console}, \mathit{log}}$ and $\cempty$ of their bodies, with evidence that the bodies fit them. Example~\ref{ex:mini-typing} builds the evidence $f_1$. The first program declares $\mathit{log}$ too, which its body does not call, to show that a declared set may be larger than the body needs. Example~\ref{ex:mini-alloc} shows the step that forgets it.
 
 \paragraph{The claims.}
-The run of $\mathit{prog}_1$ reaches a state that calls $\mathit{console}$ (Table~\ref{tab:mini-run}). That is allowed, because the initial use set of $\mathit{prog}_1$ has the root $\kappa_2$ (Section~\ref{sec:mini-roots}). The use set of $\mathit{prog}_2$ has the one root $\kappa_1$. Theorem~\ref{thm:mini-effect} says that no state reached from $\mathit{prog}_2$ inspects a variable with root $\kappa_2$. This holds although the run of $\mathit{prog}_2$ stores the closure that would call $\mathit{console}$.
+The run of $\mathit{prog}_1$ reaches a state that calls $\mathit{console}$ (Table~\ref{tab:mini-run} in Section~\ref{sec:mini-machine}). That is allowed, because the initial use set of $\mathit{prog}_1$ has the root $\kappa_2$ (Example~\ref{ex:mini-typing}). The use set of $\mathit{prog}_2$ has the one root $\kappa_1$. Theorem~\ref{thm:mini-effect} says that no state reached from $\mathit{prog}_2$ inspects a variable with root $\kappa_2$.
 
 \paragraph{Roadmap.}
-Section~\ref{sec:mini-canon} proves the one theorem about capture evidence, Theorem~\ref{thm:mini-cap}: evidence for $C \le D$ puts the roots of $C$ among those of $D$. Section~\ref{sec:mini-machine} adds stores and the machine, and the rest follows the textbook route of Section~\ref{sec:problem-textbook}. Its inversion of subcapturing at a call becomes Lemma~\ref{lem:mini-store}, which reads the annotation of a closure off the store. Preservation gains a use-set half, Lemma~\ref{lem:mini-step}, whose cases discharge the evidence that each redex carries (Section~\ref{sec:mini-step}). Section~\ref{sec:mini-run} carries that lemma along a run and derives effect safety.
+Why does the claim hold? A run reaches $\kappa_2$ only by calling $\mathit{console}$, or a closure whose annotation reaches $\mathit{console}$, such as the one $\mathit{prog}_2$ binds to $\mathit{inner}$. The let of $\mathit{prog}_2$ declares the empty set for its body, and its evidence $\ev{capvar}\,\mathit{unit}$ proves $\cset{\mathit{unit}} \le \cempty$. Each step that changes the use set is paid for by one piece of such evidence. So the roots of the use set never grow, and $\kappa_2$ is not among them at the start. At a call, Lemma~\ref{lem:mini-store} replaces both inversions of the textbook route of Section~\ref{sec:problem-textbook}, since the store binds a closure at its own type. What is left is the closing evidence of that closure, and Theorem~\ref{thm:mini-cap}, the fragment's form of Idea~2, reads it as coverage. Figure~\ref{fig:mini-proof} shows how the results of this section depend on one another.
 
 \FloatBarrier
 \subsection{Capture sets, types and roots}\label{sec:mini-roots}
 
-\begin{figure}[tp]
+\begin{figure}[t]
 \small
 \color{tgtcol}
 \[
@@ -80,9 +122,7 @@ Section~\ref{sec:mini-canon} proves the one theorem about capture evidence, Theo
 C \subseteq D & \mathrel{:\Leftrightarrow} & c \in D \text{ for every } c \in C \\
 \Gamma(x) = T & \mathrel{:\Leftrightarrow} & \Gamma = \Gamma', x : T, \Gamma'' \text{ for some } \Gamma' \text{ and } \Gamma'' \\
 \sigma(x) = v & \mathrel{:\Leftrightarrow} & \sigma = \sigma', x = v, \sigma'' \text{ for some } \sigma' \text{ and } \sigma'' \\
-\annot{\lamc{A}{x}{T}{t}{g}} & = & A \\
-\annot{\unitv} & = & \cempty \\
-\weak{X} & \mathrel{:=} & X \text{ read under one more binder, which } X \text{ does not mention} \\
+\weak{X} & \mathrel{:=} & X \text{ itself, read under one more binder that } X \text{ does not mention} \\
 X[z \mapsto y] & \mathrel{:=} & X \text{ with } y \text{ for every free } z \text{, in its capture sets and evidence too} \\
 \sext{\sigma}{\sigma'} & \mathrel{:\Leftrightarrow} & \sigma' = \sigma, \sigma'' \text{ for some } \sigma'' \\[6pt]
 \roots{\Gamma}{\cempty} & = & \cempty \\
@@ -90,25 +130,15 @@ X[z \mapsto y] & \mathrel{:=} & X \text{ with } y \text{ for every free } z \tex
 \roots{\Gamma}{x} & = & \roots{\Gamma'}{C} \qquad \text{if } \Gamma = \Gamma', x : \capt{S}{C}, \Gamma'' \\
 \roots{\Gamma}{\kappa} & = & \cset{\kappa} \qquad \text{if } \Gamma = \Gamma', \kappa : \cstar, \Gamma'' \\
 \caple{\Gamma}{C}{D} & \mathrel{:\Leftrightarrow} & \roots{\Gamma}{C} \subseteq \roots{\Gamma}{D} \\
-\capeqv{\Gamma}{C}{D} & \mathrel{:\Leftrightarrow} & \caple{\Gamma}{C}{D} \text{ and } \caple{\Gamma}{D}{C} \\[6pt]
-\uses{x} & = & \cset{x} \\
-\uses{v} & = & \cempty \\
-\uses{x\,y} & = & \cset{x, y} \\
-\uses{\letc{x}{t}{u}{U}{f}} & = & \uses{t} \cup U \\
-\uses{\cdot} & = & \cempty \\
-\uses{K \triangleright \frlet{x}{u}{U}{f}} & = & \uses{K} \cup U \\
-\uses{\mst{\sigma}{K}{t}} & = & \uses{t} \cup \uses{K} \\
-\insp{x\,y} & = & x \\
-\insp{t} & & \text{undefined if } t \text{ is a variable, a value or a let} \\
-\insp{\mst{\sigma}{K}{t}} & = & \insp{t}
+\capeqv{\Gamma}{C}{D} & \mathrel{:\Leftrightarrow} & \caple{\Gamma}{C}{D} \text{ and } \caple{\Gamma}{D}{C}
 \end{array}
 \]
 \color{black}
-\caption{The fragment. Capture atoms are term variables and capture variables. Capture sets are lists, $C \cup D$ is concatenation and $C \subseteq D$ says that every atom of $C$ occurs in $D$. $\top$ is the empty object type of report~1, and $\unitv$ is the literal with no witnesses and no fields. The brackets $\ann{\ }$ hold data that the typing rules read and erasure removes: the use set a let declares, its avoidance evidence, and the closing evidence of a lambda. $\pit[x]{T}{T'}$ binds $x$ in $T'$. A lambda binds $x$ in $t$ and $g$, not in $A$. A let and a let frame bind $x$ in $u$ and $f$, not in $U$. A context binds each variable once, and so does a store. The roots of a capture set are the capture variables it reaches through the types of its term variables. The first equation that applies is used.}
+\caption{The fragment. Capture sets and roots are lists, read as sets. The brackets $\ann{\ }$ hold data that the typing rules read and erasure removes: the use set a let declares, its avoidance evidence, and the closing evidence of a lambda. $\pit[x]{T}{T'}$ binds $x$ in $T'$. A lambda binds $x$ in $t$ and $g$, not in $A$. A let and a let frame bind $x$ in $u$ and $f$, not in $U$. A context binds each variable once, and so does a store. Bound variables are renamed apart, and every judgment is well scoped.}
 \label{fig:mini-syntax}
 \end{figure}
 
-Figure~\ref{fig:mini-syntax} gives the fragment. A capture set is a list of capture atoms, read as the finite set of its atoms. A context binds both kinds of variable. A term binder $x : T$ gives a variable its type. A capture binder $\kappa : \cstar$ introduces a capture variable that stands for itself and for nothing else. No term binds a capture variable. In a run, capture binders come from the store. Every judgment is well scoped. The type of a binder mentions only the binders before it, and a judgment in $\Gamma$ mentions only variables that $\Gamma$ binds. Roots are taken only of sets whose atoms are bound.
+Figure~\ref{fig:mini-syntax} gives the fragment. A context binds both kinds of variable. A term binder $x : T$ gives a variable its type. A capture binder $\kappa : \cstar$ introduces a capture variable, and its bound $\cstar$ says that it stands for itself, with no set above it. No term binds a capture variable. In a run, capture binders come from the store.
 
 A type $\capt{S}{C}$ is a shape $S$ with a capture set $C$. The shapes of the fragment are $\top$, the empty object type of \Rone, and the function shape $\pit[x]{T}{T'}$, which binds its parameter $x$ in the codomain $T'$. The domain and the codomain are types, so each carries its own capture set. $\Unit$ is $\top$ with the empty set, and its value $\unitv$ is the literal with no witnesses and no fields. $\CapT{\kappa}$ is the type of a capability, a function on $\Unit$ that may use $\kappa$.
 
@@ -117,7 +147,7 @@ The type of $\mathit{c1}$ is
 \[
 T_{\mathit{c1}} = \capt{(\pit[y]{\Unit}{\capt{(\pit[z]{\Unit}{\Unit})}{\cset{\mathit{console}}}})}{\cset{\mathit{log}}} .
 \]
-Read it from the outside. The outer set $\cset{\mathit{log}}$ bounds what calling $\mathit{c1}$ may use. The codomain is the type of the closure that the call returns, and its set $\cset{\mathit{console}}$ bounds what calling that closure may use. Both sets name term variables. Why does the annotation name $\mathit{log}$ rather than the capture variable $\kappa_1$? Because $\mathit{log}$ is the capability that $\mathit{c1}$ calls, and what it stands for can be read off its type, $\CapT{\kappa_1}$. The two choices mean the same, since $\cset{\mathit{log}}$ and $\cset{\kappa_1}$ have the same roots, as the next paragraph defines. The contexts of the example are
+The two sets are read as in Section~\ref{sec:cc-closures}, and both name term variables. Why does the annotation name $\mathit{log}$ rather than the capture variable $\kappa_1$? Because $\mathit{log}$ is the capability that $\mathit{c1}$ calls, and what it stands for can be read off its type, $\CapT{\kappa_1}$. The two choices mean the same, since $\cset{\mathit{log}}$ and $\cset{\kappa_1}$ have the same roots, as the next paragraph defines. The contexts of the example are
 \[
 \Gamma_0 = \kappa_1 : \cstar,\ \kappa_2 : \cstar,\ \mathit{log} : \CapT{\kappa_1},\ \mathit{console} : \CapT{\kappa_2},\ \mathit{unit} : \Unit
 \qquad\text{and}\qquad
@@ -126,28 +156,9 @@ Read it from the outside. The outer set $\cset{\mathit{log}}$ bounds what callin
 The value $v_{\mathit{c1}}$ is typed in $\Gamma_0$, and $\Gamma_1$ is the context of the store $\sigma_0$ (Section~\ref{sec:mini-machine}).
 
 \paragraph{Roots.}
-What a capture set stands for in a context is its roots, the capture variables it reaches when each term variable is replaced by the capture set of its type. They are not the root $\rt{a}$ of an atom (Section~\ref{sec:recap}), which is a term variable. Figure~\ref{fig:mini-syntax} defines them by four equations. The roots of a set are those of its capture atoms. A capture variable is its own root. A term variable has the roots of the capture set of its type, computed in the part of the context before its binder. The recursion is well founded, because the capture set of a binder mentions only binders before it. For the same reason the roots of a set do not change when the context grows at its end.
+Figure~\ref{fig:mini-syntax} defines the roots of a capture set by four equations. The roots of a set are those of its capture atoms. A capture variable is its own root. A term variable has the roots of the capture set of its type, computed in the part of the context before its binder. So the atom $\mathit{unit}$, whose type has the empty capture set, adds nothing to a set (Section~\ref{sec:cc-types}). The capture set of a binder mentions only binders before it, so the roots of a set do not change when the context grows at its end.
 
-As Section~\ref{sec:cc-types} noted, a term variable is never a root of a capture set, and a variable whose type has the empty capture set has no roots. So the atom $\mathit{unit}$ adds nothing to a set, and $\cset{x}$ in a set does not say that $x$ is a capability. It says that the set covers whatever the type of $x$ captures.
-
-We write $\caple{\Gamma}{C}{D}$ when every root of $C$ is a root of $D$, and read it as ``$C$ is covered by $D$ in $\Gamma$'', the documentation's phrase (Section~\ref{sec:cc-types}). We write $\capeqv{\Gamma}{C}{D}$ when $C$ and $D$ have the same roots. Roots are lists like capture sets, but only which atoms occur matters to $\preccurlyeq$ and $\approx$. Examples list roots without duplicates.
-
-\begin{example}[Roots in the running example]\label{ex:mini-roots}
-In $\Gamma_1$,
-\[
-\begin{array}{@{}lcl@{}}
-\roots{\Gamma_1}{\cset{\mathit{c1}}} & = & \roots{\Gamma_0}{\cset{\mathit{log}}} \ = \ \roots{\Gamma_0}{\cset{\kappa_1}} \ = \ \cset{\kappa_1} \\
-\roots{\Gamma_1}{\cset{\mathit{unit}}} & = & \roots{\Gamma_0}{\cempty} \ = \ \cempty \\
-\roots{\Gamma_1}{\cset{\mathit{console}}} & = & \cset{\kappa_2} \\
-\roots{\Gamma_1}{\cset{\mathit{c1}, \mathit{unit}, \mathit{console}, \mathit{log}}} & = & \cset{\kappa_1, \kappa_2} \\
-\roots{\Gamma_1}{\cset{\mathit{c1}, \mathit{unit}}} & = & \cset{\kappa_1}
-\end{array}
-\]
-The first equation goes through $\mathit{log}$, whose type $\CapT{\kappa_1}$ has the set $\cset{\kappa_1}$. The last two sets are the use sets of $\mathit{prog}_1$ and $\mathit{prog}_2$ (Example~\ref{ex:mini-typing}). So $\kappa_2$ is a root of the first and not of the second, as the overview claimed. The last equation is built by hand. The others are on paper.
-\end{example}
-
-\FloatBarrier
-\subsection{Evidence, typing and use sets}\label{sec:mini-typing}
+We write $\caple{\Gamma}{C}{D}$ when every root of $C$ is a root of $D$, and read it as ``$C$ is covered by $D$ in $\Gamma$'', in the sense fixed in Section~\ref{sec:cc-types}. We write $\capeqv{\Gamma}{C}{D}$ when $C$ and $D$ have the same roots.
 
 \begin{figure}[t]
 \small
@@ -175,27 +186,58 @@ The first equation goes through $\mathit{log}$, whose type $\CapT{\kappa_1}$ has
 \and
 \inferrule[V-Unit]{ }{\valj{\Gamma}{\unitv}{\Unit}}
 \end{mathpar}
+\[
+\begin{array}[t]{@{}lcl@{}}
+\uses{x} & = & \cset{x} \\
+\uses{v} & = & \cempty \\
+\uses{x\,y} & = & \cset{x, y} \\
+\uses{\letc{x}{t}{u}{U}{f}} & = & \uses{t} \cup U \\
+\uses{\cdot} & = & \cempty \\
+\uses{K \triangleright \frlet{x}{u}{U}{f}} & = & \uses{K} \cup U \\
+\uses{\mst{\sigma}{K}{t}} & = & \uses{t} \cup \uses{K}
+\end{array}
+\quad
+\begin{array}[t]{@{}lcl@{}}
+\insp{x\,y} & = & x \\
+\insp{t} & & \text{undefined for other } t \\
+\insp{\mst{\sigma}{K}{t}} & = & \insp{t} \\[6pt]
+\annot{\lamc{A}{x}{T}{t}{g}} & = & A \\
+\annot{\unitv} & = & \cempty
+\end{array}
+\]
 \color{black}
-\caption{Typing of the fragment: capture evidence, terms and values. $\weak{X}$ is $X$ read under the new binder, which $X$ does not mention.}
+\caption{Typing of the fragment: capture evidence, terms and values. Below them, use sets, inspection and the annotation of a value.}
 \label{fig:mini-typing}
 \end{figure}
 
-Capture evidence is a proof term for an inclusion of capture sets. The judgment $\clej{\Gamma}{f}{C}{D}$ says that $f$ proves $C \le D$ in $\Gamma$. Figure~\ref{fig:mini-typing} gives its five rules, followed by the typing of terms and values. Rules are named by the conventions of Section~\ref{sec:intro}, and proofs cite them by name.
+\begin{example}[Roots in the running example]\label{ex:mini-roots}
+In $\Gamma_1$,
+\[
+\begin{array}{@{}lcl@{}}
+\roots{\Gamma_1}{\cset{\mathit{c1}}} & = & \roots{\Gamma_0}{\cset{\mathit{log}}} \ = \ \roots{\kappa_1 : \cstar,\, \kappa_2 : \cstar}{\cset{\kappa_1}} \ = \ \cset{\kappa_1} \\
+\roots{\Gamma_1}{\cset{\mathit{unit}}} & = & \cempty \\
+\roots{\Gamma_1}{\cset{\mathit{console}}} & = & \cset{\kappa_2}
+\end{array}
+\]
+The first line goes through $\mathit{c1}$, whose type has the set $\cset{\mathit{log}}$, and through $\mathit{log}$, whose type $\CapT{\kappa_1}$ has the set $\cset{\kappa_1}$, each in the part of the context before its binder. These roots are on paper.
+\end{example}
 
-\rn{C-Refl} and \rn{C-Trans} make capture inclusion a preorder. \rn{C-Elem} is a syntactic inclusion, which a checker decides. \rn{C-Union} bounds a union by bounding each part. \rn{C-Var} is the documentation's rule that a capability is below the capture set of its type (Section~\ref{sec:cc-types}). No rule replaces a capture variable by another set, as \rn{C-Var} does for a term variable. A capture variable stands for itself.
+\FloatBarrier
+\subsection{Evidence, typing and use sets}\label{sec:mini-typing}
+
+Capture evidence is a proof term for an inclusion of capture sets. The judgment $\clej{\Gamma}{f}{C}{D}$ says that $f$ proves $C \le D$ in $\Gamma$. Figure~\ref{fig:mini-typing} gives its five rules, named as in Section~\ref{sec:intro}, followed by the typing of terms and values. Unlike the source judgment of Section~\ref{sec:problem}, $\tmj{\Gamma}{t}{T}$ has no use set, since $\uses{t}$ computes it.
+
+\rn{C-Refl} and \rn{C-Trans} make capture inclusion a preorder. \rn{C-Elem} is a syntactic inclusion, which a checker decides. \rn{C-Union} bounds a union by bounding each part. \rn{C-Var} is the documentation's rule that a capability is below the capture set of its type (Section~\ref{sec:cc-types}). No rule replaces a capture variable by another set, as \rn{C-Var} does for a term variable.
 
 \paragraph{Typing.}
-The term rules are report~1's, restricted to variables, with capture sets and their evidence added. \rn{T-App} applies a variable to a variable, and the result type instantiates the codomain at the argument. The fragment has no subsumption, so \rn{T-App} needs the argument at the parameter's type exactly. In the full calculus report~1's casts supply subsumption (Section~\ref{sec:target-delta}). Two rules carry capture evidence of their own, in the brackets that erasure removes.
+The term rules are report~1's, restricted to variables, with capture sets and their evidence added. \rn{T-App} applies a variable to a variable, and the result type instantiates the codomain at the argument. The fragment has no subsumption, so \rn{T-App} needs the argument at the parameter's type exactly. In the full calculus report~1's casts supply subsumption (Section~\ref{sec:recap}). Two rules carry capture evidence of their own, in the brackets that erasure removes.
 
-\rn{V-Lam} types a closure $\lamc{A}{x}{T}{t}{g}$ at $\capt{(\pit[x]{T}{T'})}{A}$, so its annotation becomes the capture set of its type. The closing evidence $g$ proves $\uses{t} \le \weak{A} \cup \cset{x}$. What the body uses is covered by the annotation and the parameter.
+\rn{V-Lam} types a closure $\lamc{A}{x}{T}{t}{g}$ at $\capt{(\pit[x]{T}{T'})}{A}$, so its annotation becomes the capture set of its type. The closing evidence $g$ proves $\uses{t} \le \weak{A} \cup \cset{x}$. What the body uses is covered by the annotation and the parameter. The parameter is paid for by the caller, since a call uses its argument.
 
-\rn{T-Let} types $\letc{x}{t}{u}{U}{f}$. Its avoidance evidence $f$ proves $\uses{u} \le \weak{U}$ under the binder of $x$, and the declared set $U$ does not mention $x$. This is avoidance (Section~\ref{sec:cc-uses}). The body may use $x$, but only through what $U$ covers. Why declare $U$ instead of computing it from $u$? The uses of $u$ may mention $x$, which is not in scope outside the let. Evidence turns them into a set that does not mention $x$, and the let records that set as data.
+\rn{T-Let} types $\letc{x}{t}{u}{U}{f}$. Its avoidance evidence $f$ proves $\uses{u} \le \weak{U}$ under the binder of $x$, and the declared set $U$ does not mention $x$. This is avoidance (Section~\ref{sec:cc-uses}). The body may use $x$, but only through what $U$ covers.
 
-\paragraph{Use sets.}
-A use set is what a term may use when it runs. Figure~\ref{fig:mini-syntax} computes it by structural recursion, because every set a binder declares is data. A value uses nothing, so creating a closure uses nothing. What the body of a closure uses is charged at each call, through the annotation of the closure (Section~\ref{sec:mini-step}). A let uses what its bound term uses and the set its body declares.
-
-\paragraph{Inspection.}
-A step inspects a variable when it reads the value stored there. In the fragment only a call does, and it inspects its function: $\insp{x\,y} = x$. An argument is used but not inspected. Effect safety (Theorem~\ref{thm:mini-effect}) speaks about the variables that a run inspects.
+\paragraph{Use sets and inspection.}
+Figure~\ref{fig:mini-typing} computes the use set of a term by structural recursion, because every set a binder declares is data. A value uses nothing, so creating a closure uses nothing. What the body of a closure uses is charged at each call, through the annotation of the closure (Section~\ref{sec:mini-step}). A let uses what its bound term uses and the set its body declares. In the fragment only a call inspects, and it inspects its function, $\insp{x\,y} = x$ (Section~\ref{sec:cc-uses}).
 
 \begin{example}[Typing the example]\label{ex:mini-typing}
 Each capability is typed with closing evidence that is a syntactic inclusion. The body $w$ of $v_{\mathit{log}}$ uses $\cset{w}$, and $\ev{elem}\,\cset{w}\,\cset{\kappa_1, w}$ proves $\cset{w} \le \cset{\kappa_1} \cup \cset{w}$. So $v_{\mathit{log}}$ has type $\CapT{\kappa_1}$, and in the same way $v_{\mathit{console}}$ has type $\CapT{\kappa_2}$.
@@ -217,13 +259,13 @@ The program $\mathit{prog}_2$ drops $\mathit{inner}$. Its body $\mathit{unit}$ u
 \qquad
 \uses{\mathit{prog}_2} = \cset{\mathit{c1}, \mathit{unit}} .
 \]
-A declared set may be larger than the body needs. $\mathit{prog}_1$ declares $\mathit{log}$, which its body never calls, and evidence only has to show an inclusion. These typings and use sets are decided.
+In $\Gamma_1$ these use sets have the roots $\cset{\kappa_1, \kappa_2}$ and $\cset{\kappa_1}$, so $\kappa_2$ is a root of the first and not of the second, as the overview claimed. Status: the typings and use sets are decided, the roots of the second use set are built by hand, and those of the first are on paper.
 \end{example}
 
 \FloatBarrier
 \subsection{What capture evidence means}\label{sec:mini-canon}
 
-Capture evidence gets no normal form. What a piece of capture evidence says is a fact about roots, and that fact is all that the rest of the proof uses. The base case is a variable.
+Report~1 read closed evidence by normalizing it to a head form. Capture evidence gets no normal form. What a piece of capture evidence says is a fact about roots, and that fact is all that the rest of the proof uses. The base case is a variable.
 
 \begin{lemma}[Roots of a variable]\label{lem:mini-var}
 For every $\Gamma$ and $x$ with $\Gamma(x) = \capt{S}{C}$, $\capeqv{\Gamma}{\cset{x}}{C}$.
@@ -233,7 +275,7 @@ For every $\Gamma$ and $x$ with $\Gamma(x) = \capt{S}{C}$, $\capeqv{\Gamma}{\cse
 Let $\Gamma = \Gamma', x : \capt{S}{C}, \Gamma''$. By the first three equations for roots, $\roots{\Gamma}{\cset{x}} = \roots{\Gamma'}{C}$. The set $C$ mentions only binders of $\Gamma'$, so $\roots{\Gamma}{C} = \roots{\Gamma'}{C}$.
 \end{proof}
 
-\begin{theorem}[Capture evidence includes roots]\label{thm:mini-cap}
+\begin{theorem}[Capture evidence means root inclusion]\label{thm:mini-cap}
 For every $\Gamma$, if $\clej{\Gamma}{f}{C}{D}$ then $\caple{\Gamma}{C}{D}$.
 \end{theorem}
 
@@ -248,4 +290,4 @@ By induction on the derivation, one case per rule.
 \end{itemize}
 \end{proof}
 
-The fragment has no capture members, so the theorem holds in every context, and Section~\ref{sec:target-canon} shows where the full calculus needs the store.
+In the fragment the evidence could be replaced by the side condition $\preccurlyeq$ itself, which a checker decides. Capture members break this. Under the binder of Section~\ref{sec:problem-bad} the source derives $\subcj{\Gamma}{\cset{\mathit{log}}}{\cempty}$, which is no inclusion of roots, and the translation must still type the body that uses it. So the target keeps the derivation as evidence, and Section~\ref{sec:target-canon} shows that closed evidence over a typed store still means $\preccurlyeq$.

@@ -2,79 +2,74 @@
 \section{Capture Checking for a Reader of Report~1}\label{sec:cc}
 \mathplain
 
-This section follows the Scala 3 reference \cite{scala3cc} and fixes the words that the rest of the report uses: capability, capturing type, subcapturing, root, use set and inspection. Section~\ref{sec:cc-closures} settles what the capture set of a closure bounds, which is where the report and Scala's documentation differ.
+This section follows the Scala 3 reference \cite{scala3cc}. It fixes the words that the rest of the report uses: capability, capturing type, subcapturing, the roots of a capture set, coverage, use set and inspection. Section~\ref{sec:cc-closures} settles what the capture set of a closure bounds, which is where the report and Scala's documentation differ.
 
 \subsection{Capabilities and capturing types}\label{sec:cc-types}
 
-A capability is a value of interest, such as a file handle, an access token or a mutable data structure, and often it gives access to an effect (\texttt{overview.md}, line 48). In Scala source, a capability is a parameter, a local variable or the \lstinline|this| of a class whose type is a capturing type with a nonempty capture set (\texttt{basics.md}, lines 118 to 120). A capturing type $\capt{T}{\cset{c_1, \ldots, c_n}}$ stands for values of type $T$ that may use the capabilities $c_1$ to $c_n$. A type $T$ with no capture set, whose class does not extend \lstinline|Capability|, is pure and stands for $\capt{T}{\cempty}$ (\texttt{overview.md}, lines 78 to 80). Values of capturing types are capabilities too (line 84).
+A capability is a value of interest, such as a file handle, an access token or a mutable data structure, and often it gives access to an effect. A capturing type $\capt{T}{\cset{c_1, \ldots, c_n}}$ stands for instances of $T$ that retain the capabilities $c_1$ to $c_n$, and Section~\ref{sec:cc-closures} fixes how this report reads the set. A type $T$ with no capture set, whose class does not extend \lstinline|Capability|, is pure and stands for $\capt{T}{\cempty}$ (\texttt{overview.md}, lines 78 to 80). In Scala source, a capability is a parameter, a local variable or the \lstinline|this| of a class whose type is a capturing type with a nonempty capture set (\texttt{basics.md}, lines 118 to 120).
 
-Function types carry capture sets in the same way (\texttt{basics.md}, lines 158 to 166). The arrow \lstinline|A -> B| is pure. The arrow \lstinline|A ->{c, d} B| abbreviates \lstinline|(A -> B)^{c, d}|, a function that may use $c$ and $d$ and nothing else. The impure arrow \lstinline|A => B| is \lstinline|A ->{any} B|. Here \lstinline|any| is the universal capability, from which every other capability is derived (line 123). It was written \lstinline|cap| until 2026 (documentation commit \texttt{77941adc59}). The reference also calls it the root capability (line 296). This report does not use that phrase.
+Function types carry capture sets in the same way (\texttt{basics.md}, lines 158 to 166). The arrow \lstinline|A -> B| is pure. The arrow \lstinline|A ->{c, d} B| abbreviates \lstinline|(A -> B)^{c, d}|, a function that can capture $c$ and $d$ and no others. The impure arrow \lstinline|A => B| is \lstinline|A ->{any} B|. Here \lstinline|any| is the universal capability, from which every other capability is derived.
 
-Capture sets are ordered by subcapturing. The reference writes $C_1 \mathrel{<:} C_2$ and reads it as ``$C_1$ is covered by $C_2$'' (line 269). Subtyping extends to capturing types: $\capt{T_1}{C_1} \mathrel{<:} \capt{T_2}{C_2}$ when $T_1 \mathrel{<:} T_2$ and $C_1 \mathrel{<:} C_2$ (lines 273 to 275). Subcapturing $C_1 \mathrel{<:} C_2$ holds when every element $c$ of $C_1$ meets one of three conditions (lines 277 to 281):
+Capture sets are ordered by subcapturing. The reference writes $C_1 \mathrel{<:} C_2$ and reads it as ``$C_1$ is covered by $C_2$'' (\texttt{basics.md}, line 269). Subtyping extends to capturing types: $\capt{T_1}{C_1} \mathrel{<:} \capt{T_2}{C_2}$ when $T_1 \mathrel{<:} T_2$ and $C_1 \mathrel{<:} C_2$. Subcapturing $C_1 \mathrel{<:} C_2$ holds when every element $c$ of $C_1$ meets one of three conditions (lines 277 to 281):
 \begin{enumerate}
 \item $c$ is an element of $C_2$,
-\item $c$ refers to a parameter of a class \lstinline|Cls| and $C_2$ contains \lstinline|Cls.this|,
+\item $c$ refers to a parameter of a class \lstinline|Cls| and $C_2$ contains \lstinline|Cls.this| (this report does not model class parameters),
 \item the type of $c$ has a capture set $C$ and $C \mathrel{<:} C_2$.
 \end{enumerate}
-The third case says that a capability is covered by the capture set of its type. It becomes rule \rn{C-Var} of Section~\ref{sec:mini-typing}, and it makes a capture set mean more than its elements. For a logger $\mathit{lg}$ of type $\capt{\mathit{Logger}}{\cset{\mathit{out}}}$ that writes to a file $\mathit{out}$, it gives $\cset{\mathit{lg}} \mathrel{<:} \cset{\mathit{out}}$ (\texttt{overview.md}, lines 86 to 92). The set $\cset{\mathsf{any}}$ covers every capture set (\texttt{basics.md}, line 296).
+The third case says that a capability is covered by the capture set of its type. It becomes rule \rn{C-Var} of Section~\ref{sec:mini-typing}, and it makes a capture set mean more than its elements. For a logger $\mathit{lg}$ of type $\capt{\mathit{Logger}}{\cset{\mathit{out}}}$ that writes to a file $\mathit{out}$, it gives $\cset{\mathit{lg}} \mathrel{<:} \cset{\mathit{out}}$ (\texttt{overview.md}, lines 86 to 92).
 
-Following the third case from a variable to the capture set of its type, and on, has to end somewhere. In Scala it ends at \lstinline|any|. \treeK replaces each written \lstinline|any| by a set chosen by its position before typing (Section~\ref{sec:source-any}), and \treeCC gives each scope its own \lstinline|any| (Section~\ref{sec:levels}). In this report a program runs over a platform, a list of capture variables $\kappa_1, \kappa_2, \ldots$ that stand for primitive capabilities such as a file system or a console. A platform capture variable stands for itself. The capture variables that a capture set reaches by replacing variables with the capture sets of their types are the roots of the set (Section~\ref{sec:mini-roots}), the word that System Capybara uses for them \cite{xu2026capybara}. A variable has the roots of the capture set of its type. A term variable is never a root of a capture set, and a variable whose type has the empty capture set has no roots. These roots are not report~1's root of an atom, the variable under its casts (Section~\ref{sec:recap}). From now on, ``$C$ is covered by $D$'' means that every root of $C$ is a root of $D$, and the word subcapturing is kept for derivations. Whether every derivation yields coverage is the question of Section~\ref{sec:problem}.
+Following the third case from a variable to the capture set of its type, and on, has to end somewhere. In Scala it ends at \lstinline|any|, and $\cset{\mathsf{any}}$ covers every capture set. In this report a program runs over a platform, a list of capture variables $\kappa_1, \kappa_2, \ldots$ that stand for primitive capabilities such as a file system or a console. A capture variable is bound in the context, as a type variable is in System~F. The capture variables that a capture set reaches by replacing variables with the capture sets of their types are the roots of the set (Section~\ref{sec:mini-roots}), the word that System Capybara uses \cite{xu2026capybara}. If the file $\mathit{out}$ above has the type $\capt{\mathit{File}}{\cset{\kappa_{\mathit{fs}}}}$ for a platform variable $\kappa_{\mathit{fs}}$, the roots of $\cset{\mathit{lg}}$ are those of $\cset{\mathit{out}}$, which are $\cset{\kappa_{\mathit{fs}}}$ (on paper). The roots of a variable $x$ are those of $\cset{x}$. They are not report~1's root of the atom $x$, the variable under its casts (Section~\ref{sec:recap}), nor \lstinline|any|, which the reference calls the root capability (\texttt{basics.md}, line 296).
 
-\subsection{What a closure's capture set bounds}\label{sec:cc-closures}
+Unlike the reference, the calculi of this report admit every term variable in a capture set, because a use set collects the variables a term mentions (Section~\ref{sec:cc-uses}). A variable whose type has the empty capture set has no roots and adds nothing to a set. A variable $x$ acts as a capability when $\cset{x}$ has a root, as $\mathit{lg}$ does.
 
-The capture set of a closure can be read in two ways. In this report it bounds what calling the closure may use, and creating a closure uses nothing. This is the reading of System Capless \cite{xu2025box}, which types a lambda with the empty use set. In the \FCdot target of Section~\ref{sec:mini} a closure carries its capture set, called its annotation, and evidence that the use set of its body lies within the annotation and the parameter.
-
-Scala's documentation states the other reading. ``A function captures any capabilities accessed by its body'' (\texttt{overview.md}, line 107). And a use is charged to every scope around it: ``When a capability is used, it must be checked for compatibility with the capture-set constraints of all enclosing scopes'' (\texttt{scoped-capabilities.md}, lines 126 and 127). Under this rule a closure accounts for the uses of the closures it creates, even when it only returns them.
-
-The running example of Section~\ref{sec:mini} is where the two readings come apart. Its platform has two capture variables $\kappa_1$ and $\kappa_2$ and two capabilities, $\mathit{log}$ with capture set $\cset{\kappa_1}$ and $\mathit{console}$ with capture set $\cset{\kappa_2}$. The closure $\mathit{c1}$ calls $\mathit{log}$ and returns a closure that calls $\mathit{console}$. In this report the annotation of $\mathit{c1}$ is $\cset{\mathit{log}}$. Its result type $\capt{(\Unit \to \Unit)}{\cset{\mathit{console}}}$ records that the returned closure may use $\mathit{console}$ when it is called. By the documentation's charging rule, that use is also charged to $\mathit{c1}$, whose annotation would then be $\cset{\mathit{log}, \mathit{console}}$. We state this from the documentation and do not claim what the Scala compiler infers for $\mathit{c1}$. The program $\mathit{prog}_2$ calls $\mathit{c1}$ and drops the result. In this report its use set has the root $\kappa_1$ and not the root $\kappa_2$, and Section~\ref{sec:mini-run} proves that no state of its run inspects a variable with root $\kappa_2$. A declared set may be larger than the body needs (Example~\ref{ex:mini-typing}), so $\mathit{c1}$ with the charging annotation is typed here too, but for it effect safety no longer excludes $\kappa_2$. The two readings differ in where a use is paid for. Here a call pays for the closure it runs, and a closure it returns is paid for when that closure is called in turn.
+From now on, the reference's phrase ``$C$ is covered by $D$'' means that every root of $C$ is a root of $D$, and the word subcapturing is kept for derivations. Whether every derivation yields coverage is the question of Section~\ref{sec:problem}.
 
 \subsection{Use sets and inspection}\label{sec:cc-uses}
 
-A use set is a capture set that bounds what a term may use when it runs. System Capless makes the use set the first index of its typing judgment, and the source calculus of this report does the same, $\dtyuj{U}{\Gamma}{t}{T}$ (Section~\ref{sec:source-calc}). A variable uses itself, a call uses the function and the argument, and a closure uses nothing until it is called.
+A use set is a capture set that bounds what a term may use when it runs. System Capless \cite{xu2025box}, a core calculus for Scala's capture checker, makes the use set the first index of its typing judgment. The source calculus of this report does the same, $\dtyuj{U}{\Gamma}{t}{T}$ (Section~\ref{sec:source-calc}). A variable uses itself, and a call uses the function and the argument.
 
-A let needs care. In $\klet x = t \kin u$ the body $u$ may use $x$, but $x$ is not visible outside the let, so the use set of the let cannot mention it. The reference meets the same problem in types and calls its answer avoidance. A local variable in a type is replaced by the smallest visible capture set that covers it, so $\cset{l}$, for a local logger $l$ of type $\capt{\mathit{Logger}}{\cset{\mathit{fs}}}$, widens to $\cset{\mathit{fs}}$ (\texttt{basics.md}, lines 299 to 308). In the target \FCdot of this report a let declares the use set of its body, a set $U$ that does not mention $x$, and carries evidence $f$ that the uses of the body fit $U$. Section~\ref{sec:mini-typing} writes it $\letc{x}{t}{u}{U}{f}$. Every set that a binder declares is part of the term, so the use set $\uses{t}$ of a term is computed from its syntax. The source has no declared sets. The translation produces them (Section~\ref{sec:source}).
+A let needs care. In $\klet x = t \kin u$ the body $u$ may use $x$, but $x$ is not visible outside the let, so the use set of the let cannot mention it. The reference meets the same problem in types and calls its answer avoidance. A local variable in a type is replaced by the smallest visible capture set above it, so $\cset{l}$, for a local logger $l$ of type $\capt{\mathit{Logger}}{\cset{\mathit{fs}}}$, widens to $\cset{\mathit{fs}}$ (\texttt{basics.md}, lines 299 to 308). The target of this report records the answer in the term. A let declares a set without $x$ and carries evidence that the body fits it, with each use of $x$ widened to the capture set of its type (Section~\ref{sec:mini-typing}). The source has no declared sets. The translation produces them (Section~\ref{sec:source}).
 
-Not every use reads a stored value. A step inspects a variable when it reads the value stored there: the function of a call, whose closure it runs, the receiver of a projection, whose field it reads, and the operand of an unboxing, whose box it opens. An argument is used and not inspected. The call $x\,y$ uses $x$ and $y$ and inspects $x$ only.
+Not every use reads a stored value. A step inspects a variable when it reads the value stored there. A call inspects its function and runs the closure stored there. A projection inspects its receiver and reads a field. An unboxing inspects its operand and opens the box. An argument is used and not inspected, so the call $x\,y$ uses $x$ and $y$ and inspects $x$ only.
+
+Why does effect safety speak of inspection? The calculi of this report have no primitive effects. A platform capture variable stands for one, such as writing to a log, and a run exercises it by calling a closure whose capture set has it as a root. That call inspects the closure's variable. So the store may hold a closure whose capture set has a root that the use set lacks, as long as no step reads it (Example~\ref{ex:mini-prog2}).
+
+\subsection{What a closure's capture set bounds}\label{sec:cc-closures}
+
+The capture set of a closure can be read in two ways, and they differ in where a use is paid for. In this report it bounds what calling the closure may use, and creating a closure uses nothing. A closure that a call returns is paid for when it is called in turn. This is the reading of System Capless, which types a lambda with the empty use set. In the target of Section~\ref{sec:mini} a closure carries its capture set, called its annotation, and evidence that the use set of its body lies within the annotation and the parameter.
+
+Scala's documentation states the other reading. ``A function captures any capabilities accessed by its body'' (\texttt{overview.md}, line 107). And a use is charged to every scope around it: ``When a capability is used, it must be checked for compatibility with the capture-set constraints of all enclosing scopes'' (\texttt{scoped-capabilities.md}, lines 126 and 127). Under this rule a closure pays for the closures it creates, even when it only returns them.
+
+The running example of Section~\ref{sec:mini} is built on the closure that System Capless uses to show the difference. Its platform has two capture variables $\kappa_1$ and $\kappa_2$. Its store holds a unit value $\mathit{unit}$ and two capabilities, $\mathit{log} : \capt{(\forall(w : \Unit)\,\Unit)}{\cset{\kappa_1}}$ and $\mathit{console} : \capt{(\forall(w : \Unit)\,\Unit)}{\cset{\kappa_2}}$. The closure $\mathit{c1}$ calls $\mathit{log}$ and returns a closure that calls $\mathit{console}$, and two programs call it:
+\[
+\begin{array}{@{}lcl@{}}
+\mathit{c1} & = & \lambda(y : \Unit).\ \klet r = \mathit{log}\,y \kin \lambda(z : \Unit).\,\mathit{console}\,z \\
+\mathit{prog}_1 & = & \klet \mathit{inner} = \mathit{c1}\,\mathit{unit} \kin \mathit{inner}\,\mathit{unit} \\
+\mathit{prog}_2 & = & \klet \mathit{inner} = \mathit{c1}\,\mathit{unit} \kin \mathit{unit}
+\end{array}
+\]
+In this report $\mathit{c1}$ has the type $\capt{(\forall(y : \Unit)\,\capt{(\forall(z : \Unit)\,\Unit)}{\cset{\mathit{console}}})}{\cset{\mathit{log}}}$ (decided, Example~\ref{ex:mini-typing}). Its annotation $\cset{\mathit{log}}$ bounds what a call of $\mathit{c1}$ may use, and the inner set $\cset{\mathit{console}}$ bounds what a call of the returned closure may use. As the paper on System Capless notes \cite{xu2025box}, $\mathrm{CC}_{<:\square}$, the calculus of capturing types \cite{boruchgruszecki2023capturing}, gives $\mathit{c1}$ the set $\cset{\mathit{log}, \mathit{console}}$ instead. So $\mathit{prog}_2$, which drops the returned closure, is charged for $\mathit{console}$ by the documentation's reading and not by this report's. Section~\ref{sec:mini-run} proves that its run never calls $\mathit{console}$.
 
 \subsection{Capability members, escape, boxes and classifiers}\label{sec:cc-later}
 
-Four more features of the checker appear later in the report, each with one paragraph here. Reach capabilities and separation checking are left out (Section~\ref{sec:related}). Table~\ref{tab:programs} lists the programs that the report proves things about.\label{sec:cc-programs} For the escape, for \lstinline|Try.apply| and for \lstinline|Future.apply| the theorems are weaker than the promise (Sections~\ref{sec:levels} and~\ref{sec:classifiers}).
-
-\begin{table}[t]
-\caption{The programs of this report, where each comes from, the promise its type makes, and the sections and tree that treat it. ``Docs'' is the Scala 3 reference at commit \texttt{4dae25087d}.}
-\label{tab:programs}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}p{2.4cm}p{3.6cm}p{3.7cm}p{3.3cm}@{}}
-\toprule
-\raggedright Program & \raggedright From & \raggedright Promise & \raggedright Section, tree \tabularnewline
-\midrule
-\raggedright $\mathit{c1}$ with $\mathit{prog}_1$ and $\mathit{prog}_2$ & \raggedright the Lean's C1 and C6, not from the docs & \raggedright $\mathit{prog}_2$ never inspects a variable with root $\kappa_2$ & \raggedright \S\ref{sec:mini}, \treeK, copied into \treeCC and \treeCL \tabularnewline
-\addlinespace
-\raggedright reactor with a capability member & \raggedright the Lean's C2, compare docs, \texttt{polymorphism.md} 197 to 205 & \raggedright calling the member's closure is charged to the member's bound & \raggedright \S\ref{sec:target}, \S\ref{sec:source}, \S\ref{sec:frontends}, \treeK \tabularnewline
-\addlinespace
-\raggedright container of boxes & \raggedright the Lean's C7, compare docs, \texttt{classes.md} 186 to 206 & \raggedright unboxing a component charges its capture set & \raggedright \S\ref{sec:target-boxes}, \treeK \tabularnewline
-\addlinespace
-\raggedright \texttt{withFile} escape & \raggedright docs, \texttt{scoped-\allowbreak capabilities.md} 417 to 419 & \raggedright the file does not escape the callback & \raggedright \S\ref{sec:levels}, \treeCC \tabularnewline
-\addlinespace
-\raggedright \texttt{Try.apply} & \raggedright docs, \texttt{classifiers.md} 95, 96 and 105 to 113 & \raggedright the result drops the capabilities known to be unrelated to \texttt{Control} & \raggedright \S\ref{sec:classifiers}, \treeCL \tabularnewline
-\addlinespace
-\raggedright \texttt{Future.apply} & \raggedright Capless(K), compare docs, \texttt{classifiers.md} 128 & \raggedright the body uses no thread-local capability & \raggedright \S\ref{sec:classifiers}, \treeCL \tabularnewline
-\bottomrule
-\end{tabular}
-\end{table}
+Four more features of the checker appear later in the report.
 
 \paragraph{Capability members.}
-A capture set can be abstract. The reference shows a reactor whose event handlers may capture only what an abstract capability member allows (\texttt{polymorphism.md}, lines 197 to 205):
-\begin{lstlisting}[language=Scala]
+A capture set can be abstract. The reference shows a reactor whose event handlers may capture only what an abstract capability member allows (\texttt{polymorphism.md}, lines 197 to 205):\par\nopagebreak
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Scala,belowskip=0pt]
 trait Reactor:
   type Cap^ <: {caps.any}
   def onEvent(h: Event ->{this.Cap} Unit): Unit
-
+\end{lstlisting}
+\end{minipage}\par
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=Scala]
 trait GUIReactor extends Reactor:
   type Cap^ <: {ui, log}
 \end{lstlisting}
-A capability member behaves like a path-dependent capture-set variable (line 192). DOT models a type parameter as a type member, and this report models a capture parameter as a capture member $\dcap{C}{C_1}{C_2}$ of an object, with bounds $C_1$ and $C_2$. Inside a capture set, $\dsel{x}{C}$ names the member $C$ of $x$. Sections~\ref{sec:target-members} and~\ref{sec:source} treat them on the Lean's example C2, which resembles the reactor: an object with a capture member bounded by two capabilities and a field whose closure captures that member.
+\end{minipage}\par\noindent
+A capability member behaves like a path-dependent capture-set variable (line 192). DOT models a type parameter as a type member, and \treeK models a capture parameter as a capture member $\dcap{C}{C_1}{C_2}$ of an object, with bounds $C_1$ and $C_2$. Inside a capture set, $\dsel{x}{C}$ names the member $C$ of $x$. In this notation \lstinline|GUIReactor| declares $\dcap{C}{\cempty}{\cset{\mathit{ui}, \mathit{log}}}$, and a handler of a reactor $r$ has type $\capt{(\forall(e : \mathit{Event})\,\Unit)}{\cset{\dsel{r}{C}}}$. Section~\ref{sec:target-members} treats capture members on the Lean's example C2, which resembles the reactor.
 
 \paragraph{Escape and scopes.}
 The reference's page on scoped capabilities rejects an escape like that of Section~\ref{sec:intro}, for a method \lstinline|withFile| (\texttt{scoped-capabilities.md}, lines 417 to 419):\par\nopagebreak
@@ -85,20 +80,15 @@ val escaped: () => File^ = withFile[() => File^]("test.txt")(f => () => f) // er
 escaped().read()  // Use-after-close!
 \end{lstlisting}
 \end{minipage}\par\noindent
-The reference gives two mechanisms against escapes from \lstinline|withFile| (lines 169 to 183). First, every class, method body and block has its own local \lstinline|any|, and each capability has a level, the local \lstinline|any| of its defining scope. It can flow only into the \lstinline|any|s of its own scope or of nested ones (lines 28 to 30 and 85 to 111). This stops an escape through a mutable variable. Second, a function type may write \lstinline|fresh| in its result, which says that each call yields a new capability (Section~\ref{sec:levels-fresh}). Such a result cannot be merged with capabilities of the enclosing scope (lines 40 to 44), and this stops the returned closure above. Section~\ref{sec:levels} models scopes, levels and fresh results in \treeCC, treats the returned closure by levels, and says how much of that escape is proved.
+The reference stops such escapes by scopes. Every class, method body and block has its own local \lstinline|any|, and a capability may flow only into the \lstinline|any| of its own scope or of a nested one. It stops the escape above by a second rule. A result marked \lstinline|fresh| is a new capability at each call and cannot be merged with the capabilities of the enclosing scope (Section~\ref{sec:levels-fresh}). \treeCC models both.
 
 \paragraph{Boxes.}
-A pair of two capabilities can have a pure type. The reference types \lstinline|Pair(x, y)|, for \lstinline|x| capturing \lstinline|ct| and \lstinline|y| capturing \lstinline|fs|, at a \lstinline|Pair| type with no outer capture set, and the capture reappears when a component is accessed (\texttt{classes.md}, lines 186 to 206). This is capture tunneling. The theory explains it with boxes, and the compiler inserts box and unbox operations that have no run-time effect: ``Boxing hides a capture set and unboxing recovers it'' (\texttt{internals.md}, lines 37 to 46). The calculi of this report have boxes as terms. A box is pure, and an unboxing charges the boxed set against its use set. A step that unboxes inspects the box, which has no roots, so effect safety never flags it. Section~\ref{sec:target-boxes} gives a separate theorem about the unboxed value. The trees refuse an \lstinline|any| under a box, in a type-member bound or in the lower bound of a capture member (Section~\ref{sec:source-any}).
+A pair of two capabilities can have a pure type, and the capture reappears when a component is accessed (\texttt{classes.md}, lines 186 to 206). The theory explains this with boxes: ``Boxing hides a capture set and unboxing recovers it'' (\texttt{internals.md}, lines 37 to 46). The calculi of this report have boxes as terms, and an unboxing charges the boxed set against its use set.
 
 \paragraph{Classifiers.}
-Capabilities can be sorted by kind. \lstinline|Try.apply| runs a body that may use anything. Its result drops the capabilities of the body that are known to be unrelated to \lstinline|Control| and keeps the rest (\texttt{classifiers.md}, lines 95, 96 and 105 to 113):
+Capabilities can be sorted by kind. \lstinline|Try.apply| runs a body that may use anything. Its result drops the capabilities of the body that are known to be unrelated to \lstinline|Control| and keeps the rest, written \lstinline|body.only[Control]| (\texttt{classifiers.md}, lines 95, 96 and 105 to 113):
 \begin{lstlisting}[language=Scala]
 object Try:
   def apply[T](body: => T): Try[T]^{body.only[Control]} = ???
 \end{lstlisting}
-A method that runs its argument on another thread admits only capabilities known to be unrelated to \lstinline|Control| (lines 128 and 135):
-\begin{lstlisting}[language=Scala]
-def runOnNewThread[T](body: () ->{any.except[Control]} T): T = ???
-\end{lstlisting}
-Section~\ref{sec:classifiers} models classifiers in \treeCL, with \lstinline|Try.apply| and, in place of \lstinline|runOnNewThread|, the \lstinline|Future.apply| of Capless(K), System Capless with classifiers \cite{pham2026classifying}. The body of \lstinline|Future.apply| may capture anything except thread-local capabilities.
-
+A method \lstinline|runOnNewThread| that runs its argument on another thread admits only capabilities known to be unrelated to \lstinline|Control|, written \lstinline|any.except[Control]| (lines 128 and 135). Section~\ref{sec:classifiers} models classifiers in \treeCL. Sections~\ref{sec:levels} and~\ref{sec:classifiers} say where the theorems prove less than the reference promises.

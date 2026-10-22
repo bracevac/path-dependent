@@ -4,15 +4,39 @@
 \section{Mechanization}\label{sec:mech}
 \mathplain
 
-Every Lean statement that this report cites is a declaration in one of the three trees, and the report names the tree. The development has no library dependencies, so there is no Mathlib, and the toolchain is \lean{leanprover/lean4:v4.29.1}.
+Every Lean statement cited here is a declaration in one of the three trees, and the report names the tree. The development uses no library, and its toolchain is \lean{leanprover/lean4:v4.29.1}.
 
 \subsection{Layout and lineage}\label{sec:mech-trees}
 
-All paths are relative to \lean{lean/Coercions}. The three trees are \lean{Captures/}, \lean{CapturesCC/} and \lean{Classifiers/}. Each has the directories of the development of \Rone, under a namespace of its own. \lean{DotMNF/} is the source, \lean{FCdot/} the target, \lean{DotToFCdot/} the translation and \lean{Frontend/} the pipeline of Section~\ref{sec:frontends}. \treeCL also has \lean{Cls/}, the classifier tree and the kinds. A tree is a copy of its predecessor, and the three do not import one another. The file \lean{BASE} of each tree names the commit of the copy. \treeK is a copy of the vanilla line at \lean{83079d4}, which is the development of report~1 before PR~\#56. \treeCC is a copy of \treeK at \lean{a4df821}, and \treeCL a copy of \treeCC at \lean{90fab2a}.
+All paths are relative to \lean{lean/Coercions}. The three trees are \lean{Captures/}, \lean{CapturesCC/} and \lean{Classifiers/}. Each has the directories of the development of \Rone, under a namespace of its own. \lean{DotMNF/} is the source, \lean{FCdot/} the target, \lean{DotToFCdot/} the translation and \lean{Frontend/} the pipeline of Section~\ref{sec:frontends}. \treeCL also has \lean{Cls/}, the classifier tree and the kinds. Canonical forms, prediction, level inversion and root inversion are in \lean{CanonicalForms}, \lean{Prediction}, \lean{LevelInversion} and \lean{Consistency} of \lean{FCdot/}. The translation and source theorems are in \lean{TermsTyped}, \lean{EvidenceTyped}, \lean{Prediction} and \lean{Safety} of \lean{DotToFCdot/}, and the pipeline theorems in \lean{Frontend/Pipeline.lean}. A tree is a copy of its predecessor, and the three do not import one another. The file \lean{BASE} of each tree names the commit of the copy. \treeK is a copy of the vanilla tree, report~1's development without capture sets, at \lean{83079d4}, before PR~\#56. \treeCC is a copy of \treeK at \lean{a4df821}, and \treeCL a copy of \treeCC at \lean{90fab2a}.
 
-PR~\#56 simplified the forms of report~1 after the copy of \treeK was taken. So the forms of the capture trees differ from those of report~1's Figure~\ref{R1-fig:forms} in four ways. First, a head form $\form{eqv}\,\varphi$ holds closed equality evidence $\varphi$ between the endpoints. Report~1 folds it into $\form{id}$. The capture trees keep both, so \rn{E-AppCastRefl} accepts a chain of either form (Table~\ref{tab:target-steps}). Second, object forms and $\form{into}$ forms share one list of entries. In it a routed entry $\form{thru}\,F\,E$ may stand anywhere. Its head form $F$ reaches another object type from the source, and its entry $E$ proves the target proposition there. Report~1 routes free entries only. Third, there is no split into local and free entries, and so no local entry $\form{trans}$ or $\form{copy}$. Fourth, the evidence lacks report~1's composition template $\ev{leTrans}$, which report~1's own translation never produces. The capture trees add three things. The head form $\form{boxed}\,d$ holds closed evidence $d$ between the boxed types. The entries $\form{leC}$ and $\form{eqC}$ keep a capture template as it is. A capture entry of a view carries no data. This report displays no normalizer case, because the capture half is never normalized. The capture cases were not ported to the forms of report~1.
+This report displays no normalizer case, because the capture half is never normalized. The capture trees keep the forms of report~1 from before PR~\#56, which differ from its Figure~\ref{R1-fig:forms} in four ways. First, a head form $\form{eqv}\,\varphi$ holds closed equality evidence $\varphi$, which report~1 folds into $\form{id}$. Second, object forms and $\form{into}$ forms share one list of entries, in which a routed entry $\form{thru}\,F\,E$ may stand anywhere. Report~1 routes free entries only. Third, there is no split into local and free entries, and so no local entry $\form{trans}$ or $\form{copy}$. Fourth, the evidence lacks report~1's composition template $\ev{leTrans}$, which report~1's translation never produces. The capture trees add three things. The head form $\form{boxed}\,d$ holds closed evidence $d$ between the boxed types. In an object form the entries $\form{leC}$ and $\form{eqC}$ keep a capture template, while the capture forms of a view that Section~\ref{sec:target-canon} types under the same names carry no data. The capture cases were not ported to report~1's forms.
 
-Fixes made to \treeK after the copies were not all ported, and later strengthenings of \treeCC are not in \treeCL. Table~\ref{tab:matrix} lists the cited theorems whose existence or statement differs between the trees.
+The Lean has the capture bounds $\cstar$, $\scopeb$, $\mathsf{upper}\,C$ and $\instb{C}$, and \treeCL a fifth, $\clsb{k}$. The report omits $\mathsf{upper}\,C$, which no rule or step constructs, though \rn{Kd-CVar} of \treeCL accepts it. \rn{S-Cap} accepts every bound in \treeK and every bound but $\scopeb$ in \treeCC and \treeCL, so the theorems also hold over stores with any such bound.
+
+\begin{figure}[b]
+\footnotesize
+\color{tgtcol}
+\[
+\begin{array}{@{}lcl@{\qquad}l@{}}
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [\,]\rangle & = & [\,\langle k_1, [k_2] \mathbin{+\!\!+} \vec{k}_1\rangle\,] \\
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [k_3] \mathbin{+\!\!+} \vec{k}\rangle & = & [\,\langle k_1, \vec{k}_1\rangle\,] & \text{if } k_2 \le k_3 \text{ and } k_3 \not\le k_2 \\
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [k_3] \mathbin{+\!\!+} \vec{k}\rangle & = & \langle k_1, \vec{k}_1\rangle \setminus \langle k_2, \vec{k}\rangle & \text{else if } k_2 \not\le k_3 \text{ and } k_3 \not\le k_2 \\
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [k_3] \mathbin{+\!\!+} \vec{k}\rangle & = & [\,\langle k_3, \vec{k}_1\rangle\,] \mathbin{+\!\!+} (\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, \vec{k}\rangle) & \text{else if } k_3 \le k_1 \\
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [k_3] \mathbin{+\!\!+} \vec{k}\rangle & = & [\,\langle k_1, \vec{k}_1\rangle\,] & \text{else if } k_1 \le k_3 \text{ and } k_3 \not\le k_1 \\
+\langle k_1, \vec{k}_1\rangle \setminus \langle k_2, [k_3] \mathbin{+\!\!+} \vec{k}\rangle & = & \langle k_1, \vec{k}_1\rangle \setminus \langle k_2, \vec{k}\rangle & \text{otherwise} \\
+\chi \setminus [\,] & = & \chi \\
+\chi \setminus ([\iota'] \mathbin{+\!\!+} \chi') & = & (\text{the concatenation of } \iota \setminus \iota' \text{ over } \iota \in \chi) \setminus \chi'
+\end{array}
+\]
+\color{black}
+\caption{Subtraction of kinds (\lean{Kind.subtractB}), which the subkind test of Figure~\ref{fig:cl-syntax} reads. The cases, tried in order, compare each exclusion $k_3$ of the subtrahend with $k_2$ and $k_1$, so that nothing below it is removed.}
+\label{fig:mech-subtract}
+\end{figure}
+
+\treeCL proves only the sound half of the subtraction of Figure~\ref{fig:mech-subtract}: a classifier that $\chi$ contains and $\chi'$ does not is contained in $\chi \setminus \chi'$ (\lean{Kind.contains\_subtract\_of}). The converse is the bulk of Capless(K)'s subtraction proof, 991 lines with \lean{aesop}, which the trees do not use.
+
+Fixes made to \treeK after the copies were not all ported, and later strengthenings of \treeCC are not in \treeCL (Table~\ref{tab:matrix}).
 
 \begin{table}
 \scriptsize
@@ -25,27 +49,25 @@ Fixes made to \treeK after the copies were not all ported, and later strengtheni
 theorems & K & CC & CL & note \\
 \midrule
 \rg \lean{effect\_safety\_unbox}, \lean{Ty.expandWith\_of\_anyOk} & $\checkmark$ & - & - & \rg added to K after the copies \\
-\rg \lean{dot\_not\_stuck\_platform} & $\checkmark$ & - & $\checkmark$ & \rg \\
 \rg \lean{Alg.answer} & $\checkmark$ & - & - & \rg CC and CL call it \lean{Alg.sound} \\
-\rg \lean{Alg.sound\_shape}, \lean{shape?\_complete} & $\checkmark$ & $\checkmark$ & - & \rg \lean{Alg.sound\_shp}, \lean{shp?\_complete} in CL \\
-\rg \lean{root\_inversion}, \lean{atom\_root\_inversion}, \lean{level\_inversion\_plain}, \lean{Subcap.\allowbreak{}memberFree\_of\_plain} & - & $\checkmark$ & - & \rg later strengthenings of CC \\
-\rg \lean{certify?\_sound}, \lean{certify?\_isSome} & - & $\checkmark$ & - & \rg CL has \lean{compile\_rejected\_goal} instead \\
-\rg \lean{level\_inversion}, \lean{atom\_level\_inversion}, \lean{no\_inner\_escape}, \lean{Store.\allowbreak{}Typed.\allowbreak{}rootFree}, \lean{Store.\allowbreak{}Typed.\allowbreak{}confined}, \lean{Ctx.\allowbreak{}roots\_eq\_caps\_of\_rootFree}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}enter}, \lean{Subst.\allowbreak{}Typed.\allowbreak{}singleC}, \lean{ex\_stays\_ex}, \lean{no\_ex\_le\_ty}, \lean{scope\_order} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the target (Section~\ref{sec:levels}) \\
-\rg \lean{source\_lvl\_safety}, \lean{Subcap.\allowbreak{}translate\_memberFree}, \lean{CaptureSet.\allowbreak{}top\_not\_mem\_translate}, \lean{compile\_lvl\_safety}, \lean{escape\_rejected\_at} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels in the source and the front end \\
+\rg \lean{shape?\_complete} & $\checkmark$ & $\checkmark$ & - & \rg \lean{shp?\_complete} in CL \\
+\rg \lean{root\_inversion}, \lean{atom\_root\_inversion}, \lean{level\_inversion\_plain}, \lean{Ctx.plain}, \lean{Subcap.\allowbreak{}memberFree\_of\_plain}, \lean{X4Ctx\_plain} & - & $\checkmark$ & - & \rg later strengthenings of CC \\
+\rg \lean{certify?\_isSome}, \lean{Esc\_compile\_rejected} & - & $\checkmark$ & - & \rg CL has \lean{compile\_rejected\_goal} instead \\
+\rg the other scope and level declarations of Sections~\ref{sec:levels}, \ref{sec:frontends} and~\ref{sec:history}, such as \lean{level\_inversion} & - & $\checkmark$ & $\checkmark$ & \rg scopes and levels (Section~\ref{sec:levels}) \\
 \rg \lean{lvl\_safety} & - & $\checkmark$ & $\checkmark$ & \rg CC on the resolved set, CL on roots \\
 \rg \lean{lvl\_canon} & - & - & $\checkmark$ & \rg deleted from CC, restated in CL (Section~\ref{sec:history}) \\
-\rg \lean{kind\_canon}, \lean{classified\_prediction}, \lean{classified\_effect\_safety}, \lean{Store.\allowbreak{}Ext.\allowbreak{}kindLe}, \lean{Ctx.\allowbreak{}KindLe.\allowbreak{}mono}, \lean{CapBound.\allowbreak{}cls\_not\_appendable}, \lean{Kind.\allowbreak{}Subkind.\allowbreak{}contains}, \lean{Classifier.\allowbreak{}subclass\_or\_disjoint}, \lean{dot\_classified\_effect\_safety}, \lean{dot\_classified\_effect\_safety'}, \lean{Ctx.\allowbreak{}roots\_proj}, \lean{Kind.\allowbreak{}contains\_subtract\_of}, \lean{checkKindCo\_iff\_hasType}, \lean{CapKind.\allowbreak{}translate\_typed}, \lean{compile\_classified\_effect\_safety}, \lean{compile\_consistent}, \lean{compile\_realized} & - & - & $\checkmark$ & \rg classifiers (Section~\ref{sec:classifiers}) \\
+\rg the classifier declarations of Sections~\ref{sec:classifiers} and~\ref{sec:frontends} & - & - & $\checkmark$ & \rg classifiers (Section~\ref{sec:classifiers}) \\
 \rg \lean{cap\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC adds the case \lean{level}, and CL adds \lean{unprojC}, \lean{projC} and \lean{projMono} \\
 \rg \lean{capeq\_canon} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL add the case \lean{instC} \\
 \rg \lean{step\_uses} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg 12 cases in K, 18 in CC and CL \\
 \rg \lean{erase\_reflect'} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL state it at answer types \\
 \rg \lean{capture\_prediction}, \lean{effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg roots after expansion in CC and CL \\
-\rg \lean{dot\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL assume a plain type \\
+\rg \lean{dot\_safety}, \lean{dot\_safety\_platform}, \lean{dot\_capture\_prediction}, \lean{Platform.\allowbreak{}simulatedRun}, \lean{returned\_capture\_bound} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CC and CL assume a plain answer, or a plain atom \\
 \rg \lean{Platform.\allowbreak{}root\_iff} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg no premise in K, $\topc \notin C$ in CC, and also no filtered atom in CL \\
-\rg \lean{dot\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg the hypothesis on $\kappa$ differs (Section~\ref{sec:source-thms}) \\
+\rg \lean{dot\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg the hypothesis on $\kappa$ differs (Section~\ref{sec:source-thms}), and CC and CL assume a plain answer \\
 \rg \lean{compile\_effect\_safety} & $\checkmark$ & $\checkmark$ & $\checkmark$ & \rg CL adds the premise \lean{noProj?} and the conjunct \lean{stt.inspects = some x} \\
 \midrule
-\rg \lean{X4\_no\_escape} & - & $\checkmark$ & $\checkmark$ & \rg member-free evidence only in CL \\
+\rg \lean{X4\_no\_escape}, \lean{Y4\_isolation}, \lean{Y4\_no\_escape} & - & $\checkmark$ & $\checkmark$ & \rg in CL at \lean{X4Ctx}, member-free evidence only, and \lean{Y4\_isolation} without its member-free conjunct \\
 \rg \lean{W5\_no\_escape} & - & $\checkmark$ & $\checkmark$ & \rg at $\kappa_1$, member-free evidence only in CL \\
 \rg \lean{two\_calls\_incomparable} & - & $\checkmark$ & $\checkmark$ & \rg four conjuncts in CC, two in CL \\
 \bottomrule
@@ -54,7 +76,7 @@ theorems & K & CC & CL & note \\
 
 \subsection{Sizes}\label{sec:mech-sizes}
 
-Table~\ref{tab:sizes} counts the lines of Lean per tree and directory. The vanilla row is the development of report~1. Its \lean{DotMNF} count is the sum of the first two rows of report~1's Table~\ref{R1-tab:sizes}, its \lean{FCdot} count is the third row, and its \lean{DotToFCdot} count the sum of the fourth and fifth. That table does not count the front end.
+Table~\ref{tab:sizes} counts the lines of Lean per tree and directory. The vanilla row is the development of report~1, whose Table~\ref{R1-tab:sizes} splits the same counts into finer rows and leaves out the front end. Scopes cost substitution lemmas far more than canonical forms. \lean{TypingSubst.lean} has 631 lines in \treeK and 2{,}986 in \treeCC, while \lean{CanonicalForms.lean} has 784 and 832 (Section~\ref{sec:levels-run}).
 
 \begin{table}
 \small
@@ -75,11 +97,9 @@ vanilla & 3{,}970 & 10{,}985 & 2{,}725 & 14{,}366 & & 32{,}046 \\
 
 \subsection{Axioms and checks}\label{sec:mech-checks}
 
-The libraries build with \lean{lake build Captures CapturesCC Classifiers CapturesFrontend CapturesCCFrontend ClassifiersFrontend} from the root of the repository. Each front-end library imports its own calculus and two modules of report~1's front end, \lean{Frontend/Fuel.lean}, the tank of Section~\ref{sec:fe-reject}, and \lean{Frontend/Reason.lean}, the reasons for a rejection. Table~\ref{tab:sizes} counts their 1{,}049 lines in the vanilla row only. The six libraries were built without error from a scratch copy of the trees at \lean{de9b596}, together with the \lean{Examples} modules of the three \lean{FCdot} directories. A search of the three trees finds no \lean{sorry}, no \lean{axiom}, no \lean{native\_decide} and no \lean{partial}, \lean{unsafe} or \lean{opaque} definition.
+The libraries build with \lean{lake build} \lean{Captures} \lean{CapturesCC} \lean{Classifiers} \lean{CapturesFrontend} \lean{CapturesCCFrontend} \lean{ClassifiersFrontend} from the root of the repository. Each front-end library also imports two modules of report~1's front end, \lean{Frontend/Fuel.lean} and \lean{Frontend/Reason.lean}. The six libraries were built without error from a scratch copy of the trees at \lean{de9b596}, together with the \lean{Examples} modules of the three \lean{FCdot} directories. A search of the three trees finds no \lean{sorry}, no \lean{axiom}, no \lean{native\_decide} and no \lean{partial}, \lean{unsafe} or \lean{opaque} definition. On the same trees, \lean{Lean.collectAxioms} finds at most \lean{propext} and \lean{Quot.sound} below every declaration of the trees and their front ends whose name this report cites. The machine of \FCdot is also a function, \lean{fcStep?}, proved to agree with the step relation, but no compiled program runs on it.
 
-The command \lean{\#print axioms} finds at most \lean{propext} and \lean{Quot.sound} on \lean{capture\_prediction}, \lean{effect\_safety} and \lean{dot\_effect\_safety} in every tree, on eight more cited theorems and six cited examples, and on more than seventy theorems of the front ends.
-
-Examples are checked in four ways. A kernel decision runs a checker. It applies the checker's soundness theorem to an accepted example, as in \lean{C1\_typed}, which is \lean{checkValue\_sound (by decide +kernel)}, and states the verdict \lean{= false} for a refused one, as in \lean{C6\_rejected}. A run is built by hand from the step constructors, as in \lean{C6\_run}. A resolution fact is proved by \lean{simp} on the clause lemmas, because \lean{Ctx.caps} is defined by well-founded recursion and its equations are the clause lemmas. A translated example is a theorem about a derivation and not a computation (Section~\ref{sec:source-trans}).
+In the status marks of Section~\ref{sec:intro}, a decided example runs a checker in the kernel, as \lean{C1\_typed} is \lean{checkValue\_sound (by decide +kernel)}, or states its verdict, as \lean{C7\_rejected} does (Section~\ref{sec:source-open}). Built by hand are runs written with the step constructors (\lean{C6\_run}), resolution facts proved by \lean{simp} on the clause lemmas of the well-founded \lean{Ctx.caps}, and translated examples (Section~\ref{sec:source-trans}).
 
 \subsection{The miniature and the Lean}\label{sec:mech-mini}
 
@@ -116,23 +136,23 @@ miniature & Lean in \treeK & file and line & difference \\
 \end{table}
 
 \begin{enumerate}
-\item It has named binders, and the Lean is de Bruijn. Store extension, capture prediction and effect safety carry a renaming $\pi$, as \lean{Store.Ext} does, and are existential in it. With names $\pi$ is the identity, and the miniature drops it.
-\item It has no fuel. The Lean's resolution takes fuel for capture names, which the miniature does not have. \lean{C6\_prog2\_caps} holds at every fuel.
+\item It has named binders, and the Lean is de Bruijn. Store extension carries a renaming $\pi$, as \lean{Store.Ext} does. A Lean statement that concludes a store extension, such as capture prediction, is existential in $\pi$, and one that assumes it, such as \lean{Store.Ext.roots}, holds for every $\pi$. Named binders make $\pi$ the identity.
+\item It has no fuel. The Lean's resolution takes fuel for capture names, which the miniature lacks. The roots of the use set of $\mathit{prog}_2$ are the same at every fuel (\lean{C6\_prog2\_caps}, built by hand).
 \item Its atoms are variables. The Lean's atoms have wrappers (\lean{cast}, \lean{recap}, \lean{foldSelf}, \lean{unfoldSelf}, \lean{both}). \rn{E-App} is \lean{appVar}, and the Lean has two more application steps, \rn{E-AppCastRefl} and \rn{E-AppCast}, which read the chain of casts.
-\item It writes store binders as $x : T$. The Lean binds them transparently with empty witnesses (\lean{C6Ctx}) and checks $v_{c1}$ in a context whose binders are opaque (\lean{C1Ctx}). Let binders and parameters are opaque in the Lean.
+\item It writes store binders as $x : T$. The Lean binds them transparently with empty witnesses (\lean{C6Ctx}) and checks $v_{c1}$ under opaque binders (\lean{C1Ctx}). Let binders and parameters are opaque.
 \item Theorem~\ref{thm:mini-cap} holds in every context. \lean{cap\_canon} in \treeK assumes a typed store, as a section variable, and covers all evidence. The statement with no store, for member-free evidence, is \lean{root\_inversion}, which exists in \treeCC only.
 \item Theorem~\ref{thm:mini-pres} is proved on paper. Its counterpart \lean{preservation'} renames the type, and the renaming is not tied to \lean{Store.Ext}.
-\item The run of $\mathit{prog}_2$ in Example~\ref{ex:mini-prog2} is on paper. The Lean states \lean{C6\_safe} for every run of $\mathit{prog}_2$ and writes none out.
+\item The run of $\mathit{prog}_2$ in Example~\ref{ex:mini-prog2} is on paper. The Lean states \lean{C6\_safe} for every run and writes none out.
 \end{enumerate}
 
 \subsection{Names}\label{sec:mech-names}
 
-Table~\ref{tab:names} maps the words of this report to the names of the Lean, as report~1's Table~\ref{R1-tab:names} maps its results to the declarations of the vanilla development. The Lean uses the word root in three senses. \lean{Atom.root} is the root of an atom. \lean{Ctx.roots} and \lean{Ctx.Root} are the roots of a capture set, as in this report. The bound \lean{CapBound.root} is a scope binder, and \lean{Ctx.IsRoot}, \lean{Ctx.rootAtom} and \lean{Store.Typed.rootFree} speak of scope capabilities and scope binders, not of the roots of a set. The Lean's comments call star and classified binders rigid. An example that \treeCC and \treeCL share is cited from \treeCC unless the text names \treeCL.
+Table~\ref{tab:names} maps the words of this report to the names of the Lean, as report~1's Table~\ref{R1-tab:names} maps its results to the declarations of the vanilla development. The Lean uses the word root in three senses. \lean{Atom.root} is the root of an atom, and \lean{Ctx.roots} and \lean{Ctx.Root} are the roots of a capture set, as in this report. \lean{CapBound.root} is a scope binder, and \lean{Ctx.IsRoot}, \lean{Ctx.rootAtom} and \lean{Store.Typed.rootFree} speak of scope capabilities and scope binders. An example that \treeCC and \treeCL share is cited from \treeCC unless the text names \treeCL.
 
-\begin{table}
+\begin{table}[htb]
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\caption{Words of this report and the Lean's names for them. Table~\ref{tab:mini-lean} gives the names for the words of the miniature. The mark (CC) means \treeCC and \treeCL only, and (CL) means \treeCL only. The bounds \lean{root}, \lean{star}, \lean{upper} and \lean{inst} are in the syntax of all three trees.}
+\caption{Words of this report and the Lean's names for them. Table~\ref{tab:mini-lean} gives the names for the words of the miniature. The mark (CC) means \treeCC and \treeCL only, and (CL) means \treeCL only.}
 \label{tab:names}
 \centering
 \begin{tabular}{@{}p{0.3\linewidth}p{0.66\linewidth}@{}}
@@ -145,7 +165,6 @@ report & Lean \\
 \rg scope binder, $\varrho : \scopeb$ & \rg \lean{CapBound.root}, constructed in \treeCC and \treeCL only \\
 \rg classified binder, $\kappa : \clsb{k}$ & \rg \lean{CapBound.cls} (CL) \\
 \rg instance binder, $\kappa \instb{C}$ & \rg \lean{CapBound.inst}, constructed in \treeCC and \treeCL only \\
-\rg bounded binder & \rg \lean{CapBound.upper}, never constructed \\
 \rg opaque capture binder & \rg \lean{CapBound.opaque} (CC): scope or star, and classified in \treeCL \\
 \rg platform capability & \rg a star binder of the prefix of \lean{Platform}, or a classified one in \treeCL \\
 \rg universal capability, $\topc$ & \rg \lean{CapAtom.top} (CC) \\
@@ -158,5 +177,3 @@ report & Lean \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\FloatBarrier

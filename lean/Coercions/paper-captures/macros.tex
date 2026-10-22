@@ -161,7 +161,9 @@
 \newcommand{\kexcept}[1]{\mathsf{except}[#1]}
 \newcommand{\clsb}[1]{\ast_{#1}}
 \newcommand{\clsof}[2]{\mathit{cls}_{#1}(#2)}
-\newcommand{\kcont}[2]{#1 \in #2}
+\newcommand{\kcont}[2]{#1 \mathrel{\in_{\mathsf{k}}} #2}
 \newcommand{\kindj}[4]{\tgt{#1 \vdash #2 : #3 :: #4}}
 \newcommand{\pkind}[2]{\tgt{#1 :: #2}}
-\newcommand{\kindle}[3]{#2 \lhd_{#1} #3}
+\newcommand{\kindle}[3]{#1 \models #2 :: #3}
+\newcommand{\kindsj}[3]{\src{#1 \vdash #2 :: #3}}
+\newcommand{\dcapk}[2]{\src{\{#1\,{::}\,#2\}}}
