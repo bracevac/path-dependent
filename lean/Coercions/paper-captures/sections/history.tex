@@ -1,0 +1,35 @@
+% unit U8
+\section{Designs That Did Not Work}\label{sec:history}
+\mathplain
+
+Several parts of the three trees look arbitrary until one sees what they replaced. This section records the designs that were dropped and the theorems that were found to say nothing. The evidence against each design is marked in parentheses. MC is a machine-checked counterexample, a Lean file that the kernel accepted. A is an argument on paper, usually by a reviewer who attacked the design before it was built. C is a cost judgment: the design would work and was refused for its price. A refusal marked C, or unmarked, is a decision and not a refutation. The counterexample files and the design notes are in the author's archive of 2026-10-16, not in the repository.
+
+\subsection{Where capture sets live}
+
+Option (a) puts capture binders and an existential type in the target, as Capless has them. Option (b) puts the capture set of an object under its self binder, as a proposition $\plec{\cset{\self}}{C}$ of its telescope. Option (c) keeps the capture set outside the shape, as $\capt{S}{C}$, and reads capture quantification as a capture member of an object. It reads a result $\cany$ as an explicit set fixed by its position (Section~\ref{sec:source-any}). Option (c) won. Under option (a) a call whose result type opens an unbounded capture binder $\kappa$ leaves a $\kw{let}$ whose body mentions $\kappa$. No evidence puts $\kappa$ below a set without it, so the $\kw{let}$ has no avoidance evidence (A). Option (a) also needs a second family of normal forms for answers (C). Under option (b) a capture template would have to relate two sets that mention the self, which a side typed outside the self cannot do. The checker, the normalizer and the composition of object forms (Section~\ref{sec:mech-trees}) would all change (C). \treeCC later took option (a) for $\cfresh$ alone, with a bound that the unpacking charges (Section~\ref{sec:levels-fresh}).
+
+\subsection{Boxes three times}
+
+The first design made a box a capture name on a label. A container holding $\dbox{f}$ is pure in the source, but the target's field condition forces the literal's annotation to contain $\rt{f}$, so the translation is not typed (A). A capture name hides nothing, since a witness at a label resolves through the store, so the box became a shape, $\boxt{T}$. The second design made a box an atom wrapper. At such an atom, $\ev{member}$ and resolution read the self of a capture witness differently, so canonical forms of closed equality evidence failed on a typed store (MC). A box is now a value, stored like any literal, and an unboxing is a term. The third design erased a box to a one-field runtime object at a reserved label (MC). Then a projection and an unboxing erase alike, and the simulation pairs a state that steps with one that is stuck. The runtime now has an inert box, \lean{Tm.box}.
+
+\subsection{The parameter \texorpdfstring{$\cany$}{any} and \texorpdfstring{$\cany$}{any} under a box, the DOT way}
+
+\treeK reads no parameter $\cany$. It would be a capture member of a parameter object, so the target would allocate that object and make one more application at each call, which the source term lacks. Erasure equality would then be argued again at every call site (C and A). A program writes an explicit capture member instead. \treeK also reads no $\cany$ under a box, in a type-member bound or in the lower bound of a capture member. That refusal is a deferral, with no counterexample. \treeCC reads a parameter $\cany$ as the capture binder of the arrow and keeps the second refusal.
+
+\subsection{The compiler's way}
+
+\begin{itemize}
+\item The universal capability is an atom $\topc$, the compiler's constant, and not a binder at the head of the platform prefix. An atom leaves the prefix unchanged (C). An atom that absorbs every level types the escape at top level (A), so $\topc$ is at the outermost level, and only a capability inside no scope flows into it.
+\item Inserting a scope binder before another binder changes the level of the other and falsifies level evidence about it (A). So typed renamings and substitutions keep scope binders and level facts.
+\item Atoms and values first carried answer casts. Preservation then failed at allocation, which drops the answer cast on a value, and progress at a packed atom with a plain answer (A). Now packing is the answer inclusion \rn{Ans-Pack}, and the pack wrapper stands only at an existential answer.
+\item An existential without a bound put $\topc$ in the use set of an unpacking at top level, where \lean{dot\_effect\_safety} says nothing (A). So the existential declares a bound (Section~\ref{sec:levels-fresh}).
+\item \lean{Platform.root\_iff} of \treeK fails with $\topc$ in the set (MC), so \treeCC assumes $\topc \notin C$.
+\end{itemize}
+
+\subsection{Classifiers}
+
+A filter applied inside resolution is unsound (A, recomputed in a scratch file outside the repository). The expansion after it reopens what it admitted (Example~\ref{ex:cl-filter}). The filter is now data on the atom, which expansion applies last. \rn{Kd-Cls} was first read at star binders too, with the classifier $\top$, and so kinded $\cset{\kappa_p}$ of Example~\ref{ex:cl-k6} at $\kexcept{\mathit{ThreadLocal}}$. Kinding must survive the renaming that an unpacking makes at run time (Section~\ref{sec:levels-fresh}), which can read the star binder $\kappa_p$ as $\kappa_p \instb{\cset{\kappa_{\mathit{tl}}}}$. It carries that evidence to a thread-local capability in a context that a store types, where Theorem~\ref{thm:cl-kind} then fails (MC). The rule now fires at classified binders only, and kinding is not complete at a star binder. A kinding template without a hole failed too (MC). At \rn{CapK-I} the proposition to prove is about the member's own name $\sel{\self}{C}$, and no chain of closed evidence reaches it, so \rn{M-KindLe} carries a hole. Last, \lean{dot\_effect\_safety} first assumed that $\kappa$ is not an atom of the translated use set. In E1r (Example~\ref{ex:cl-try}), $\kappa_{\mathit{ctl}}$ is no such atom and is a root of the inspected variable (\lean{E1r\_reads\_root}, built by hand). So the old statement fails at a complete program, though no Lean statement says so (A). \treeCL assumes that $\kappa$ is not a root (Section~\ref{sec:source-thms}).
+
+\subsection{Theorems that said nothing}
+
+In October 2026 an audit asked of each theorem whether its hypotheses could hold and whether its conclusion said anything (PR~\#58, one repair commit per tree). \lean{no\_inner\_escape} and \lean{lvl\_safety} had been stated over a typed store, which has no scope binder (Lemma~\ref{lem:lvl-rootfree}). So the hypotheses of the first could not hold together, and the conclusion of the second followed from the store alone. Both are now corollaries of Theorem~\ref{thm:lvl-inv}, for member-free evidence with no store. \lean{lvl\_canon} had the same flaw. It is deleted from \treeCC and restated in \treeCL.

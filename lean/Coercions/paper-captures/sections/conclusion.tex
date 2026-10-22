@@ -1,0 +1,36 @@
+% unit U8
+\section{Conclusion}\label{sec:conclusion}
+\mathplain
+\suppressfloats[t]
+
+A textbook proof of capture prediction would invert subcapturing at a call. With capture members it cannot, because a binder with bad capture bounds derives $\cset{\kappa} <:_{c} \cempty$ (Section~\ref{sec:problem-bad}). The proof here does not invert it. Every binder declares the use set of its body, and every use of subcapturing is evidence that erases. Over a typed store, closed capture evidence relates only capture sets whose roots are included (Theorems~\ref{thm:mini-cap} and~\ref{thm:target-canon}), as report~1's canonical forms do for subtyping. The use-set half of preservation applies that theorem at each step. So the roots of the use set never grow along a run, and a run never inspects a variable with a root outside them (Theorems~\ref{thm:mini-pred}, \ref{thm:mini-effect} and~\ref{thm:target-uses}). The translation carries both to DOT programs over a platform (Theorems~\ref{thm:source-pred} and~\ref{thm:source-effect}). The proof is mechanized in three Lean trees.
+
+\paragraph{What the trees share.}
+The three trees share the canonical forms of capture evidence. They also share the five kinds of theorem of report~1: canonical forms of closed evidence, preservation, progress, the erasure simulation, and the safety of the source by translation. Beyond them they differ (Table~\ref{tab:matrix}). Scopes and levels (\treeCC) and classifiers (\treeCL) keep the proof and change what the roots of a capture set are. In \treeCC the roots expand each scope capability, and in \treeCL a filter drops the roots whose classifier it excludes. \treeCC adds \lean{level\_inversion} and \lean{root\_inversion}, about member-free evidence with no store, and \treeCL adds \lean{kind\_canon}, about kinding evidence.
+
+\begin{table}[H]
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Evidence and what it implies. Each row is a syntactic object that a checker decides, the fact that it implies, the theorem, and the trees that state it. K, CC and CL are \treeK, \treeCC and \treeCL.}
+\label{tab:reading}
+\centering
+\begin{tabular}{@{}p{0.35\linewidth}p{0.27\linewidth}p{0.24\linewidth}p{0.08\linewidth}@{}}
+\toprule
+evidence & implies & theorem & trees \\
+\midrule
+capture evidence over a typed store & roots included & \lean{cap\_canon} & K, CC, CL \\
+capture equality over a typed store & same roots & \lean{capeq\_canon} & K, CC, CL \\
+use-set evidence of a translation & target use set covered by $\trans{U}$ & \raggedright \lean{HasTy.translate\_uses} with \lean{cap\_canon} & K, CC, CL \tabularnewline
+member-free capture evidence in any context & roots included & \lean{root\_inversion} & CC \\
+member-free capture evidence for $C \le D$, and an atom $r$ & \raggedright $\lvlle{\Gamma}{\capsr{\Gamma}{}{C}}{r}$ if $\lvlle{\Gamma}{\capsr{\Gamma}{}{D}}{r}$ & \lean{level\_inversion} & CC, CL \tabularnewline
+kinding evidence over a typed store & classifiers of roots & \lean{kind\_canon} & CL \\
+shape evidence over a typed store & typed head form & \lean{shape\_canon} & K, CC, CL \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Evidence from a compiler.}
+As report~1 suggested, a compiler can emit evidence for its subsumption steps and have it checked. For capture checking, a subcapturing question has evidence that erases, a checker decides it, and a theorem says what checked evidence means (Table~\ref{tab:reading}). The front ends of Section~\ref{sec:frontends} do this for a model of the Scala typer, and no theorem relates the model to the compiler.
+
+\paragraph{Open problems.}
+No theorem says that the escape program has no derivation (Section~\ref{sec:levels-open}), and no source theorem speaks about a capability inside a box (Section~\ref{sec:source-open}). The promise of \lstinline{Try.apply} about its result is proved for no call (Section~\ref{sec:cl-programs}), and kinding, which refuses a star binder by design (Example~\ref{ex:cl-k6}), has no completeness theorem. The typer rejects a program that has a derivation (Section~\ref{sec:fe-reject}), and no theorem says that it finds the least use set (Section~\ref{sec:fe-open}).

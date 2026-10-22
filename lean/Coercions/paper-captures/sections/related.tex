@@ -1,0 +1,35 @@
+% unit U8
+\section{Related Work and What Is Left Out}\label{sec:related}
+\mathplain
+
+\paragraph{Report 1.}
+This report builds on \Rone, whose calculus \FCdot, normalizer and canonical forms theorem are the base of the three trees. Its related work on DOT, on decidability and on explicit coercions applies unchanged. The calculi below are not path dependent.
+
+\paragraph{Capturing types.}
+Boruch-Gruszecki et al.\ \cite{boruchgruszecki2023capturing} introduce $\mathrm{CC}_{<:\square}$, a calculus in the style of System~F$_{<:}$ with capturing types, subcapturing, boxes and unboxing, and scoped capabilities. The sources here have the same boxes. A closure there captures the variables free in its body, nested closures included, which is the documentation's reading. The sources here follow Capless instead (Section~\ref{sec:cc-closures}). Safer exceptions for Scala \cite{odersky2021safer} designs checked exceptions as capabilities. The \lean{Try} example of Section~\ref{sec:classifiers} models the use that the reference describes \cite{scala3cc}.
+
+\paragraph{What's in the Box.}
+Xu et al.\ \cite{xu2025box} give Capless, a core calculus with bounded quantification over captures, existential types and a typing judgment indexed by a use set. They also give Reacap, a surface calculus with the universal capability and reach capabilities. A translation from Reacap to Capless is type preserving and proved on paper. The metatheory of Capless is mechanized in Lean~4. The judgment $\dtyuj{U}{\Gamma}{t}{T}$ and the reading of a closure's annotation as a bound on the use set of its body follow Capless. The departures are these.
+\begin{itemize}
+\item Capless has rules for both directions of an instance binder. The source of \treeCC and \treeCL has only \rn{Sc-Inst}, $\subcj{\Gamma}{C}{\cset{\kappa}}$, and the target's \rn{CE-Inst} is an equality.
+\item \treeK has no universal capability and reads a result $\cany$ as an explicit set fixed by its position (Section~\ref{sec:source-any}). \treeCC and \treeCL have $\topc$ as an atom.
+\item Boxes are kept in the source and the target. The core of Capless has none.
+\item Capture members of objects stand where Capless has abstraction over captures. A capture member has a lower bound too, which is where bad capture bounds come from (Section~\ref{sec:problem-bad}).
+\item In the target a $\kw{let}$ or an unboxing declares a use set, with evidence that erases, and the use set of a term is computed from its syntax. The source, like Capless, has a subsumption rule on use sets (\lean{HasTy.sub}).
+\item In \treeCC and \treeCL an existential has a declared bound, and packing is an answer inclusion (Section~\ref{sec:levels-fresh}). The existential of Capless has no bound.
+\end{itemize}
+
+\paragraph{Classifying capabilities.}
+Pham et al.\ \cite{pham2026classifying} add a tree of classifiers to Capless, the projections $\konly{k}$ and $\kexcept{k}$, and a kind algebra, and call the result Capless(K). They prove safety of a checked big-step semantics, mechanized in Lean~4, and derive type safety, effect safety, used label prediction, capture prediction and handler coverage from it. Their used label prediction says that evaluation needs only the labels of the use set, the counterpart of capture prediction and effect safety here. Their capture prediction is not this report's. It bounds what a returned value may use, as that of $\mathrm{CC}_{<:\square}$ does. The trees prove this bound over a typed store. In a final state typed at $\capt{S}{C}$, $C$ covers the annotation of a returned value and report~1's root $\rt{a}$ of a returned atom $a$ (\lean{returned\_capture\_bound}, in all three trees). In \treeCC and \treeCL the atom must not be packed. The words \emph{effect safety} mean something else in Capless(K). There a term typed with the empty use set and run with no label allowance answers with a value and not with a break. \treeCL has classifiers, kinds and filtered capture sets. It replaces the kind-bounded capture binders of Capless(K) by kind-bounded capture members (Section~\ref{sec:cl-kinding}). It lacks Capless(K)'s merge rule for projections and its labels and handlers.
+
+\paragraph{Box inference and separation.}
+Xu and Odersky formalize box inference for the capture calculus \cite{xu2023boxinference}. The typers of Section~\ref{sec:frontends} insert boxes and unboxings after the compiler's adaptation of boxed types, and no theorem relates them to either. Degrees of Separation \cite{xu2024separation} adds separation checking to capture checking. System Capybara \cite{xu2026capybara} tracks separation, consumption, freshness and read-only access. It translates a surface calculus into CoreCapybara, an extension of Capless in which a result $\cfresh$ becomes an existential, and proves CoreCapybara sound with a semantic model in Lean~4. The separation checker of Scala~3 implements it. A fourth tree for separation, a copy of \treeCC, is parked on the branch \lean{separation}, and no theorem here depends on it.
+
+\paragraph{What is left out.}
+The trees do not model the following.
+\begin{itemize}
+\item Reach capabilities, dropped from Scala on 2026-06-16 (compiler commit \lean{9521ae1b0b}), and their formal foundation \cite{xu2024reach}.
+\item An $\cany$ under a box, in a type-member bound or in the lower bound of a capture member. In \treeK also a parameter $\cany$, and in \treeCC and \treeCL an $\cany$ inside the shape of a parameter type.
+\item The classifiers \lstinline{Unscoped}, whose capabilities may escape their scope (\texttt{mutability.md}, line 265), and \lstinline{SharedCapability}, above \lstinline{Control} (\texttt{classifiers.md}, line 51).
+\item Mutability, control effects, and recursive subtyping, which report~1 also leaves out \cite{rompf2016soundness}.
+\end{itemize}
