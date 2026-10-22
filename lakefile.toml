@@ -98,3 +98,7 @@ roots = ["Coercions.Oopsla16"]
 [[lean_lib]]
 name = "FCdotR"
 roots = ["Coercions.FCdotR"]
+
+[[lean_lib]]
+name = "ScalaSyntax"
+roots = ["Coercions.ScalaSyntax"]
