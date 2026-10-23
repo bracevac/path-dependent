@@ -73,6 +73,9 @@ program with an empty slot gets the first three (`compileE_slot`).
 | `Pipeline` | `compile`, `compileE`, `compileAndRun` and the pipeline theorems |
 | `Pretty` | printers back to the paper's notation, and of reasons |
 | `Examples` | the programs end to end, each with its verdict in the kernel |
+| `Scala` | the translation from the shared reader's tree to `STm`, `outcome`, the member check, the printers, `roundTrip` |
+| `ScalaTests` | the tests of `Scala`, in the kernel and by `#eval expect` |
+| `ScalaCmd` | the commands that read Scala files at elaboration, the front end's only file reading |
 
 ## The typer
 
@@ -120,6 +123,25 @@ sound at every normalisation fuel (`fcStep?_sound`) and complete at some fuel
 - A domain whose goal comes from a candidate, a self type that must meet a written `μ` anywhere but at the literal, a field type that must be a meet of two candidates, and a bare use of the self that must see itself.
 - Completeness over every filling. It fails at an ascription with a `μ` side (AscMu) and at a call argument the typer types only at a non-dominant formal (Mid).
 - A semantic statement for `let` insertion, and the other calculi, which have a front end each in their own `Frontend/` folder.
+
+## Scala syntax
+
+The modules `Scala`, `ScalaTests` and `ScalaCmd` read and print programs
+written as `.scala` files. They read through the shared reader
+[`../ScalaSyntax`](../ScalaSyntax/README.md), which the front end imports
+beside `../DotMNF`, `../FCdot` and `../DotToFCdot`. `readVanilla` reads the
+characters of a file into a surface term and its label table. `outcome` parses,
+checks, translates and compiles a file, and answers one of five kinds: `ok`,
+`rejected`, `unknown`, `limit` or `outside`. Its last step is the member check
+of plan IX, S-17. A selection `x.A` in a written type, where the type of `x`
+declares no `A`, makes the file `outside`, as scalac refuses it. `toScala`
+prints a surface term as a Scala program, the inverse of the reading on its
+image, and `fillToScala` prints the fill of a compiled program. `roundTrip`
+prints a term, reads the text back and compares the two terms after resolution.
+The command `scala_example` reads one file and proves in the kernel that the
+reader gives its term. `scala_corpus` does the same for every file of a corpus
+and proves the kind of each outcome. The corpus, its table and the harness that
+runs scalac are in [scala/README.md](../../../scala/README.md).
 
 ## Building
 
