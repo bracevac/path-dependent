@@ -34,3 +34,16 @@ jobs:
           auto-config: false
           build: false
       - run: lake build Frontend CapturesFrontend CapturesCCFrontend ClassifiersFrontend PathsFrontend Oopsla16Frontend
+      - run: lake build ScalaCorpusVanilla
+      - uses: coursier/setup-action@648df969f41ef15fda2baba8b37f9fa3d16390a3  # v3.0.4
+        with:
+          jvm: temurin:17
+          apps: scalac:3.8.4
+      - run: scalac -version 2>&1 | grep -F 'Scala compiler version 3.8.4'
+      - run: lake env lean --run scripts/scala/Agree.lean vanilla scala/vanilla
+      - run: git diff --exit-code scala/vanilla/TABLE.md
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scala-tables
+          path: scala/*/TABLE.md

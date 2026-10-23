@@ -98,3 +98,18 @@ roots = ["Coercions.Oopsla16"]
 [[lean_lib]]
 name = "FCdotR"
 roots = ["Coercions.FCdotR"]
+
+[[lean_lib]]
+name = "ScalaSyntax"
+roots = ["Coercions.ScalaSyntax"]
+
+[[input_dir]]
+name = "scala-vanilla"
+path = "scala/vanilla"
+text = true
+filter = { extension = ["scala"] }
+
+[[lean_lib]]
+name = "ScalaCorpusVanilla"
+roots = ["Coercions.ScalaCorpus.Vanilla"]
+needs = ["scala-vanilla"]

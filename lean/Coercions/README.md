@@ -151,6 +151,25 @@ the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writ
 and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
 checker of the Scala 3 compiler and is complete up to its recursion limit.
 
+## Scala syntax
+
+**`ScalaSyntax/`** is the reader that the Scala-syntax front ends share, the library `ScalaSyntax`.
+It reads the characters of a `.scala` file into a syntax tree and prints a tree back to text.  It
+refuses a file with a position and a reason, and it takes only layouts that scalac reads alike with
+and without `-no-indent`.  Every definition is structural, so the kernel runs the reader on the bytes
+of a file.  The vanilla front end translates the tree into its surface syntax in
+`Frontend/Scala.lean`, and its commands read files in `Frontend/ScalaCmd.lean`.  See
+[ScalaSyntax/README.md](ScalaSyntax/README.md).
+
+**`ScalaCorpus/`** judges the corpora of Scala files under `scala/` in the kernel, one module per
+front end.  The library `ScalaCorpusVanilla` reads each of the 169 files of `scala/vanilla/` at build
+time and proves the kind of the vanilla front end's outcome on its bytes, and for 77 of them that the
+file and an example program resolve to the same term.  The claim it backs is that every corpus file
+the front end accepts, scalac 3.8.4 accepts too, apart from the files of `disagree/`.  The kernel
+proves our side of each file.  scalac's side is tested by the harness `scripts/scala/Agree.lean` and
+not proved.  See [ScalaCorpus/README.md](ScalaCorpus/README.md) and
+[scala/README.md](../../scala/README.md).
+
 ## Earlier targets, standalone
 
 **`FCsub/`** is System F-sub with explicit coercions, telescope-constrained
