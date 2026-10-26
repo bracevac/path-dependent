@@ -1,22 +1,11 @@
 \lesson{The Lean development}\label{sec:lean}
-\focus{The companion instantiates the formal syntax and checks the worked calculations.}
+\focus{The formal definitions connect the tutorial's notation to evidence checking, normalization, and source translation.}
 
-The companion \texttt{paper/TutorialExamples.lean} formalizes the core
-example using the development's \FC{} definitions. It checks the interface
-coercions, store typing, views, member normalization, composition,
-and function coercion.
-It also constructs DOT-MNF derivations: DOT in \emph{monadic
-normal form}, where intermediate computations are named by lets.
-These examples check the focused translations from Section~\ref{sec:evidence}
-and the complete program from Section~\ref{sec:closed-program}, including
-its literal, recursive opening, lambda, and four lets.
-From the repository root, run:
-\begin{lstlisting}
-lake env lean lean/Coercions/paper/TutorialExamples.lean
-\end{lstlisting}
-The imported libraries must already have been built. In a fresh checkout,
-run \texttt{lake build} first.
-The equalities are theorems checked by Lean's proof-checking kernel.
+The Lean development defines the evidence syntax, typing judgments,
+normalizer, and translation used in this tutorial. Its source language
+is DOT-MNF: DOT in \emph{monadic normal form}, where intermediate
+computations are named by lets. This section explains how to read the
+constructors and locate the general results behind the worked calculations.
 
 \subsection*{From recipe notation to constructors}
 The declaration \texttt{def name : Type := expression} defines a named
@@ -27,7 +16,8 @@ mathematical self name $s$ used in our telescopes.
 The Lean type describes which expressions can be built; the evidence
 typing judgment separately checks their inclusion endpoints.
 
-Here is the companion's definition of the exposing coercion:
+Writing \texttt{litTel} for the single-equality telescope
+$[s.A\equiv W]$, the exposing coercion uses the following constructors:
 \begin{lstlisting}
 def expose : LeCo s :=
   .obj litTel
@@ -53,44 +43,34 @@ The declaration \texttt{A : Label := .typ 0} chooses a type-member label.
 Within the self binder, \texttt{.here} refers to that self, so
 \texttt{.sel .here A} represents $s.A$.
 
-\subsection*{What exactly is checked?}
-The companion first constructs a store containing a literal defining
-$A=W$ and proves its typing. In that store, it establishes the view
-equations
+\subsection*{Formal results and worked instances}
+The view equations from Section~\ref{sec:store} are calculations using
+the development's normalizer:
 \[
  \view{a}=[\ev{le}\,\form{id},\ev{le}\,\form{id}],
  \qquad
  \view{b}=[\ev{le}\,\form{bot},\ev{le}\,\form{top}].
 \]
-The normalizer takes an explicit fuel argument; a successful result is
-represented by \texttt{some} applied to the computed form.
-Each example supplies a concrete fuel bound.
-\texttt{CanonicalForms.lean} proves that sufficient fuel exists for
-every well-typed input closed over a typed store.
+In Lean, a successful normalization result is represented by
+\texttt{some} applied to the computed form. The normalizer takes explicit
+fuel. \texttt{CanonicalForms.lean} proves that sufficient fuel exists
+for every well-typed input closed over a typed store.
 
-The \texttt{SourceTranslation} namespace applies the translation function
-to explicit source derivations. Its \texttt{nestedTranslates} and
-\texttt{composedTranslates} theorems establish the nested and composed
-casts; further theorems prove target typing, distinct target syntax, and
-equal erasure. Those focused derivations use the parameter context of the
-translation figures. The \texttt{FullSource} namespace then constructs
-the closed source derivation. Its \texttt{programTranslates} theorem
-identifies the complete target constructor expression,
-\texttt{programTyped} derives its typing, and \texttt{programErases}
-checks its erasure. \texttt{openedRoot} and \texttt{openedView} check
-the two properties of $R$: preservation of the root and preservation of
-the view with two additional units of fuel. The store examples check
-the underlying view and normalization calculations. We do not claim a
-separately mechanized multistep execution theorem for the whole tutorial
-program.
+The source translation recurses over typing derivations. Its general
+\texttt{translate\_typed} theorem in
+\texttt{DotToFCdot/TermsTyped.lean} establishes target typing, and
+\texttt{translate\_erase} in \texttt{DotToFCdot/Erasure.lean} establishes
+erasure correspondence. Section~\ref{sec:closed-program} instantiates
+those translation clauses in named notation, including the literal's
+exposing cast and the recursive-opening wrappers. The displayed machine
+calculation groups allocation and alias substitution before showing one
+application step with all its premises.
 
-The generated capture certificate is a paper calculation of the
-translation clauses in \texttt{Terms.lean} and \texttt{Evidence.lean}.
-It retains the generated constructor syntax. It has not been added as a
-separate companion theorem.
-The operational capture examples instead use hand-written target evidence.
-The $h\ \ev{unit}$ trace specializes the application and prediction rules
-on paper.
+The generated capture certificate likewise instantiates the translation
+clauses in \texttt{Terms.lean} and \texttt{Evidence.lean}, retaining their
+constructor syntax. The operational capture examples use hand-written
+target evidence. The $h\ \ev{unit}$ trace specializes the application and
+prediction rules on paper.
 
 \needspace{5\baselineskip}
 The factory follows the mechanized C1/C6 examples in

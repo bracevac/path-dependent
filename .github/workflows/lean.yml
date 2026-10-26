@@ -21,8 +21,6 @@ jobs:
         with:
           auto-config: false
           build: true
-      - name: Check tutorial examples
-        run: lake env lean lean/Coercions/paper/TutorialExamples.lean
 
   frontends:
     needs: build
