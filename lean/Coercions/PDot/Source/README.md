@@ -170,3 +170,4 @@ each by a device of the target.
 | `Model.lean` | path models of a fixed context and their soundness |
 | `Examples.lean` | E9 to E11, E13, and the negative examples N1 to N5 |
 | `Programs.lean` | the programs E1 to E8, with the Coq lemmas `compiler_typecheck`, `list_typing`, `typecheck` |
+| `Erasure.lean` | erasure into the untyped runtime `../Runtime.lean`, with nested literals addressed by path, and the lockstep theorems `erase_lookup`, `erase_step`, `erase_reflect`, `erase_pathSafe` |
