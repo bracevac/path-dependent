@@ -113,3 +113,7 @@ filter = { extension = ["scala"] }
 name = "ScalaCorpusVanilla"
 roots = ["Coercions.ScalaCorpus.Vanilla"]
 needs = ["scala-vanilla"]
+
+[[lean_lib]]
+name = "PDot"
+roots = ["Coercions.PDot"]
