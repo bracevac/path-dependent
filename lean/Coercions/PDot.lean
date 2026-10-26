@@ -1,4 +1,5 @@
 import Coercions.PDot.Source
+import Coercions.PDot.Runtime
 
 /-!
 # PDot: full pDOT by coercions

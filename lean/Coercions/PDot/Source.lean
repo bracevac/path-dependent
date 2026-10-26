@@ -8,6 +8,7 @@ import Coercions.PDot.Source.Reduction
 import Coercions.PDot.Source.Model
 import Coercions.PDot.Source.Examples
 import Coercions.PDot.Source.Programs
+import Coercions.PDot.Source.Erasure
 
 /-!
 Import root for the source of PDot: pDOT transcribed from `Definitions.v`, `Lookup.v` and
