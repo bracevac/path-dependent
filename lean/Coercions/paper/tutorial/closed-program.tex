@@ -1,0 +1,113 @@
+\subsection{Closing the complete source translation}\label{sec:closed-program}
+We can now connect the client calculation to the entire running program.
+Use $x,f$ for its source binders and reserve $\ell,z$ for the two
+locations allocated during execution. This keeps a parameter's assumed
+interface distinct from a location's precise stored type.
+
+\textbf{First supply the source object's interface.}
+Let $D=\iface{W}{W}$. The source definition rule directly assigns
+$A=W$ the exact declaration $D$. The object rule checks that definition
+under a self binding at $\mu(s.D)$ that also records the literal's
+definitions, and gives the literal type $\mu(s.D)$.
+Here $W$ is independent of self, so checking the definition uses no
+facts from that binding. After the first let, variable typing gives
+$x:\mu(s.D)$, whereas reading a bound needs $x:D[x/s]$.
+The source recursive-elimination rule supplies precisely that change:
+\[
+ \src{\frac{\Gamma\vdash x:\mu(s.D)}
+                 {\Gamma\vdash x:D[x/s]}\ \textsc{Rec-E}.}
+\]
+It changes the derivation of the variable occurrence, not the source
+expression. In this example $D$ contains no free occurrence of its
+bound self, so $D[x/s]=D$. Nevertheless the rule is present in the
+derivation and has a visible translation.
+
+\textbf{Translate introduction and opening.}
+The target literal has precise type $\ty{Lit}$, while the translation
+of the source literal's assigned type is $\ty{Exact}$. The object
+translation therefore inserts the coercion already constructed:
+\[
+ \tr{d_{\mathrm{obj}}}
+       =\cast{\{A=W\}}{\ev{expose}}.
+\]
+For recursive opening, write
+$P_E=[W\le s.A,\ s.A\le W]$ for the telescope of $\ty{Exact}$ and define
+the exact wrapper abbreviation
+\[
+ R(c)=\ev{foldSelf}_{P_E}(\ev{unfoldSelf}(c)).
+\]
+The unfold wrapper opens the recursive presentation at the atom's root;
+the fold wrapper packages the opened declaration's telescope as an
+object interface. These are atom constructors, not evidence composition.
+Here opening leaves the telescope's external types unchanged, so
+$R(c):\ty{Exact}$ whenever $c:\ty{Exact}$.
+Both constructors preserve the root. A view records evaluated interface
+facts, as the next calculation will explain; their view rules give
+$\view{R(c)}=\view{c}$ when interpreted over a typed store.
+They are still present in the syntax and consume normalizer fuel.
+
+Thus the bound derivations for this literal-origin source program
+translate to $\ev{lower}_A(R(x))$ and $\ev{upper}_A(R(x))$.
+The earlier parameter calculation used $\ev{lower}_A(x)$ and
+$\ev{upper}_A(x)$ because it assumed $x:D$ directly.
+This is the exact difference between the two derivations.
+
+\textbf{Assemble the whole target.}
+The identity lambda translates to itself: its body uses variable typing.
+Each of the four lets uses the let clause from
+Section~\ref{sec:evidence}. With the chosen lower-bound, upper-bound,
+and argument subsumptions, the complete translation is
+\[
+\tgt{\begin{aligned}
+ \ev{let}\ x&=\cast{\{A=W\}}{\ev{expose}}\ \ev{in}\\
+ \ev{let}\ f&=\lambda(u:\top).u\ \ev{in}\\
+ \ev{let}\ \ty{hidden}&=\cast{f}{\ev{lower}_A(R(x))}\ \ev{in}\\
+ \ev{let}\ \ty{recovered}
+   &=\cast{\ty{hidden}}{\ev{upper}_A(R(x))}\ \ev{in}\\
+ &\ty{recovered}\ \cast{f}{\ev{top}(W)}.
+\end{aligned}}
+\]
+Every constructor introduced by this derivation is now accounted for:
+the object rule inserts $\ev{expose}$, \textsc{Rec-E} inserts $R$,
+the three subsumptions insert casts, and lambda and let translation
+retain the program structure. The notation still suppresses the
+implementation's variable indices; $R$ and the member-read abbreviations
+have explicit definitions.
+
+\textbf{Close the body by allocation and substitution.}
+After the first two bindings have allocated their bare values, the store
+contains
+\[
+ \sigma(\ell)=\{A=W\},\qquad
+ \sigma(z)=\lambda(u:\top).u,
+ \qquad \Gamma_\sigma(\ell)=\ty{Lit},\quad
+        \Gamma_\sigma(z)=W.
+\]
+The literal's wrapper is retained in the atom substituted for $x$:
+\[
+ a=\cast{\ell}{\ev{expose}},\qquad a^\circ=R(a),\qquad
+ \theta=[x:=a,\ f:=z].
+\]
+For the remaining body $B$ of the displayed target, substitution gives
+\[
+\tgt{\begin{aligned}
+ B\theta={}&
+ \ev{let}\ \ty{hidden}=\cast{z}{\ev{lower}_A(a^\circ)}\ \ev{in}\\
+ &\ev{let}\ \ty{recovered}
+     =\cast{\ty{hidden}}{\ev{upper}_A(a^\circ)}\ \ev{in}\\
+ &\ty{recovered}\ \cast{z}{\ev{top}(W)}.
+\end{aligned}}
+\]
+In evidence receivers, $R(x)$ has become the whole atom $R(a)$.
+In type selections, $x.A$ has become $\ell.A$, since
+$\ev{root}(a)=\ell$. Substituting the two aliases next gives the
+closed application
+\[
+ \cast{\cast{z}{\ev{lower}_A(a^\circ)}}{\ev{upper}_A(a^\circ)}
+ \quad \cast{z}{\ev{top}(W)}.
+\]
+This is the application evaluated in Section~\ref{sec:application}.
+The following view calculation supplies its remaining obligation:
+the two member reads really normalize to identity at this store.
+The displayed program instantiates the source translation clauses;
+the machine calculation uses the stated allocation and substitution rules.

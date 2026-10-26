@@ -1,0 +1,97 @@
+\subsection*{Computing a closing certificate from a derivation}
+The translation contract in Figure~\ref{fig:capture-translation} tells us
+what $g$ proves. To see how it is built, translate the source body
+$\ev{log}\ u$ rather than choosing its certificate by hand.
+Write $F=\ty{Unit}\to\ty{Unit}$ and $U=\{\ev{log},u\}$.
+All the following judgments are under
+$\Delta=\Gamma,u:\ty{Unit}$, where
+$\Gamma(\ev{log})=F^{\{\kappa_\ell\}}$.
+
+The source variable rule records the variable itself in both its use set
+and its assigned capture set:
+\[
+ \src{\{\ev{log}\};\Delta\vdash\ev{log}:F^{\{\ev{log}\}}},
+ \qquad
+ \src{\{u\};\Delta\vdash u:\top^{\{u\}}}.
+\]
+In particular, the second conclusion is not yet the argument type
+$\ty{Unit}=\top^\varnothing$. Source subsumption can change
+\emph{both} an assigned type and a permitted use set:
+\[
+ \src{\frac{d:C;\Delta\vdash t:S\qquad e:\Delta\vdash S<:T
+                    \qquad f:\Delta\vdash C\le_c D}
+           {\textsc{Sub}(d,e,f):D;\Delta\vdash t:T}}.
+\]
+These are independent obligations. For the type change on $u$, its
+declared pure type justifies $\{u\}\le_c\varnothing$ by the source
+variable subcapturing rule. For its use allowance, ordinary inclusion
+justifies $\{u\}\le_c U$. For $\ev{log}$, we similarly recover its
+declared type using $\{\ev{log}\}\le_c\{\kappa_\ell\}$, and widen its
+permitted uses using $\{\ev{log}\}\le_c U$.
+
+Let $d_\ell$ and $d_u$ be these two subsumed variable derivations.
+Both have allowance $U$, so the source application rule combines them:
+\[
+ \src{\frac{d_\ell:U;\Delta\vdash\ev{log}:F^{\{\kappa_\ell\}}
+                   \qquad d_u:U;\Delta\vdash u:\ty{Unit}}
+           {d_b=\textsc{App}(d_\ell,d_u):
+                      U;\Delta\vdash\ev{log}\ u:\ty{Unit}}}.
+\]
+This specifies the derivation whose translation we will compute.
+
+\textbf{The body component.}
+Two target constructors record the capture information just used.
+$\ev{recap}(a,p)$ preserves an atom's shape and assigns capture set
+$D$ when $p:\{\ev{root}(a)\}\le_c D$.
+$\ev{capt}(e,p)$ combines shape inclusion $e$ with capture inclusion
+$p$ to convert a capturing type. Thus variable translation and the two
+type-subsumption premises give the exact atoms
+\[
+\tgt{\begin{aligned}
+ L&=\cast{\ev{recap}(\ev{log},\ev{refl}\{\ev{log}\})}
+          {\ev{capt}(\ev{refl}(F),\ev{capvar}(\ev{log}))},\\
+ B&=\cast{\ev{recap}(u,\ev{refl}\{u\})}
+          {\ev{capt}(\ev{refl}(\top),\ev{capvar}(u))}.
+\end{aligned}}
+\]
+Here reflexivity on a capture set is capture evidence.
+The $\ev{capvar}$ expressions read the declared types of the bare
+bindings. They are the translations of the source variable-subcapturing
+premises. The resulting body is $\tr{d_b}=L\,B$, with
+$\uses{L\,B}=\{\ev{log},u\}$ because both wrappers preserve roots.
+
+\textbf{The use-evidence component.}
+Only three clauses of $\tr{-}_{\mathrm{uses}}$ are needed:
+\[
+\tgt{\begin{aligned}
+ \tr{\textsc{Var}(x)}_{\mathrm{uses}}&=\ev{refl}\{x\},\\
+ \tr{\textsc{Sub}(d,e,f)}_{\mathrm{uses}}
+     &=\tr{d}_{\mathrm{uses}};\tr{f},\\
+ \tr{\textsc{App}(d_1,d_2)}_{\mathrm{uses}}
+     &=\ev{union}(\tr{d_1}_{\mathrm{uses}},
+                  \tr{d_2}_{\mathrm{uses}}).
+\end{aligned}}
+\]
+The type-subtyping premise $e$ affects the body cast; the distinct
+use-subcapturing premise $f$ affects this certificate.
+Applying the clauses from the variable leaves upwards gives
+\[
+\tgt{\begin{aligned}
+ p_\ell&=\ev{refl}\{\ev{log}\};
+                  \ev{elem}(\{\ev{log}\},U),\\
+ p_u&=\ev{refl}\{u\};\ev{elem}(\{u\},U),\\
+ g_{\mathrm{gen}}&=\ev{union}(p_\ell,p_u):
+                     \{\ev{log},u\}\le_c U.
+\end{aligned}}
+\]
+The two branches share destination $U$, exactly as required by
+$\ev{union}$. Finally, lambda translation stores both computed components:
+\[
+ \tgt{\lambda^{\{\ev{log}\}}(u:\ty{Unit}).
+                 L\,B\ \langle g_{\mathrm{gen}}\rangle.}
+\]
+This is the generated syntax for the specified source derivation, in
+named notation. The simpler certificate $\ev{elem}(U,U)$ has the same
+endpoints but is a different expression. We use that hand-written
+certificate in the next trace to keep the operational calculation short.
+The substitution argument after the trace applies to either certificate.

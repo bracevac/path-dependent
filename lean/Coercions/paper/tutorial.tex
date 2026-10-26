@@ -1,0 +1,179 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=25mm,headheight=14pt,headsep=7mm,footskip=11mm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,array,tabularx,microtype,xcolor,fancyhdr}
+\usepackage{enumitem,listings,needspace,tocloft}
+\usepackage{mathpartir,stmaryrd,tcolorbox,caption,placeins}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Learning to make the proof explicit},
+  pdfauthor={Oliver Bracevac},
+  pdfsubject={A worked tutorial on dependent object types, explicit evidence, and captures}}
+\definecolor{ink}{RGB}{29,48,68}
+\definecolor{wash}{RGB}{239,244,248}
+\definecolor{hint}{RGB}{74,95,108}
+\definecolor{srccol}{RGB}{0,70,150}
+\definecolor{tgtcol}{RGB}{160,40,30}
+\definecolor{runcol}{RGB}{45,48,52}
+\newcommand{\src}[1]{{\color{srccol}#1}}
+\newcommand{\tgt}[1]{{\color{tgtcol}#1}}
+\newcommand{\run}[1]{{\color{runcol}#1}}
+\newcommand{\tr}[1]{\llbracket\src{#1}\rrbracket}
+\newtcolorbox{examplepanel}[2]{colback=#1!3!white,colframe=#1!50!white,
+  colbacktitle=#1!8!white,coltitle=#1,title={#2},
+  fonttitle=\small\sffamily\bfseries,boxrule=0.4pt,arc=1mm,
+  left=8pt,right=8pt,top=5pt,bottom=5pt,before skip=5pt,after skip=5pt}
+\captionsetup[figure]{font=small,labelfont={bf,sf},labelsep=period,
+  justification=raggedright,singlelinecheck=false,skip=7pt}
+\setlength{\textfloatsep}{16pt plus 3pt minus 2pt}
+\setlength{\intextsep}{14pt plus 3pt minus 2pt}
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.75}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\sffamily\color{ink} LEARNING TO MAKE THE PROOF EXPLICIT}
+\fancyhead[R]{\small\sffamily A worked tutorial}
+\fancyfoot[L]{\small\sffamily Oliver Bra\v{c}evac}
+\fancyfoot[R]{\small\sffamily\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 1pt minus 1pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,topsep=5pt,leftmargin=1.5em}
+\raggedbottom
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+  frame=none,breaklines=true,xleftmargin=1em,aboveskip=8pt,belowskip=8pt}
+\lstdefinestyle{source}{basicstyle=\ttfamily\small\color{srccol}}
+\lstdefinestyle{target}{basicstyle=\ttfamily\small\color{tgtcol}}
+\lstdefinestyle{runtime}{basicstyle=\ttfamily\small\color{runcol}}
+\newcommand{\FC}{\ensuremath{\mathrm{FC}_{\mathrm{dot}}}}
+\newcommand{\ev}[1]{\tgt{\mathsf{#1}}}
+\newcommand{\ty}[1]{\mathit{#1}}
+\newcommand{\cast}[2]{\ev{cast}(#1,#2)}
+\newcommand{\erase}[1]{\lfloor #1\rfloor}
+\newcommand{\obj}[1]{\mu s.[\,#1\,]}
+\newcommand{\iface}[2]{\src{\{A:#1\,..\,#2\}}}
+\newcommand{\roots}[1]{\operatorname{roots}_{\sigma}(#1)}
+\newcommand{\uses}[1]{\operatorname{uses}(#1)}
+\newcommand{\view}[1]{\operatorname{view}_{\sigma}(#1)}
+\newcommand{\hnf}[1]{\operatorname{hnf}_{\sigma}(#1)}
+\newcommand{\form}[1]{\tgt{\widehat{\mathsf{#1}}}}
+\newcommand{\lesson}[1]{\FloatBarrier\par\addvspace{10pt}\needspace{10\baselineskip}\section{#1}}
+\newcommand{\focus}[1]{\noindent{\itshape\color{hint}#1}\par\medskip}
+\newcommand{\remember}[1]{\par\smallskip\noindent
+  \colorbox{wash}{\parbox{\dimexpr\linewidth-2\fboxsep\relax}{\strut#1\strut}}
+  \par\smallskip}
+\newcounter{exercise}
+\newcommand{\exercise}[2]{\refstepcounter{exercise}\label{ex:#1}
+  \par\needspace{4\baselineskip}\textbf{Exercise \theexercise.} #2
+  \hfill\mbox{\small\hyperref[ans:#1]{Answer on p.~\pageref*{ans:#1}}}\par}
+\newcommand{\answer}[1]{\par\needspace{4\baselineskip}
+  \phantomsection\label{ans:#1}\textbf{Exercise \ref{ex:#1}.}\ }
+\newcommand{\leanfile}[2]{\href{https://github.com/bracevac/path-dependent/blob/main/lean/Coercions/#1}{\texttt{#2}}}
+
+\begin{document}
+\thispagestyle{fancy}
+{\huge\sffamily\bfseries\color{ink} Learning to make\\[3pt] the proof explicit\par}
+\vspace{6pt}
+{\Large Dependent object types, executable evidence, and captures\par}
+\vspace{10pt}
+
+Dependent object types let a client use a member type $x.A$ while
+knowing only its bounds. Proving type safety requires connecting those
+interface assumptions to the definitions and values that an execution
+can supply.
+
+This tutorial develops a proof architecture in which source typing
+derivations translate to target terms, with subtyping derivations
+represented by explicit evidence. Target typing checks that evidence;
+normalization interprets
+it against a typed store and exposes the structure needed for execution.
+The running examples follow this route from source derivations through
+coercions, substitution, and normalization to individual machine steps.
+The capture extension applies the same method to subcapturing and
+effect safety.
+
+\textbf{Prerequisites.}
+We assume familiarity with typed lambda calculi, typing and subtyping
+derivations, substitution, and small-step semantics. The tutorial
+introduces the specific features of DOT, \FC{}, and capture checking,
+and explains the Lean notation used in the development.
+
+\textbf{The worked examples.}
+The core example constructs an object-interface coercion, tracks the
+dependent name it preserves, and uses its normalized evidence to execute
+a function call. The capture examples distinguish a computation's use
+set from the capture annotation of its result and derive the root
+inclusions needed for safety.
+
+\textbf{How to read.}
+Sections~\ref{sec:objects}--\ref{sec:bad} follow one object and one function.
+Section~\ref{sec:proof} connects the calculations to safety.
+Sections~\ref{sec:capture}--\ref{sec:capture-scope} repeat the argument
+for captures. Section~\ref{sec:larger} then explains which further
+object features require additional cases. The final sections connect the account to
+the implementation and give worked solutions. The exercises isolate
+individual proof obligations and calculations from the examples.
+
+\remember{\textbf{The central move.}
+Schematically, a derivation of $S<:T$ translates to evidence $e:S\le T$.
+Subtyping becomes a target proposition, and its derivation becomes an
+explicit inhabitant. Checking this evidence under assumptions and
+interpreting it over stored values are different obligations. Substitution
+connects them: it replaces the assumptions by actual typed atoms. This
+is the bridge we will use both for type safety and for capture prediction.}
+
+\textbf{Relation to the development.}
+All metatheoretic claims refer to the existing Lean development and its
+two reference reports. We present selected constructs in named notation,
+then relate that notation to the implementation.
+Section~\ref{sec:lean} connects the calculations to the formal definitions
+and identifies the scope of the expository simplifications.
+
+\clearpage
+\setcounter{tocdepth}{1}
+\setlength{\cftbeforesecskip}{3pt}
+\renewcommand{\cftsecfont}{\small}
+\renewcommand{\cftsecpagefont}{\small}
+\begingroup
+\setlength{\parskip}{0pt}
+\tableofcontents
+\endgroup
+\thispagestyle{fancy}
+\bigskip
+\textbf{Notation reference.}
+The text introduces each notation before its use in a calculation.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Notation & Read it as\\
+\midrule
+$S<:T$ & A source subtyping judgment.\\
+$e:S\le T$ & Target evidence $e$ for an inclusion.\\
+$q:S\equiv T$ & Target evidence $q$ for equality.\\
+$p;q$ & First use $p$, then use $q$; their middle endpoints must agree.\\
+$x.A$ & The stable name of type member $A$ belonging to $x$.\\
+$\cast{a}{e}$ & The same underlying atom presented using evidence $e$.\\
+$\obj{P_0,\ldots,P_n}$ & An object interface listing facts about its self $s$.\\
+$\sigma$ & The store of allocated values.\\
+$\form{id}$ & A head form whose endpoints agree after resolving definitions.\\
+$C\le_c D$ & A subcapturing judgment, also represented by evidence.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+\small
+\textbf{Color key.} \src{Blue: source terms and derivations.}
+\tgt{Red: target terms and evidence.}
+\run{Charcoal: store facts and erased computation.}
+Figure panels also name their role, so the distinction survives grayscale printing.
+\normalsize
+
+\clearpage\input{tutorial/core}
+\input{tutorial/captures}
+\input{tutorial/extensions}
+\input{tutorial/bridge}
+\clearpage\input{tutorial/answers}
+\end{document}

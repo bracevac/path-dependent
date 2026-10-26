@@ -1,0 +1,63 @@
+\begin{figure}[!hbp]
+\begin{examplepanel}{tgtcol}{Factory and certificates in simplified target notation}
+\small
+\[
+\tgt{\begin{aligned}
+ v_{\mathrm{in}}
+   &=\lambda^{\{\ev{console}\}}(v:\ty{Unit}).\
+      \ev{console}\ v\ \langle g_{\mathrm{in}}\rangle,\\
+ v_{\mathrm{make}}
+   &=\lambda^{\{\ev{log}\}}(u:\ty{Unit}).\\[-2pt]
+   &\quad
+      \bigl(\ev{let}\ r=\ev{log}\ u\ \ev{in}\
+         v_{\mathrm{in}}\ \langle\varnothing;q_0\rangle\bigr)
+       \langle g_{\mathrm{make}}\rangle .
+\end{aligned}}
+\]
+The symbol \(v_{\mathrm{in}}\) abbreviates the lambda literal itself,
+with empty immediate uses. Its certificates and those of the factory are:
+\[
+\tgt{\begin{aligned}
+ g_{\mathrm{in}}&=\ev{elem}(\{\ev{console},v\},\{\ev{console},v\}),\\
+ q_0&=\ev{elem}(\varnothing,\varnothing),\\
+ g_{\mathrm{make}}&=\ev{elem}(\{\ev{log},u\},\{\ev{log},u\}).
+\end{aligned}}
+\]
+In a let annotation \(\langle U;q\rangle\), \(U\) bounds the continuation
+body's uses and \(q\) proves the avoidance obligation.
+The named certificates are checked under their displayed binders:
+\(g_{\mathrm{in}}\) under \(v\), \(g_{\mathrm{make}}\) under \(u\),
+and \(q_0\) under \(r\).
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Clients of the stored factory \(\ev{make}\)}
+\small
+\[
+\tgt{\begin{aligned}
+ P_{\mathrm{call}}
+   &=\ev{let}\ f=\ev{make}\ \ev{unit}\ \ev{in}\
+      f\ \ev{unit}\ \langle U;q_{\mathrm{call}}\rangle,\\
+ P_{\mathrm{drop}}
+   &=\ev{let}\ f=\ev{make}\ \ev{unit}\ \ev{in}\
+      \ev{unit}\ \langle\varnothing;q_{\mathrm{drop}}\rangle,\\
+ U&=\{\ev{console},\ev{log}\},\\
+ q_{\mathrm{call}}&:\{f,\ev{unit}\}\le_c U,\qquad
+ q_{\mathrm{drop}}=\ev{capvar}(\ev{unit}):\{\ev{unit}\}\le_c\varnothing.
+\end{aligned}}
+\]
+\end{examplepanel}
+\begin{examplepanel}{runcol}{Initial roots of the whole state}
+\[
+\run{P_{\mathrm{call}}:\{\kappa_\ell,\kappa_c\},
+      \qquad P_{\mathrm{drop}}:\{\kappa_\ell\}.}
+\]
+\end{examplepanel}
+\caption{A factory with distinct immediate uses and result captures.
+Both clients call \(\mathsf{make}\), which invokes \(\mathsf{log}\) and
+returns a closure that invokes \(\mathsf{console}\);
+\(P_{\mathrm{call}}\) then invokes that result.
+The text constructs \(q_{\mathrm{call}}\) from two branches. This named
+presentation follows the C1/C6 examples, with certificates supplied
+directly as target evidence. Source translation may produce different
+evidence syntax.}
+\label{fig:factory}
+\end{figure}

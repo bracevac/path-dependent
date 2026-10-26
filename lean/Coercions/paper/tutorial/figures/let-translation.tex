@@ -1,0 +1,40 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source body --- after binding \(x\) and \(f\)}
+\begin{lstlisting}[style=source]
+let hidden    : x.A = f in
+let recovered : W   = hidden in
+recovered f
+\end{lstlisting}
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Target translation with explicit casts}
+\tgt{\(\ell_x=\ev{lower}_A(x)\), \(h_x=\ev{upper}_A(x)\),
+\(t_W=\ev{top}(W):W\le\top\).}
+\begin{lstlisting}[style=target,mathescape=true]
+let hidden    = cast(f, $\ell_x$) in
+let recovered = cast(hidden, $h_x$) in
+recovered (cast(f, $t_W$))
+\end{lstlisting}
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Evaluation by substitution of the aliases}
+\small
+\[
+\tgt{\begin{aligned}
+ &\ev{let}\ \ty{recovered}=\cast{\cast{f}{\ell_x}}{h_x}\ \ev{in}\
+       \ty{recovered}\ \cast{f}{t_W}\\
+ &\hspace{5em}\longrightarrow^{*}
+       \cast{\cast{f}{\ell_x}}{h_x}\ \cast{f}{t_W}.
+\end{aligned}}
+\]
+The first binding substitutes \(\cast{f}{\ell_x}\) for \(\ty{hidden}\);
+the second substitutes the nested cast for \(\ty{recovered}\).
+The relation \(\longrightarrow^{*}\) includes the administrative steps
+that rearrange pending casts.
+\end{examplepanel}
+\caption{Translation preserves the source let structure; evaluation
+produces nested casts by substituting the let-bound atoms. The resulting
+application erases to \(f\,f\). As in Figure~\ref{fig:derivation}, the
+exact interface is assumed directly.
+Section~\ref{sec:closed-program} adds the literal's introduction and
+recursive opening, then instantiates its binders with atoms over the store.}
+\label{fig:let-translation}
+\end{figure}

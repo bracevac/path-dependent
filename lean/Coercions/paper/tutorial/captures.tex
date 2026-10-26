@@ -1,0 +1,474 @@
+\lesson{Explicit evidence for subcapturing}\label{sec:capture}
+\focus{Subcapturing evidence relates capture sets through their interpretation as capability roots.}
+
+The core argument checked evidence under assumptions, then closed it over
+a typed store before interpreting it. The capture extension adds another
+kind of evidence to the same process. Its interpretation will bound
+capability roots; substituting a call's argument into that evidence will
+connect a closure's advertised captures to the uses of its executing body.
+
+A capturing type $S^C$ pairs a value's shape $S$ with a capture set $C$
+describing its associated capabilities. In the examples,
+$\ty{Unit}=\top^\varnothing$ abbreviates the pure universal shape, and
+$\ev{unit}$ is a stored pure value of that type. This abbreviation uses
+the existing type language without adding a primitive unit type.
+
+Assume the platform supplies two distinct rigid capability roots,
+$\kappa_{\ell}$ and $\kappa_c$. A rigid root denotes itself; a program
+name is interpreted through its capture annotation. The store contains
+closures $\ev{log}$ and $\ev{console}$ with annotations
+$\{\kappa_{\ell}\}$ and $\{\kappa_c\}$, respectively. Both are identity
+closures on $\ty{Unit}$, with nonempty annotations that serve as
+conservative allowances. Their names indicate the intended capability
+roles; logging and console I/O are outside the operational semantics.
+
+\subsection*{Subcapturing and root interpretation}
+The sets $\{\ev{log}\}$ and $\{\kappa_{\ell}\}$ contain different names,
+so they are unrelated by ordinary subset inclusion. Subcapturing also
+uses the annotation of $\ev{log}$, which accounts for its capabilities
+through $\kappa_{\ell}$:
+\[
+ \ev{capvar}(\ev{log}):
+       \{\ev{log}\}\le_c\{\kappa_{\ell}\}.
+\]
+In general, if a program name $x$ has type $S^C$, then
+$\ev{capvar}(x)$ proves $\{x\}\le_c C$.
+The constructor $\ev{elem}$ represents ordinary subset inclusion:
+if every element of $C$ is listed in $D$, then
+$\ev{elem}(C,D):C\le_c D$.
+Transitivity composes capture evidence as it does type evidence.
+Union combines evidence for two sets with a shared destination:
+from $p:C\le_c D$ and $q:C'\le_c D$, the expression
+$\ev{union}(p,q)$ proves $C\cup C'\le_c D$.
+
+Capture evidence is interpreted through \emph{roots}. For the acyclic
+annotations used here, $\roots{C}$ follows the capture information
+associated with the names in $C$ to their underlying capability roots:
+\[
+ \roots{\{\ev{log}\}}=\{\kappa_{\ell}\},\qquad
+ \roots{\{\ev{console}\}}=\{\kappa_c\},\qquad
+ \roots{\{\ev{unit}\}}=\varnothing.
+\]
+Thus $\roots{C}$ is a set of capability roots, while $\ev{root}(a)$ is
+the single program variable obtained by stripping an atom's wrappers.
+
+Over a typed store, well-typed capture evidence has the interpretation
+\[
+  e:C\le_c D\quad\Longrightarrow\quad
+  \roots{C}\subseteq\roots{D}.
+\]
+This canonical-forms result depends on the typed-store hypothesis.
+As with type members, capture members can supply assumptions whose
+semantic interpretation requires an actual stored value.
+
+\subsection*{Immediate use sets}
+The use-set function assigns a syntactic use bound to each term.
+The cases needed for these examples are:
+\[
+\tgt{\begin{aligned}
+\uses{a}&=\{\ev{root}(a)\},& \uses{v}&=\varnothing,\\
+ \uses{a\,b}&=\{\ev{root}(a),\ev{root}(b)\},&
+ \uses{\ev{let}\ x=t\ \ev{in}\ u\langle U;q\rangle}
+   &=\uses{t}\cup U.
+\end{aligned}}
+\]
+Here $v$ denotes a value expression, such as a lambda literal, whose
+creation leaves its body unevaluated. A stored name $x$ is an atom with
+use set $\{x\}$; its roots are determined by its annotation. Thus the
+returned name $\ev{unit}$ has a singleton use set and no capability
+roots. The term \emph{immediate} excludes the latent bodies of value
+expressions while still including pending let bodies.
+
+In the let's annotation $\langle U;q\rangle$, $U$ is an upper bound
+for the pending body's uses, expressed using names available outside
+the let. In the body's context, where $x$ is available, $q$ proves
+$\uses{u}\le_c U$. Replacing a local name by outer names that account
+for it is called \emph{avoidance}. The factory example below includes
+an explicit construction of this evidence.
+
+An atom's wrappers affect its typing but preserve its root. In particular,
+$\uses{\cast{a}{e}}=\{\ev{root}(a)\}$ when the cast is an atom,
+and a term cast satisfies $\uses{\cast{t}{e}}=\uses{t}$.
+Evidence can mention names without adding them to immediate uses:
+this function bounds the program's modeled inspections, not all names
+appearing in its syntax. These clauses matter when an argument is a
+wrapped atom rather than a bare variable.
+
+\subsection*{Translating closing evidence}
+The source judgment $\src{C;\Gamma\vdash t:T}$ assigns type $T$ to $t$
+with permitted immediate uses $C$. A source lambda contains its parameter
+type and body; its typing derivation selects the capture annotation $A$
+and checks the body with allowance $A\cup\{u\}$. Translation makes this
+annotation and its closing evidence explicit in the target lambda.
+
+In Figure~\ref{fig:capture-translation}, translation brackets also apply
+to capture sets, types, and contexts. The source context $\Gamma$ is
+assumed well formed, and $\mathrm{wf}$ denotes well-formedness.
+The judgment symbol $\vdash^c$ denotes capture-evidence typing. The superscript
+$\uparrow$ preserves references to outer bindings under a new parameter
+binder. With distinct printed names, those names keep their spelling;
+the named calculations below leave this shift implicit.
+
+The translation computes two components from the body derivation: a
+target body and evidence that its computed use set lies within the source
+allowance. The target lambda stores both components, just as the
+translation of source subsumption records inclusion evidence in a cast.
+
+
+\input{tutorial/figures/capture-translation}
+
+\FloatBarrier
+\input{tutorial/generated-closing}
+
+\needspace{14\baselineskip}
+\subsection*{Closing a closure body}
+To isolate the execution argument, consider the simpler hand-written
+target closure
+\[
+ h=\lambda^{\{\ev{log}\}}(u:\ty{Unit}).\,\ev{log}\ u.
+\]
+Its superscript records the capture annotation $\{\ev{log}\}$, while
+its body has immediate use set $\{\ev{log},u\}$. Since the argument is
+available when the closure is called, the closing obligation is
+\[
+ g:\uses{\ev{log}\ u}\le_c\{\ev{log}\}\cup\{u\}.
+\]
+The two endpoints are identical, so $\ev{elem}$ supplies $g$.
+This shares the generated closure's use-set obligation, while its body
+and certificate omit the translation's additional syntax.
+
+Figure~\ref{fig:capture-call} gives the closing certificate, root
+calculation, and complete two-call trace for this hand-written target
+example. A body produced by source translation may contain additional
+atom wrappers, with generated closing evidence built from unions and
+compositions.
+
+
+\input{tutorial/figures/capture-call}
+
+
+Each application inspects the closure named in the last column: the
+first executes $h$'s body and the second executes the identity body of
+$\ev{log}$, returning the atom $\ev{unit}$. The syntactic use sets change
+along this execution while their roots remain bounded by the initial root set.
+
+\FloatBarrier
+\needspace{12\baselineskip}
+\subsection*{Capture prediction for application}
+\label{sec:app-prediction}
+We now derive the application bound for an arbitrary argument atom,
+including its wrappers. Fix a typed store $\sigma:\Gamma_\sigma$ with
+$\sigma(h)=\lambda^A(u:T).t\langle g\rangle$, and suppose
+$\Gamma_\sigma\vdash b:T$. The argument must have the stored lambda's
+domain type; a coerced call first supplies the required domain cast.
+For the present derivation the function receiver is the bare location
+$h$, and the continuation is empty.
+
+\textbf{1. Recover the open certificate.}
+Typing of the stored lambda gives
+\[
+ \Gamma_\sigma,u:T\vdash^c
+       g:\uses{t}\le_c A^\uparrow\cup\{u\}.
+\]
+The body and its certificate are still open in $u$. Store typing is what
+connects this certificate to the lambda actually found at $h$; an
+annotation on a hypothetical parameter alone would not supply that body.
+
+\textbf{2. Substitute the typed argument.}
+Put $r=\ev{root}(b)$ and write $\theta=[u\mapsto r]$ for substitution
+on capture sets. Term and evidence substitution replace term-level
+occurrences of $u$ by the whole atom $b$; their type and capture names
+use $r$. The capture-evidence substitution lemma gives
+\[
+ \Gamma_\sigma\vdash^c g[u:=b]:
+       (\uses{t})\theta\le_c(A^\uparrow\cup\{u\})\theta.
+\]
+This is now evidence over the store alone. Its type still mentions the
+substitution of the old use set, which is not yet the displayed use set
+of the new body.
+
+\textbf{3. Identify both endpoints.}
+Two syntactic identities make the connection:
+\[
+ \uses{t[u:=b]}=(\uses{t})\theta,\qquad
+ (A^\uparrow\cup\{u\})\theta=A\cup\{r\}.
+\]
+The first is a proved substitution lemma for this particular use-set
+function. It is not a consequence of the definition of substitution
+alone. For an application, it follows because substitution changes
+each operand's root by $\theta$; wrappers add no uses. For a let,
+substitution acts on both the right-hand side and its declared allowance
+$U$. Value literals have empty immediate uses on both sides.
+The second identity removes the parameter binder: $A$ refers only to
+outer names, and the singleton parameter becomes $\{r\}$.
+Thus the substituted certificate has exactly the endpoints
+\[
+ \Gamma_\sigma\vdash^c g[u:=b]:
+       \uses{t[u:=b]}\le_c A\cup\{r\}.
+\]
+
+\textbf{4. Interpret evidence and the stored annotation.}
+Capture canonical forms over the typed store turn this judgment into
+root inclusion. Separately, store typing gives
+$\roots{\{h\}}=\roots{A}$, since $A$ is the annotation of the value
+stored at $h$. Combining them gives
+\[
+ \roots{\uses{t[u:=b]}}
+ \subseteq\roots{A\cup\{r\}}
+ =\roots{\{h,r\}}
+ =\roots{\uses{h\,b}}.
+\]
+The application step replaces $h\,b$ by $t[u:=b]$, so this is precisely
+the required decrease for that step. The inclusion comes from $g$;
+the middle equality comes from the stored annotation. Neither is
+ordinary subset inclusion between the original sets of program names.
+
+For example, let $b=\cast{\ev{unit}}{\ev{refl}(\ty{Unit})}$ in the
+earlier closure. The reduct is $\ev{log}\ b$, not
+$\ev{log}\ \ev{unit}$ as target syntax. Nevertheless its use set is
+$\{\ev{log},\ev{unit}\}$: the substitution lemma uses
+$r=\ev{unit}$. Its roots are $\{\kappa_\ell\}$, exactly as in the
+bare-argument trace. This illustrates why the proof keeps the whole
+argument in the body and only its root in the capture set.
+
+These are the steps of \texttt{Store.Typed.app\_uses} in the development:
+typed substitution, \texttt{Tm.uses\_substAtom}, the closing-set identity,
+\texttt{cap\_canon}, and \texttt{Store.Typed.root\_annot}.
+
+\subsection*{Applying the bound through a wrapped receiver}
+Now start from a typed application at its \emph{presented} function type:
+\[
+ \Gamma_\sigma\vdash a:((u:S)\to V)^C,\qquad
+ \Gamma_\sigma\vdash b:S.
+\]
+Let $h=\ev{root}(a)$ and
+$\sigma(h)=\lambda^A(u:T).t\langle g\rangle$.
+The client's domain $S$ may differ from the stored domain $T$.
+After an outer call with argument $b_0$, the generated example has this
+form with $a=L$, $b=B[u:=b_0]$, and $h=\ev{log}$.
+The use-set clause gives
+$\uses{a\,b}=\{h,\ev{root}(b)\}$. We must show that the particular
+reduct of the wrapped call has roots below this set.
+
+Canonical forms supply the typing facts needed by the machine's two
+wrapped application rules. If the receiver's chain has identity form,
+or the capture extension's conversion form preserving the function
+shape, the argument already has the stored domain type. The reduct is
+$t[u:=b]$, and the preceding four-step argument applies directly.
+
+If the chain instead has function form $\form{pi}(d,c)$, the machine
+adapts the argument and result as in Section~\ref{sec:application}.
+Write $b'=\cast{b}{d}$ and let $c_b$ be the result evidence instantiated
+at the original argument $b$. The reduct is
+\[
+ t_{\mathrm{next}}=\cast{t[u:=b']}{c_b}.
+\]
+Typed canonical forms establish $d:S\le T$, hence $b':T$.
+The closing-certificate argument therefore applies with $b'$.
+The atom-root and term-use clauses then give
+\[
+ \ev{root}(b')=\ev{root}(b),\qquad
+ \uses{t_{\mathrm{next}}}=\uses{t[u:=b']}.
+\]
+Consequently,
+\[
+ \roots{\uses{t_{\mathrm{next}}}}
+ \subseteq\roots{\{h,\ev{root}(b')\}}
+ =\roots{\{h,\ev{root}(b)\}}
+ =\roots{\uses{a\,b}}.
+\]
+The use set records the receiver's root $h$, whose capabilities come
+from its stored annotation. The presented capture annotation on $a$'s
+type need not be identified with that annotation.
+
+For the generated example's next call, the relevant stored lambda is
+$\ev{log}$, so we use its closing certificate. Its identity body has
+certificate $\ev{elem}(\{u\},\{\kappa_\ell,u\})$.
+The outer certificate $g_{\mathrm{gen}}$ bounded entry into $L\,B$;
+the certificate of $\ev{log}$ bounds execution of the subsequently
+invoked identity body. Each call uses the evidence belonging to the
+closure it actually invokes.
+
+These application steps keep the store and pending continuation $K$
+unchanged. A whole state's use set is the union of its current term's
+uses with the pending frames' uses. Adding the same $\roots{\uses{K}}$
+to both sides therefore gives the application case for a whole state.
+The next example shows how those frames acquire their allowances and
+why the allowances matter when a continuation is later discharged.
+
+\exercise{roots}{Assume $k$ has capture annotation $\{h,\ev{console}\}$.
+Compute $\roots{\{k,\ev{unit}\}}$. Can evidence
+$\{k\}\le_c\{\ev{log}\}$ be sound over this typed store when
+$\kappa_{\ell}$ and $\kappa_c$ are distinct? Explain using root inclusion.}
+
+\lesson{Immediate uses and result captures}\label{sec:latent}
+\focus{A call's immediate uses can differ from the captures of its returned closure.}
+
+To distinguish immediate uses from result captures, consider a factory
+that returns a closure associated with another capability.
+Figure~\ref{fig:factory} presents the factory and two clients in
+simplified target notation, including their closing and avoidance
+certificates. Calling $\ev{make}$ invokes $\ev{log}$ and constructs the
+inner closure; its call to $\ev{console}$ remains latent until the
+returned closure is invoked.
+
+
+\input{tutorial/figures/factory}
+
+
+The outer closure can therefore have capture annotation $\{\ev{log}\}$,
+while its result type has annotation $\{\ev{console}\}$:
+\[
+ \ev{make}:
+ \bigl(\ty{Unit}\to
+       (\ty{Unit}\to\ty{Unit})^{\{\ev{console}\}}\bigr)^{\{\ev{log}\}}.
+\]
+This typing relies on the empty immediate use set of a value expression,
+even when its capture annotation is nonempty. The returned lambda's body
+is checked with its own closing evidence and executes only when the
+closure is called.
+
+\remember{Capture annotations, immediate use sets, and syntactic free
+variables are distinct. Effect safety bounds the capability roots
+of variables inspected during execution; references reachable from a
+returned closure or elsewhere in the heap require a separate property.}
+
+\FloatBarrier
+\subsection*{Continuation allowances}
+Both clients in Figure~\ref{fig:factory} call $\ev{make}$, then differ in
+how their let bodies use its result. The calling client invokes the
+returned closure; the dropping client returns $\ev{unit}$. A bound based
+only on $\ev{make}$'s annotation would omit the later console call in
+$P_{\mathrm{call}}$, while charging every result capture to the initial
+call would also charge $P_{\mathrm{drop}}$ for that unused capability.
+
+The continuation supplies the additional information. While evaluating
+$\ev{make}\ \ev{unit}$, the machine retains a frame for the pending
+body. This frame declares an outer use set $U$ and carries evidence
+that bounds the body's uses by $U$.
+
+\needspace{12\baselineskip}
+For $P_{\mathrm{call}}$, choose $U=\{\ev{console},\ev{log}\}$.
+The continuation binds $f$ with annotation $\{\ev{console}\}$, allowing
+the avoidance evidence to be constructed in two branches:
+\[
+ \begin{aligned}
+ \{f\}&\xrightarrow{\ev{capvar}(f)}\{\ev{console}\}
+          \xrightarrow{\ev{elem}}U,\\
+ \{\ev{unit}\}&\xrightarrow{\ev{capvar}(\ev{unit})}\varnothing
+          \xrightarrow{\ev{elem}}U.
+ \end{aligned}
+\]
+Writing $q_f$ and $q_u$ for the two branch expressions, the certificate
+$q_{\mathrm{call}}=\ev{union}(q_f,q_u)$ proves
+$\{f,\ev{unit}\}\le_c U$. Its outer endpoint $U$ avoids the local name
+$f$ by using names that account for its captures.
+
+The chosen overapproximation $U$ retains $\ev{log}$, making the decrease
+visible when the calling frame is discharged. The body of
+$P_{\mathrm{drop}}$ uses only $\ev{unit}$, so
+$U=\varnothing$ suffices, with evidence
+$q_{\mathrm{drop}}=\ev{capvar}(\ev{unit}):
+\{\ev{unit}\}\le_c\varnothing$.
+
+Inside the factory, the let body is the inner lambda literal. Its empty
+use set requires only
+$q_0=\ev{elem}(\varnothing,\varnothing)$.
+The factory body's use set is consequently
+$\{\ev{log},u\}\cup\varnothing=\{\ev{log},u\}$.
+This equals the allowance justified by the closing certificate
+$g_{\mathrm{make}}$.
+
+\subsection*{Whole-state roots along execution}
+Before the factory call, the current expression contributes
+$\{\ev{make},\ev{unit}\}$. The pending body contributes its declared $U$.
+The initial roots are therefore
+\[
+ \begin{aligned}
+ P_{\mathrm{call}}&:\ \{\kappa_{\ell},\kappa_c\},\\
+ P_{\mathrm{drop}}&:\ \{\kappa_{\ell}\}.
+ \end{aligned}
+\]
+Figure~\ref{fig:factory-run} follows the calling client through execution.
+
+
+\input{tutorial/figures/factory-run}
+
+
+The trace groups administrative transitions. Discharging the calling
+frame replaces its overapproximation, which retains $\ev{log}$, with
+the use set of the actual call.
+
+The dropping client also produces and allocates the inner closure, then
+returns $\ev{unit}$ without invoking it. The console root is absent from
+the initial root set and never occurs among the roots of an inspected
+variable.
+
+\exercise{latent}{Suppose the calling client instead tried to declare
+$U=\{\ev{log}\}$. Which branch of its avoidance proof would fail?
+Why does the same objection not apply to the dropping client?}
+
+\lesson{Capture prediction and its scope}\label{sec:capture-scope}
+\focus{Effect safety concerns runtime variable inspection; scope escape and classification require further hypotheses.}
+
+Capture prediction states that the roots of a typed state's use set do
+not grow along execution, with renaming accounting for store extension
+by allocation.
+A second lemma establishes that the roots of each inspected variable
+are included in the roots of the current use set. Together these imply
+effect safety: a capability root absent from the roots of the initial
+use set cannot be a root of any later inspected variable.
+
+The observable events are variable inspections, such as reading the
+function receiver of an application or the object receiver of a
+projection. Relating these observations to operating-system effects
+would require semantics for those effects. Unboxing, which opens a
+package that hides captures, has a separate corresponding safety result.
+
+\subsection*{Capture members and inconsistent bounds}
+Capture members expose lower and upper bounds, paralleling type members.
+The name $x.C$ selects a capture member, as $x.A$ selects a type member;
+$\{x.C\}$ is a capture set containing that selection.
+Under a hypothetical interface
+\[
+ x:\{C:\{\kappa_{\ell}\}\,..\,\varnothing\},
+\]
+reading and composing its bounds gives
+\[
+ \{\kappa_{\ell}\}\le_c\{x.C\}\le_c\varnothing.
+\]
+This evidence is derivable under the hypothetical assumption. If a
+typed store realized the interface with rigid
+$\kappa_{\ell}$, its semantic interpretation would imply
+$\{\kappa_{\ell}\}\subseteq\varnothing$, a contradiction.
+The argument follows the same pattern as inconsistent type bounds:
+the derivation is conditional on an interface that no typed store can
+realize.
+
+\needspace{8\baselineskip}
+\subsection*{Scope escape}
+An effect bound constrains what a computation may inspect. Scope rules
+add conditions on whether a locally introduced capability can be returned
+or subsumed into an outer capability set. Establishing such conditions
+requires an additional argument beyond effect safety.
+
+The \texttt{CapturesCC} extension introduces scope roots, levels, and
+fresh capabilities. Its no-escape results depend on explicit restrictions;
+in particular, relevant source results restrict derivations that read
+capture bounds. These results exclude particular callback subcapturing
+judgments under stated assumptions about scopes and bound reads.
+Extending them to general \texttt{withFile} programs would require a
+corresponding argument for those programs.
+
+\subsection*{Classified capture bounds}
+The \texttt{Classifiers} extension labels capabilities with classifiers,
+such as a class of control capabilities. A kind specifies the permitted
+classifiers, and kinding evidence establishes that a capture set belongs
+to that kind. Filtered capture sets describe the corresponding roots;
+classified effect safety ensures that inspected roots satisfy the
+permitted classification.
+
+This extends the root-set argument with kinding evidence and its
+interpretation while retaining the store, substitution, and prediction
+reasoning. Operational results for exception handlers or thread
+scheduling would additionally require models of those mechanisms.

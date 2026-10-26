@@ -1,0 +1,182 @@
+\lesson{The Lean development}\label{sec:lean}
+\focus{The formal definitions connect the tutorial's notation to evidence checking, normalization, and source translation.}
+
+The Lean development defines the evidence syntax, typing judgments,
+normalizer, and translation used in this tutorial. Its source language
+is DOT-MNF: DOT in \emph{monadic normal form}, where intermediate
+computations are named by lets. This section explains how to read the
+constructors and locate the general results behind the worked calculations.
+
+\subsection*{From recipe notation to constructors}
+The declaration \texttt{def name : Type := expression} defines a named
+expression of the stated Lean type.
+Here \texttt{LeCo s} is the syntax of inclusion evidence whose variables
+belong to scope \texttt{s}. This scope parameter is distinct from the
+mathematical self name $s$ used in our telescopes.
+The Lean type describes which expressions can be built; the evidence
+typing judgment separately checks their inclusion endpoints.
+
+Writing \texttt{litTel} for the single-equality telescope
+$[s.A\equiv W]$, the exposing coercion uses the following constructors:
+\begin{lstlisting}
+def expose : LeCo s :=
+  .obj litTel
+    (.le
+      (.le .nil .none (.eqSym 0) .none)
+      .none (.eq 0) .none)
+\end{lstlisting}
+The leading dot lets Lean infer the constructor's namespace.
+The \texttt{.obj} constructor combines the input telescope
+\texttt{litTel} with a morphism. Reading from the inside out,
+\texttt{.nil} is the empty morphism and each \texttt{.le} appends an
+inclusion recipe. The inner \texttt{.le} supplies the lower recipe,
+reading equality slot 0 in reverse with both sides absent.
+The outer \texttt{.le} supplies the upper recipe, reading the same slot
+forwards.
+
+This is the two-row recipe table from Section~\ref{sec:recipes},
+represented as an inductive list. Recovering the list order makes the
+individual recipes easy to identify in the constructor expression.
+
+Type selections are represented by scope-indexed variables and labels.
+The declaration \texttt{A : Label := .typ 0} chooses a type-member label.
+Within the self binder, \texttt{.here} refers to that self, so
+\texttt{.sel .here A} represents $s.A$.
+
+\subsection*{Formal results and worked instances}
+The view equations from Section~\ref{sec:store} are calculations using
+the development's normalizer:
+\[
+ \view{a}=[\ev{le}\,\form{id},\ev{le}\,\form{id}],
+ \qquad
+ \view{b}=[\ev{le}\,\form{bot},\ev{le}\,\form{top}].
+\]
+In Lean, a successful normalization result is represented by
+\texttt{some} applied to the computed form. The normalizer takes explicit
+fuel. \texttt{CanonicalForms.lean} proves that sufficient fuel exists
+for every well-typed input closed over a typed store.
+
+The source translation recurses over typing derivations. Its general
+\texttt{translate\_typed} theorem in
+\texttt{DotToFCdot/TermsTyped.lean} establishes target typing, and
+\texttt{translate\_erase} in \texttt{DotToFCdot/Erasure.lean} establishes
+erasure correspondence. Section~\ref{sec:closed-program} instantiates
+those translation clauses in named notation, including the literal's
+exposing cast and the recursive-opening wrappers. The displayed machine
+calculation groups allocation and alias substitution before showing one
+application step with all its premises.
+
+The generated capture certificate likewise instantiates the translation
+clauses in \texttt{Terms.lean} and \texttt{Evidence.lean}, retaining their
+constructor syntax. The operational capture examples use hand-written
+target evidence. The $h\ \ev{unit}$ trace specializes the application and
+prediction rules on paper.
+
+\needspace{5\baselineskip}
+The factory follows the mechanized C1/C6 examples in
+\texttt{Captures/FCdot/Examples.lean}.
+It uses names for their encoded variables. Its trace groups administrative transitions; a row can
+represent several machine steps.
+
+\subsection*{Code navigation}
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.35\linewidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Question & Starting point, under \texttt{lean/Coercions/}\\
+\midrule
+What are slots and recipes? &
+\leanfile{FCdot/Syntax.lean}{FCdot/Syntax.lean}; \texttt{Hole}, \texttt{Morphism}\\
+Why are sides self-free? &
+\leanfile{FCdot/Typing.lean}{FCdot/Typing.lean}; morphism typing\\
+How are recipes combined? &
+\leanfile{FCdot/Normalizer.lean}{FCdot/Normalizer.lean}; \texttt{Form.combine}, \texttt{LocalEntry.at}\\
+Why do the calculations succeed? &
+\leanfile{FCdot/CanonicalForms.lean}{FCdot/CanonicalForms.lean}; \texttt{le\_canon}, \texttt{atom\_canon}\\
+How is a cast function called? &
+\leanfile{FCdot/Machine.lean}{FCdot/Machine.lean}; application steps\\
+Does the evidence checker agree? &
+\leanfile{FCdot/CheckerCompleteness.lean}{FCdot/CheckerCompleteness.lean}\\
+How is source safety obtained? &
+\leanfile{DotToFCdot/Safety.lean}{DotToFCdot/Safety.lean}; \texttt{dot\_safety}\\
+How is closing evidence generated? &
+\leanfile{Captures/DotToFCdot/Terms.lean}{Captures/DotToFCdot/Terms.lean};
+\texttt{translate}, \texttt{translateUses}\\
+What do captures mean operationally? &
+\leanfile{Captures/FCdot/Prediction.lean}{Captures/FCdot/Prediction.lean};
+\texttt{app\_uses}, \texttt{capture\_prediction}, \texttt{effect\_safety}\\
+Where is the factory example? &
+\leanfile{Captures/FCdot/Examples.lean}{Captures/FCdot/Examples.lean};
+\texttt{C1\_typed}, \texttt{C6\_run}, \texttt{C6\_safe}\\
+\bottomrule
+\end{tabularx}
+\end{center}
+\normalsize
+
+The reference report \emph{Explicit Evidence for Dependent Object
+Types} gives the full syntax and core metatheory, including the target
+typing rules and canonical-forms theorem used here. The capture report develops use
+sets, scopes, and classifiers. Together, the reports and the table above
+connect each worked construction to its general rule and Lean declaration.
+
+\exercise{lean}{In the displayed definition of \texttt{expose}, replace
+the first \texttt{eqSym 0} by \texttt{eq 0}. What two facts would the
+modified recipes produce? Why would that no longer check as an
+inclusion from $\ty{Lit}$ to $\ty{Exact}$?}
+
+\lesson{Connecting the model to a compiler}\label{sec:compiler}
+\focus{Explicit evidence separates source type reconstruction from validation of its results.}
+
+A source type checker reconstructs a typing derivation by choosing rule
+instances and intermediate types and inferring missing annotations.
+The target checker validates the resulting evidence.
+For composition, the evidence supplies both components; checking
+computes their endpoints and verifies that the intermediate types agree.
+
+The target checker is proved sound and complete for its evidence
+judgment: it accepts exactly the evidence admitted by that judgment.
+This completeness result concerns evidence checking. Completeness of
+source inference depends on the source frontend's search procedure.
+The repository's frontends produce source derivations and compose with
+translation and checking; their search behavior is a separate property.
+
+This boundary supports two experiments with a real compiler.
+First, for a specified source fragment, compare the compiler's decisions
+with those of the modeled frontend on generated programs and regression
+tests. Retain successful derivations and translations. Disagreements
+can then be classified as differences in language rules, search
+limitations, encoding errors, or compiler defects.
+
+Second, instrument the compiler to record how it discharges typing
+obligations, then translate those derivations into independently checked
+evidence.
+The resulting guarantee is relative to the modeled language and the
+translation's stated coverage. Establishing end-to-end compiler
+correctness would additionally require proofs that the compiler-to-model
+translation and generated code preserve the source semantics.
+
+\subsection*{A nominal source calculus}
+A nominal source calculus would add class identity, declared
+inheritance, and member lookup. Its elaboration would justify these
+declarations in the structural target or in an extension with explicit
+nominal evidence.
+
+An inheritance clause generates obligations for inherited members;
+a type alias generates an equality obligation; a method override
+generates argument and result adaptation obligations.
+These extend constructions already encountered in the tutorial.
+Nominal identity, initialization, dispatch, and recursive class
+structure introduce further semantic requirements.
+
+Such an elaboration must preserve typing and operational behavior,
+while retaining the evidence normalization and substitution properties
+used by the safety proof.
+The existing path, capture, and recursive-subtyping developments provide
+components for this investigation. Their integration into a realistic
+Scala model remains an open development task.
+
+\remember{The development provides an evidence language, verified
+translations for specified source calculi, and safety proofs.
+A compiler connection must identify its source fragment, translate its
+typing obligations, and state the guarantee obtained from checking them.}

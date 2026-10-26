@@ -1,0 +1,159 @@
+\lesson{Worked solutions}\label{sec:answers}
+\focus{The key checks are endpoint agreement, root inclusion, and the hypotheses of the normalization and safety theorems.}
+
+\answer{bounds}
+The client needs $W<:x.A$. Its available lower bound is $\bot<:x.A$,
+so using that bound would also require $W<:\bot$.
+The abstract interface provides no such derivation. Although the stored
+definition is $A=W$, this interface hides its connection to $W$.
+
+\answer{order}
+The reverse composition is
+\[
+ x.A\xrightarrow{h_x}W\xrightarrow{\ell_x}x.A,
+\]
+so it proves $x.A\le x.A$, whereas the original composition proves
+$W\le W$. The expressions therefore have different endpoint pairs.
+Evidence for $W\le\top$ through the member is
+$\ell_x;h_x;\ev{top}(W)$.
+Alternatively, $\ell_x;\ev{top}(x.A)$ uses the inclusion into $\top$
+directly at $x.A$.
+
+\answer{translate}
+Let $t_A=\ev{top}(x.A):x.A\le\top$.
+Two applications of source subsumption translate to
+$\cast{\cast{f}{\ell_x}}{t_A}$.
+A source transitivity derivation followed by one subsumption translates to
+$\cast{f}{\ell_x;t_A}$.
+Each \textsc{Sub} contributes a cast; \textsc{Trans} contributes evidence
+composition. Both erase to $f$, although they are distinct constructor
+expressions in the target.
+
+\answer{root}
+The selected propositions are $\bot\le x.A$ and $x.A\le\top$.
+The casts determine the available interface; their root remains $x$,
+so both propositions refer to $x.A$.
+Removing the casts preserves the root but may invalidate access to
+these telescope slots.
+
+\answer{widen}
+Use
+\[
+ \begin{aligned}
+ \text{lower: }&
+ [\,\ev{bot}(W)\mid\text{inclusion }0\mid\text{absent}\,],\\
+ \text{upper: }&
+ [\,\text{absent}\mid\text{inclusion }1\mid\text{absent}\,].
+ \end{aligned}
+\]
+The lower chain is $\bot\le W\le s.A$; the upper chain is $s.A\le W$.
+Relative to $\ev{forget}$, the upper recipe omits its right side
+$\ev{top}(W)$, retaining the stronger upper bound.
+
+\answer{views}
+Through $a:\ty{Exact}$, the upper inclusion is $\ell.A\le W$ and its head
+form is $\form{id}$. Through $b:\ty{Abs}$, the upper inclusion is
+$\ell.A\le\top$ and its head form is $\form{top}$.
+The inclusions have different target endpoints while referring to the
+same member of the stored object.
+
+\answer{compose}
+Interpreting the reversed equality hole against the equality marker
+yields $\form{id}$. The left side normalizes to $\form{bot}$, and the
+absent right side contributes $\form{id}$. Thus the result is
+$\form{bot};\form{id};\form{id}=\form{bot}$.
+The unfilled recipe remains parameterized by a source proposition;
+supplying the stored object's view instantiates it.
+
+\answer{variance}
+The inclusion is
+\[
+ (S_1\to T_1)\le(S_2\to T_2).
+\]
+The client supplies $b:S_2$. Evidence $d$ casts the argument to
+$\cast{b}{d}:S_1$ for the original body, whose result has type $T_1$.
+Evidence $c$ casts that result to $T_2$ for the client.
+The domain is contravariant because the argument supplied at the target
+domain $S_2$ must be accepted at the source domain $S_1$.
+
+\answer{bad}
+The canonical-forms theorem requires evidence typed in the context of
+a \emph{typed store}. The open derivation instead assumes $y:\ty{Bad}$
+and establishes $\top\le\bot$ conditionally on that assumption.
+Consistency over typed stores excludes any stored argument that could
+discharge it. The missing hypothesis is store typing, which is stronger
+than context well-formedness.
+
+\answer{proof}
+For (a), target safety and operational correspondence transfer safety
+to the source. Preservation of typing by translation supplies only the
+static part of this argument.
+For (b), preservation maintains the typing invariant after each step,
+allowing progress to apply at every subsequent state.
+
+\answer{roots}
+Following $k$'s annotation $\{h,\ev{console}\}$ resolves $h$ through
+$\ev{log}$ to $\kappa_{\ell}$ and $\ev{console}$ to $\kappa_c$.
+Since $\ev{unit}$ contributes no roots,
+\[
+ \roots{\{k,\ev{unit}\}}=\{\kappa_{\ell},\kappa_c\}.
+\]
+By soundness over the typed store, evidence
+$\{k\}\le_c\{\ev{log}\}$ would require
+$\{\kappa_{\ell},\kappa_c\}\subseteq\{\kappa_{\ell}\}$.
+This contradicts the assumed distinctness of the roots.
+
+\answer{latent}
+The branch for $f$ fails. Its capture annotation yields
+$\{f\}\le_c\{\ev{console}\}$, but the next step to
+$\{\ev{log}\}$ would require $\kappa_c$ to belong to
+$\{\kappa_{\ell}\}$. The dropping client's body does not use $f$,
+so its avoidance proof has no such branch.
+The use of $\ev{console}$ remains latent in the constructed closure.
+
+\answer{lean}
+Both recipes would read equality slot 0 forwards, producing
+$s.A\le W$ twice.
+The requested lower proposition of $\ty{Exact}$ is $W\le s.A$.
+The modified expression instead describes an interface with a duplicated
+upper bound. The checker compares the generated and requested target
+telescopes, so this mismatch causes it to reject the proposed inclusion
+from $\ty{Lit}$ to $\ty{Exact}$.
+
+\bigskip
+\textbf{Independent reconstruction.}
+For the core example, reconstruct the chain leading to the call through
+the recovered function:
+\[
+ \begin{aligned}
+ &\text{source derivation}\ \longrightarrow\ \text{complete target}\\
+ &\quad\longrightarrow\ \text{allocation and closing substitution}
+   \ \longrightarrow\ \text{concrete views}\\
+ &\quad\longrightarrow\ \text{enabled application step}.
+ \end{aligned}
+\]
+Include the source object rule and recursive opening, rather than starting
+with an assumed exact-interface parameter. Distinguish the source binder
+$x$, the allocated location $\ell$, and the presented atoms $a,R(a)$.
+
+Next, assume an atom at $\ty{Bad}$ over a typed store. Construct the
+contradictory closed evidence and identify the precise theorem hypothesis
+that was unavailable for an opaque parameter at the same type.
+
+For captures, reconstruct the argument that bounds a call's reduct:
+\[
+ \begin{aligned}
+ &\text{source body derivation}\ \longrightarrow\ \text{body and certificate}\\
+ &\quad\longrightarrow\ \text{typed argument substitution}
+   \ \longrightarrow\ \text{rewritten use-set endpoints}\\
+ &\quad\longrightarrow\ \text{root inclusion for the reduct}.
+ \end{aligned}
+\]
+Use a wrapped argument. Identify separately the equality about syntactic
+uses, the inclusion obtained from capture evidence, and the equality
+obtained from the stored closure's annotation. Then explain the extra
+premise needed to obtain effect safety from prediction.
+
+For every arrow, identify a supporting passage and its typing premises.
+A result guessed from erasure or familiar lambda-calculus behavior does
+not reconstruct the target argument if the required evidence is missing.

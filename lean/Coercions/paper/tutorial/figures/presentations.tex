@@ -1,0 +1,40 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{runcol}{Stored definition and type resolution}
+\[
+ \run{\sigma(\ell)=\{A=W\},\qquad
+       \operatorname{resolve}_{\Gamma_\sigma}(\ell.A)=W.}
+\]
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Three target atoms and their concrete views}
+\small
+\renewcommand{\arraystretch}{1.35}
+\begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X l@{}}
+\toprule
+Interface & Atom rooted at \(\ell\) & View\\
+\midrule
+$\ty{Lit}$ & $\ell$ & $[\,\form{eq}\,]$\\
+$\ty{Exact}$ & $a=\cast{\ell}{\ev{expose}}$
+ & $[\,\ev{le}\,\form{id},\,\ev{le}\,\form{id}\,]$\\
+$\ty{Abs}$ & $b=\cast{a}{\ev{forget}}$
+ & $[\,\ev{le}\,\form{bot},\,\ev{le}\,\form{top}\,]$\\
+\bottomrule
+\end{tabularx}
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Normalization of the running program's member evidence}
+\[
+\tgt{\begin{aligned}
+ \ev{lower}_A(a^\circ)&:W\le \ell.A
+     &\hnf{\ev{lower}_A(a^\circ)}&=\form{id},\\
+ \ev{upper}_A(a^\circ)&:\ell.A\le W
+     &\hnf{\ev{upper}_A(a^\circ)}&=\form{id}.
+\end{aligned}}
+\]
+\end{examplepanel}
+\caption{Applying coercion templates to the stored object's facts
+produces concrete views. The atom \(a:\ty{Exact}\) instantiates the
+allocated client binding, and $a^\circ=R(a)$ is its reopened
+member receiver. Their root \(\ell:\ty{Lit}\) supplies the dependent
+name \(\ell.A\). The abstract presentation exposes weaker interface facts
+while the store retains the definition.}
+\label{fig:presentations}
+\end{figure}
