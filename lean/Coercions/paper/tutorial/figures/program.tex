@@ -1,0 +1,30 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source program \(P\) --- the running example}
+\src{\(W=\top\to\top\). Let annotations specify the assigned types.}
+\begin{lstlisting}[style=source]
+let x         = { type A = W }
+let f         = lambda (u: Top). u
+let hidden    : x.A = f          -- L: W <: x.A
+let recovered : W   = hidden     -- H: x.A <: W
+recovered f                     -- T: W <: Top
+\end{lstlisting}
+\end{examplepanel}
+\begin{examplepanel}{srccol}{Subtyping obligations}
+\[
+\src{
+ \begin{array}{ccl}
+ \text{L: hide} & W<:x.A & \text{the lower bound of }x.A,\\
+ \text{H: recover} & x.A<:W & \text{the upper bound of }x.A,\\
+ \text{T: pass the argument} & W<:\top & \text{inclusion into the universal type}.
+ \end{array}}
+\]
+\end{examplepanel}
+\caption{The running source program, with the object viewed at
+\(\iface{W}{W}\). The aliases present the identity first at \(x.A\)
+and then at \(W\); the final application presents its argument at
+\(\top\). This sketch exposes the member bounds directly.
+Section~\ref{sec:evidence} translates its client body;
+Section~\ref{sec:closed-program} gives the complete translation, including
+the recursive opening required by the formal source.}
+\label{fig:program}
+\end{figure}

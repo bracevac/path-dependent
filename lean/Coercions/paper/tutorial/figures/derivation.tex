@@ -1,0 +1,41 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source derivation --- two subsumptions on the same occurrence of \(f\)}
+\small
+\src{\(\Gamma=x:\iface{W}{W},\,f:W\).
+Here \(h_f\) derives variable typing for \(f\), and \(d_\ell,d_h\)
+derive the lower and upper bounds of \(x.A\).}
+\[
+\src{
+\inferrule*[right=\textsc{Sub}]{
+ \inferrule*[right=\textsc{Sub}]{
+ h_f:\Gamma\vdash f:W\\
+ d_\ell:\Gamma\vdash W<:x.A
+ }{\Gamma\vdash f:x.A}\\
+ d_h:\Gamma\vdash x.A<:W
+}{\Gamma\vdash f:W}}
+\]
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Translation of the derivation}
+\[
+\tgt{
+\begin{aligned}
+ \tr{h_f}&=f,\\
+ \tr{d_\ell}&=\ell_x=\ev{lower}_A(x):W\le x.A,\\
+ \tr{d_h}&=h_x=\ev{upper}_A(x):x.A\le W,\\
+ \tr{\textsc{Sub}(h_f,d_\ell)}&=\cast{f}{\ell_x},\\
+ \tr{\textsc{Sub}(\textsc{Sub}(h_f,d_\ell),d_h)}
+   &=\cast{\cast{f}{\ell_x}}{h_x}.
+\end{aligned}}
+\]
+\end{examplepanel}
+\begin{examplepanel}{runcol}{Erasure of the target term}
+\[
+\run{\erase{\cast{\cast{f}{\ell_x}}{h_x}}=f.}
+\]
+\end{examplepanel}
+\caption{Each \textsc{Sub} node contributes a target \(\ev{cast}\),
+while the source expression remains \(f\) throughout the derivation.
+The calculation assumes parameter binders for \(x\) and \(f\).
+Figure~\ref{fig:let-translation} extends it to the program's let bindings.}
+\label{fig:derivation}
+\end{figure}

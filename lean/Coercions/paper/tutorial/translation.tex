@@ -1,0 +1,166 @@
+\lesson{From typing derivations to target terms}\label{sec:evidence}
+\focus{The translation represents subtyping derivations as evidence and subsumption as a cast.}
+
+The source subsumption rule combines a typing derivation $h$ with a
+subtyping derivation $d$:
+\[
+\src{\frac{h:\Gamma\vdash u:S\qquad d:\Gamma\vdash S<:T}
+           {\textsc{Sub}(h,d):\Gamma\vdash u:T}}.
+\]
+Subsumption changes the assigned type while preserving the source
+expression $u$. The chosen conversion is therefore recorded in the
+derivation rather than the term.
+
+Write $\tr{h}$ for the target term translated from a source typing
+derivation $h$, and $\tr{d}$ for the evidence translated from a source
+subtyping derivation $d$. The subsumption clause is
+\[
+\tgt{\tr{\textsc{Sub}(h,d)}=\cast{\tr{h}}{\tr{d}}.}
+\]
+This translation clause recursively translates the two premises and
+combines their results with the target $\ev{cast}$ constructor.
+
+The target is called \FC{}. An expression $e:S\le T$ is called
+\emph{inclusion evidence}, or an \emph{inclusion coercion}.
+The target has no implicit subsumption: a cast records a type change
+justified by evidence, with no potentially failing runtime type test.
+Its typing rule checks the two translated premises:
+\[
+\tgt{\frac{\Gamma'\vdash \tr{h}:S'\qquad
+           \Gamma'\vdash\tr{d}:S'\le T'}
+          {\Gamma'\vdash\cast{\tr{h}}{\tr{d}}:T'}}.
+\]
+Primes denote the translated context and types. We use the same notation
+for $W$ and $x.A$ on both sides of the translation.
+
+A target \emph{atom} is a variable, possibly surrounded by typing
+wrappers such as casts. Its \emph{root} is the underlying variable:
+both $f$ and $\cast{f}{e}$ have root $f$. Atoms serve as the receivers
+and arguments of operations.
+
+The \emph{erasure} $\erase{t}$ removes typing annotations and evidence
+wrappers, yielding the underlying program. In particular,
+$\erase{\cast{u}{e}}=\erase{u}$.
+Erasure relates program syntax; the typed target's operational semantics
+may still consult evidence.
+
+\subsection*{Translating the two bound selections}
+Consider an occurrence of $f$ under the parameter context
+$\src{\Gamma=x:\iface{W}{W},\,f:W}$.
+This is the client part of the example: for now, assume that its object
+parameter already exposes the exact bounds. We will translate this body
+first. Section~\ref{sec:closed-program} then supplies the literal's
+introduction and recursive opening, displays the complete target program,
+and substitutes the allocated atoms into this same body. No assumption
+about a stored definition is needed for the present calculation.
+Reading the assumed interface gives two source derivations:
+\[
+\src{\begin{aligned}
+d_\ell&:\Gamma\vdash W<:x.A,\\
+d_h&:\Gamma\vdash x.A<:W.
+\end{aligned}}
+\]
+Write the translated evidence using the abbreviations
+\[
+ \ell_x=\ev{lower}_A(x):W\le x.A,\qquad
+ h_x=\ev{upper}_A(x):x.A\le W.
+\]
+Section~\ref{sec:telescopes} expands each abbreviation into an indexed
+member read. Figure~\ref{fig:derivation} translates the two subsumption
+steps from their premises: variable typing yields the atom $f$ and the
+lower-bound derivation yields $\ell_x$, which the inner \textsc{Sub}
+combines into $\cast{f}{\ell_x}$. The upper-bound derivation then yields
+$h_x$, and the outer \textsc{Sub} adds the second cast.
+
+
+\input{tutorial/figures/derivation}
+
+
+\subsection*{Dependence on the source derivation}
+The judgment $\src{\Gamma\vdash f:W}$ admits several derivations.
+Variable typing translates to $f$, while the two subsumptions translate
+to $\cast{\cast{f}{\ell_x}}{h_x}$. A third derivation first composes
+the bounds:
+\[
+\src{\frac{d_\ell:\Gamma\vdash W<:x.A\qquad
+           d_h:\Gamma\vdash x.A<:W}
+          {\textsc{Trans}(d_\ell,d_h):\Gamma\vdash W<:W}}.
+\]
+Source transitivity becomes an evidence constructor:
+\[
+\tgt{\tr{\textsc{Trans}(d_\ell,d_h)}
+       =\ev{trans}(\ell_x,h_x).}
+\]
+One subsequent subsumption therefore gives
+$\cast{f}{\ev{trans}(\ell_x,h_x)}$.
+The three target expressions are syntactically distinct, although all
+erase to $f$. In particular, nested casts and a cast by composed evidence
+are different constructor expressions. The translation is thus a
+function of the source derivation, not only of its concluding term.
+
+We abbreviate $\ev{trans}(p,q)$ by $p;q$, in derivation order:
+\[
+ \frac{p:S\le M\qquad q:M\le T}{p;q:S\le T}.
+\]
+Composition requires matching intermediate endpoints. Here the chain is
+$W\xrightarrow{\ell_x}x.A\xrightarrow{h_x}W$.
+
+\subsection*{Let translation and evaluation}
+The translation preserves the running program's let bindings:
+\[
+\tgt{
+\tr{\textsc{Let}(h_1,h_2)}
+=\ev{let}\ y=\tr{h_1}\ \ev{in}\ \tr{h_2}.}
+\]
+Figure~\ref{fig:let-translation} applies this clause to the body of the
+running example. The first right-hand side uses the lower-bound cast.
+The second uses the upper-bound cast on the newly bound name
+$\ty{hidden}$. The application also needs the argument cast
+$\ev{top}(W):W\le\top$.
+
+Application translates the variable typing derivations of its operands
+to atoms. Subsumption in such a derivation contributes a cast wrapper,
+so the source argument $f$ becomes $\cast{f}{\ev{top}(W)}$.
+The full language distinguishes casts of terms, values, and atoms;
+we use the same notation when the syntactic position determines the sort.
+
+
+\input{tutorial/figures/let-translation}
+
+
+During evaluation, substitution of the let-bound atoms produces the
+nested wrappers. This display still has the parameters $x$ and $f$ free.
+Closing them is a further calculation, given in
+Section~\ref{sec:closed-program}; it must justify both the object
+interface used by the evidence and the function supplied to the call.
+
+\subsection*{Checking evidence endpoints}
+The expression $\ell_x;\ev{top}(W)$ fails the composition rule:
+its first component ends at $x.A$ and its second starts at $W$.
+Inserting the upper-bound evidence gives the well-typed composition
+$\ell_x;h_x;\ev{top}(W)$. Alternatively,
+$\ell_x;\ev{top}(x.A)$ reaches $\top$ directly from $x.A$.
+
+Even if a later store resolves $x.A$ to $W$, checking still compares
+syntactic endpoints. Store-based normalization establishes what the
+evidence means at runtime.
+
+\subsection*{Erasure and operational correspondence}
+The erasure equation $\erase{\cast{u}{e}}=\erase{u}$ helps show that
+translation preserves the underlying erased program.
+The typed target machine still consults a function atom's
+evidence to perform a call. A simulation theorem relates those typed
+steps to the erased program's execution.
+
+\remember{Translation constructs evidence from source derivations;
+evaluation substitutes atoms and consults their evidence; erasure
+removes the evidence to relate the underlying programs.}
+
+\exercise{order}{What does $h_x;\ell_x$ prove? Is it the same expression
+as $\ell_x;h_x$? Also give explicit evidence for $W\le\top$ that goes
+through $x.A$.}
+
+\exercise{translate}{The source occurrence $f:W$ is first used at
+$x.A$, then at $\top$ by the source \textsc{Top} rule $x.A<:\top$.
+Give its target term when there are two \textsc{Sub} nodes, and when
+there is one \textsc{Sub} over a \textsc{Trans} node. What does each erase to?}

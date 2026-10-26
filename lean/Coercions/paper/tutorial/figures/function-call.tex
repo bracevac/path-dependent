@@ -1,0 +1,40 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source function subtyping --- contravariant domain}
+\[
+\src{\inferrule*[right=\textsc{All}]{
+ W<:\top\\ \top<:\top
+}{(\top\to\top)<:(W\to\top)}}
+\]
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Target evidence and application}
+\[
+\tgt{\begin{aligned}
+ d&=\ev{top}(W):W\le\top,&c&=\ev{refl}(\top):\top\le\top,\\
+ g&=\cast{z}{\ev{pi}(d,c)}:W\to\top.
+\end{aligned}}
+\]
+\par\small
+\renewcommand{\arraystretch}{1.2}
+\noindent\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Stage of \(g\,z\) & Argument or result at that stage\\
+\midrule
+Client supplies & $z:W$\\
+Original function receives & $\cast{z}{d}:\top$\\
+Identity body returns & $\cast{z}{d}:\top$\\
+Client receives & $\cast{\cast{z}{d}}{c}:\top$\\
+\bottomrule
+\end{tabularx}\par
+\end{examplepanel}
+\begin{examplepanel}{runcol}{Erased execution}
+\[
+\run{\erase{\sigma}(z)=\lambda u.u,\qquad z\,z\longrightarrow z.}
+\]
+\end{examplepanel}
+\caption{The function coercion adapts the argument with \(d\) and the
+result with \(c\). The typed store holds \(z=\lambda(u:\top).u\), and
+the function head form retains both evidence components for application.
+The table groups administrative steps; the erased call applies the
+stored identity.}
+\label{fig:function-call}
+\end{figure}

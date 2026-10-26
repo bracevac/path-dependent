@@ -1,0 +1,89 @@
+\lesson{Extensions to the object calculus}\label{sec:larger}
+\focus{Fields, recursive types, and intersections introduce additional evidence and normalization cases.}
+
+\subsection*{Field presence and field types}
+An object can hold a field $a$ as well as define a type $A$.
+A bound on the field's type does not by itself prove that the field
+exists. The target also associates type names with field labels:
+$s.a$ names the type of field $a$'s body. This is a \emph{block name},
+like $s.A$ for a type member; here it denotes a type, not the term that
+projects the field's value.
+The target therefore records two separate propositions:
+a presence fact for $a$, and an inclusion from $s.a$ to its advertised
+type.
+
+A literal's precise information includes the field's actual type
+definition and its presence. Presence evidence lets the safety proof
+establish that field lookup succeeds. Projection runs the stored field
+body, and inclusion evidence presents its result at the interface's
+declared type.
+As with type members, the interface records propositions justified by
+the stored literal.
+
+For example, consider an object defining $A=W$ and holding
+$a=f$. A client may see its field at type $x.A$ even if the stored field
+was originally checked at $W$. The precise facts $s.a\equiv W$ and
+$s.A\equiv W$ connect the field's type with the type member.
+At $x$, these facts justify presenting the field result at $x.A$.
+Field projection and the coercion of its result are separate operations,
+each with explicit evidence.
+
+\subsection*{Recursive self types}
+A source self type can mention its own members:
+an object might advertise that its field $a$ has type $s.A$.
+Opening this interface at $x$ replaces the bound self by $x$.
+Closing it again restores the self binder.
+The target uses fold and unfold wrappers on atoms to record these
+changes of presentation. Like casts, the wrappers preserve the root.
+
+The self binder in a telescope allows propositions to refer to their
+object. Recursive source typing additionally requires rules for opening
+and closing the interface at a particular root.
+
+\subsection*{Intersections and self-bounds}
+An intersection $S\wedge T$ describes a value usable at both $S$ and $T$.
+The field interface $\{a:T\}$ promises a field $a$ with type $T$.
+When both components list member declarations, their intersection can
+be represented by collecting facts from both lists.
+But the source also allows $x.A\wedge\{a:T\}$, where the selection
+$x.A$ supplies no visible list of declarations.
+
+To handle components without a visible telescope, the translation
+introduces a \emph{self-bound}: a proposition
+saying that the whole self has some type. In this example, the $x.A$
+component contributes the fact that the whole self can be used at $x.A$;
+the field component contributes presence and a type bound for $a$.
+
+Self-bounds require additional head forms and entries that record
+conversions through a bound to the interface used by an operation.
+These cases extend the five forms in Section~\ref{sec:normalization};
+their typing still ensures that normalized evidence supplies the
+information required by the operation.
+
+\subsection*{Cyclic aliases}
+An object's type definitions may say $A=s.B$ and $B=s.A$.
+Unbounded traversal of these definitions would diverge. The resolver
+uses a finite bound derived from the available definitions and resolves
+a cycle to $\top$, which contributes no additional information.
+Resolving it to $\bot$ would instead assert an uninhabited value type.
+This result describes the resolved head shape; it supplies neither a
+source typing rule nor equality evidence between a cyclic name and
+$\top$.
+
+The bounds for alias resolution and evidence normalization have distinct
+justifications. Alias resolution uses finiteness of the available names;
+evidence normalization uses induction on typing to establish the
+existence of sufficient fuel.
+
+\subsection*{Related developments}
+The repository also contains a paths variant, where a field path such as
+$x.a.b$ can be the receiver of a type selection $(x.a.b).A$.
+Singleton types there record that a value is the one named by a
+particular path.
+A separate OOPSLA 2016 development has recursive subtyping under a self
+assumption and its own evidence target.
+The theorems apply to these developments separately; they do not cover
+their unrestricted combination. Such a combination would need to
+establish field presence, stable path resolution, and recursive
+subtyping evidence under the appropriate self assumptions within one
+evidence language and machine semantics.

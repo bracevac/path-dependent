@@ -1,0 +1,39 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{tgtcol}{Stored closure and closing certificate}
+\[
+\tgt{\begin{aligned}
+ h&=\lambda^{\{\ev{log}\}}(u:\ty{Unit}).\
+          \ev{log}\ u\ \langle g_h\rangle,\\
+ g_h&=\ev{elem}(\{\ev{log},u\},\{\ev{log},u\}),\\
+ g_h&:\uses{\ev{log}\ u}\le_c\{\ev{log}\}\cup\{u\}.
+\end{aligned}}
+\]
+The store also contains \(\ev{unit}:\ty{Unit}\) and the identity closure
+\(\ev{log}:(\ty{Unit}\to\ty{Unit})^{\{\kappa_\ell\}}\).
+\end{examplepanel}
+\begin{examplepanel}{runcol}{Capture-annotation resolution}
+\[
+\run{\{h\}\ \rightsquigarrow\ \{\mathsf{log}\}\
+   \rightsquigarrow\ \{\kappa_\ell\},
+   \qquad \operatorname{roots}_{\sigma}(\{\mathsf{unit}\})=\varnothing.}
+\]
+The relation \(\rightsquigarrow\) resolves capture annotations.
+\end{examplepanel}
+\begin{examplepanel}{runcol}{Execution with an empty continuation}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{@{}lXll@{}}
+\toprule
+Current term & Use set & Its roots & Inspection\\
+\midrule
+$h\ \mathsf{unit}$ & $\{h,\mathsf{unit}\}$ & $\{\kappa_\ell\}$ & $h$\\
+$\mathsf{log}\ \mathsf{unit}$ & $\{\mathsf{log},\mathsf{unit}\}$ & $\{\kappa_\ell\}$ & $\mathsf{log}$\\
+$\mathsf{unit}$ & $\{\mathsf{unit}\}$ & $\varnothing$ & none\\
+\bottomrule
+\end{tabularx}
+\end{examplepanel}
+\caption{Closing evidence, root resolution, and execution of the closure.
+The two applications inspect \(h\) and \(\mathsf{log}\), then return an
+atom with a singleton use set and no capability roots.}
+\label{fig:capture-call}
+\end{figure}

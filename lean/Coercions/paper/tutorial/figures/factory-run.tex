@@ -1,0 +1,32 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{runcol}{Whole-state roots for the calling client}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xll@{}}
+\toprule
+Stage & Whole-state roots & Inspection\\
+\midrule
+Call \(\mathsf{make}\); keep the calling frame
+ & $\{\kappa_\ell,\kappa_c\}$ & $\mathsf{make}$\\
+Run its call to \(\mathsf{log}\); keep that frame
+ & $\{\kappa_\ell,\kappa_c\}$ & $\mathsf{log}$\\
+Inner closure ready for allocation
+ & $\{\kappa_\ell,\kappa_c\}$ & none\\
+Call the newly allocated \(f\); the frame is discharged
+ & $\{\kappa_c\}$ & $f$\\
+Run \(\mathsf{console}\ \mathsf{unit}\)
+ & $\{\kappa_c\}$ & $\mathsf{console}$\\
+Return \(\mathsf{unit}\)
+ & $\varnothing$ & none\\
+\bottomrule
+\end{tabularx}
+\end{examplepanel}
+\caption{Execution of \(P_{\mathrm{call}}\) from
+Figure~\ref{fig:factory}, with administrative transitions grouped into
+rows. Before allocation, the pending frame contributes
+\(U=\{\mathsf{console},\mathsf{log}\}\).
+After that frame is discharged, the call's use set resolves to the console
+root alone. The dropping client \(P_{\mathrm{drop}}\) allocates the result
+and returns \(\mathsf{unit}\) without invoking it.}
+\label{fig:factory-run}
+\end{figure}

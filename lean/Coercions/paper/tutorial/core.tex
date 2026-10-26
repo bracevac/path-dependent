@@ -1,0 +1,756 @@
+\lesson{Type members and abstraction}\label{sec:objects}
+\focus{A type member separates an object's type definition from the bounds available to its clients.}
+
+In Dependent Object Types (DOT), the source calculus family studied here,
+an object can define a type member as well as hold value fields.
+For a type $W$, consider the source-style sketch
+\begin{lstlisting}
+let x = { type A = W }
+\end{lstlisting}
+The selection $x.A$ names the type member of this particular object.
+Another object $y$ may define a member with the same label $A$, but the
+selections $x.A$ and $y.A$ are distinct names. Relating them requires
+information about their definitions or bounds.
+
+For the running example, fix
+\[
+  W=\top\to\top,\qquad f=\lambda(u:\top).u.
+\]
+Here $\top$ is the universal type, so $f:W$. We also use $\bot$ for the
+empty type: a closed well-typed computation cannot return a value of
+that type, although it may diverge. Using a function type for $W$ keeps
+the example within the formal calculus, without additional primitives.
+
+\subsection*{Definitions and interfaces}
+The declaration $A=W$ defines the member $A$ as $W$. An interface
+$\iface{S}{T}$ specifies the bounds available to a client:
+\[
+  x:\iface{S}{T}
+  \quad\Longrightarrow\quad
+  S<:x.A\quad\hbox{and}\quad x.A<:T.
+\]
+The lower bound permits a value of type $S$ to be used at the abstract
+type $x.A$; the upper bound permits a value of type $x.A$ to be used
+at $T$.
+
+The exact interface $\iface{W}{W}$ provides both $W<:x.A$ and $x.A<:W$.
+The less informative interface $\iface{\bot}{\top}$ provides only
+$\bot<:x.A$ and $x.A<:\top$. The object can have the same definition in
+both cases; widening the interface restricts the facts available to the
+client.
+
+This is the abstraction provided by a module that exposes a type and
+operations on it while hiding its representation. The running object
+contains only a type definition, allowing us to study the reasoning
+about type members before introducing fields and methods.
+
+\subsection*{The running program}
+Figure~\ref{fig:program} gives the running program and its three subtyping
+obligations. Subsequent sections translate its derivation, construct the
+corresponding store, and execute the final application.
+
+
+\input{tutorial/figures/program}
+
+
+The binding of $\ty{hidden}$ uses the lower bound $W<:x.A$.
+The binding of $\ty{recovered}$ uses the upper bound $x.A<:W$.
+The final application uses $W<:\top$ to type its argument. Since both
+$\ty{recovered}$ and $f$ denote the identity, evaluation returns the
+identity function supplied as the argument.
+
+The displayed program is an explanatory sketch, rather than accepted
+Scala syntax. The formal source names intermediate expressions and
+explicitly records the step that exposes an object literal's member
+interface; these details are introduced where the translation needs them.
+
+\remember{The stored definition $A=W$, the stable name $x.A$, and the
+interface supplying facts about that name have distinct roles. An
+interface change preserves the definition and the name.}
+
+\exercise{bounds}{At the abstract interface $\iface{\bot}{\top}$, can a
+client justify assigning our $f:W$ to a variable of type $x.A$ using the
+bounds alone? Write the inclusion it would need and compare it with
+the available lower bound.}
+
+\input{tutorial/translation}
+
+\lesson{Interfaces as telescopes}\label{sec:telescopes}
+\focus{The target represents an object interface as indexed propositions under a shared self binder.}
+
+The interface $\iface{W}{W}$ specifies two bounds on its object's type
+member. Its target representation binds a self variable $s$ in those
+propositions:
+\[
+ \ty{Exact}=\obj{W\le s.A,\ s.A\le W}.
+\]
+This type describes an object satisfying the listed propositions, with
+$s$ denoting the object itself. Here $\mu$ binds self in a proposition
+list; this example does not involve recursive unfolding into a larger
+type structure.
+
+The development calls this list a \emph{telescope}. Its propositions are
+indexed from zero:
+\[
+ \begin{array}{ccl}
+ \text{position }0&:&W\le s.A,\\
+ \text{position }1&:&s.A\le W.
+ \end{array}
+\]
+All propositions share the self binder; individual propositions do not
+bind term variables. Indexed selection therefore represents both lower
+and upper bounds without a dedicated constructor for either.
+
+\subsection*{Selecting a proposition}
+For an atom $a:\ty{Exact}$, inclusion evidence is obtained with
+\[
+ \ev{member}\ a\ (\ev{refl}\ \ty{Exact})\ i.
+\]
+The atom $a$ identifies the object, the coercion selects an interface
+reachable from its current type, and the index $i$ selects a proposition
+in that interface. Since $a$ already has type $\ty{Exact}$, the coercion
+is reflexivity, $\ev{refl}\ \ty{Exact}:\ty{Exact}\le\ty{Exact}$.
+
+If $a$ is rooted at $x$, reading position 1 replaces $s$ by $x$:
+\[
+ \ev{member}\ a\ (\ev{refl}\ \ty{Exact})\ 1:x.A\le W.
+\]
+This expands the abbreviation $\ev{upper}_A(a)$. Position 0 similarly
+gives $\ev{lower}_A(a):W\le x.A$. The abbreviations suppress only the
+index and reflexivity evidence.
+
+\subsection*{Roots and dependent substitution}
+For the current fragment, atoms and their roots are defined by
+\[
+ a::=x\mid\cast{a}{e},\qquad
+ \ev{root}(x)=x,\quad
+ \ev{root}(\cast{a}{e})=\ev{root}(a).
+\]
+Suppose $a=\cast{x}{c}:\ty{Exact}$. The selected type is still $x.A$.
+There is no new type name $(\cast{x}{c}).A$ in the type syntax.
+
+When a function body checked under
+$y:\ty{Exact}$ receives the atom $\cast{x}{c}$, occurrences of
+$y$ as an atom become $\cast{x}{c}$, while occurrences of $y.A$ in
+types become $x.A$. The wrapper supplies the required interface; the
+root supplies the name.
+
+Preserving the root ensures that the lower- and upper-bound proofs
+continue to refer to the same selection after an interface change.
+Their shared endpoint $x.A$ is what permits their composition in the
+running example.
+
+\subsection*{Equality propositions}
+The literal that defines $A=W$ has the more precise type
+\[
+ \ty{Lit}=\obj{s.A\equiv W}.
+\]
+Its single equality proposition yields the two inclusions by reading
+the equality in opposite directions. The fully abstract interface is
+\[
+ \ty{Abs}=\obj{\bot\le s.A,\ s.A\le\top}.
+\]
+The next two sections construct and evaluate the conversions
+$\ty{Lit}\le\ty{Exact}\le\ty{Abs}$.
+
+\exercise{root}{Let $a=\cast{\cast{x}{c_1}}{c_2}:\ty{Abs}$.
+What are the endpoints obtained by reading positions 0 and 1?
+Which part of the answer depends on the casts, and which part does not?}
+
+\lesson{Constructing interface coercions}\label{sec:recipes}
+\focus{An object coercion derives each destination proposition from the source telescope.}
+
+The two interface conversions require evidence
+\[
+ \ev{expose}:\ty{Lit}\le\ty{Exact},\qquad
+ \ev{forget}:\ty{Exact}\le\ty{Abs}.
+\]
+The \emph{source} and \emph{destination} of a coercion are its input and
+output interfaces, both within the target language. For each destination
+proposition, we construct a recipe deriving it from a source proposition.
+
+\subsection*{From a definition to exact bounds}
+The source telescope of $\ty{Lit}$ contains one slot:
+$q_0:s.A\equiv W$. The destination $\ty{Exact}$ requires two facts:
+\[
+ \begin{array}{lll}
+ \text{required lower bound}&W\le s.A&
+       \text{read }q_0\text{ backwards},\\
+ \text{required upper bound}&s.A\le W&
+       \text{read }q_0\text{ forwards}.
+ \end{array}
+\]
+Equality supports both inclusion directions; inclusion evidence alone
+does not support reversal. Both output recipes may therefore use the
+same input slot.
+
+The name $q_0$ is a \emph{placeholder} for a source proposition, not a
+fact already selected from a particular object. These recipes define a
+conversion independently of the object to which it will be applied.
+Their ordered list is called a \emph{morphism}.
+
+\subsection*{From exact bounds to abstract bounds}
+Now the source slots are
+$p_0:W\le s.A$ and $p_1:s.A\le W$.
+For the destination lower bound, prepend the inclusion from $\bot$:
+\[
+ \bot\xrightarrow{\ev{bot}(W)}W
+      \xrightarrow{p_0}s.A.
+\]
+For the destination upper bound, append the inclusion into $\top$:
+\[
+ s.A\xrightarrow{p_1}W
+      \xrightarrow{\ev{top}(W)}\top.
+\]
+These two recipes discharge the destination obligations using the
+source's lower and upper slots, respectively.
+
+\subsection*{Templates and morphisms}
+Each of these recipes is represented by a \emph{template} with the three-part form
+\[
+ \boxed{\text{left side}\quad|\quad\text{source slot}\quad|\quad\text{right side}}.
+\]
+A side may be absent when its endpoint requires no further conversion.
+The central slot is a \emph{hole}, instantiated by a fact about the
+object when the coercion is applied. Figure~\ref{fig:recipes} gives all
+four recipes and the source subtyping rule translated by $\ev{forget}$.
+
+\input{tutorial/figures/recipes}
+
+The indices always refer to the \emph{source} telescope of that conversion.
+In particular, the two occurrences of index 0 in the first two rows
+refer to the same equality.
+
+In compact notation, omitting the constructors that attach a recipe to
+its surrounding list, the upper recipe for $\ev{expose}$ is
+\[
+ \ev{le}\ \ev{none}\ (\ev{eq}\ 0)\ \ev{none}.
+\]
+The constructor $\ev{le}$ specifies an inclusion output, the two
+$\ev{none}$ arguments specify absent sides, and $\ev{eq}\ 0$ reads
+equality slot 0 forwards. Replacing $\ev{eq}$ by $\ev{eqSym}$ gives the
+lower recipe.
+
+The complete object coercion has the form
+$\ev{obj}\ \ty{sourceTelescope}\ m$, where $m$ is the list of recipes.
+It carries the source telescope. Its destination is determined by the
+facts the recipes establish. The implementation represents these lists
+with constructors; the bracket notation here displays their order.
+
+\subsection*{Scope of the template sides}
+In a basic template, present sides are scoped outside the self binder
+and cannot mention it. For example, $\ev{bot}(W)$ refers only to $W$.
+The recipe accesses $s$ through its hole.
+
+The restriction concerns the scope of $s$; an outer variable may still
+denote the same runtime object. An absent side can preserve an endpoint
+such as $s.A$ without supplying evidence outside the binder.
+As Section~\ref{sec:normalization} shows, this representation supports
+composition by substitution into holes, without additional member
+lookups through self.
+
+\exercise{widen}{Build the conversion from $\ty{Exact}$ to
+$\obj{\bot\le s.A,\ s.A\le W}$. Give the lower and upper recipes
+in three-part form, and say which side of $\ev{forget}$ you removed.}
+
+\lesson{Stores and views}\label{sec:store}
+\focus{A typed store supplies the concrete definitions used to interpret interface evidence.}
+
+The preceding interfaces and coercions can be checked before execution.
+To interpret them at runtime, suppose the machine has allocated the
+literal at $\ell$:
+\[
+ \sigma(\ell)=\{A=W\}.
+\]
+The store records the value itself. Write $\Gamma_\sigma$ for its typing
+context: it records the precise type $\ty{Lit}$ and the definition of
+$\ell.A$. A binder carrying definitions is called \emph{transparent}.
+A function parameter
+$y:\ty{Exact}$ is \emph{opaque}: its interface supplies assumptions, but
+there is no stored definition for its $y.A$ while checking the body.
+
+The transparent location admits definition evidence
+$\ev{def}(\ell,A):\ell.A\equiv W$.
+An opaque parameter supplies no definition to justify this constructor.
+The coercion $\ev{expose}$ instead uses the equality in its source
+telescope, so its construction is independent of the stored definition.
+
+\subsection*{Precise allocation}
+Suppose a let binds a literal already cast to $\ty{Exact}$:
+\[
+ \ev{let}\ y=\cast{\{A=W\}}{\ev{expose}}\ \ev{in}\ t.
+\]
+The machine stores the bare literal at a fresh location $\ell$ and
+substitutes the atom $\cast{\ell}{\ev{expose}}$ for $y$ in the body.
+The store therefore retains $\ty{Lit}$ and the definition $A=W$;
+the client sees $\ty{Exact}$ through its evidence.
+
+This allocation rule is part of the store invariant. Recording arbitrary
+interfaces as store facts would admit assertions unsupported by the
+stored values. Instead, the store retains precise definitions, and cast
+evidence justifies each change of presentation.
+
+\input{tutorial/closed-program}
+
+\subsection*{Concrete views}
+A \emph{view} records the evaluated information at an atom's object
+interface, in telescope order with one entry per proposition.
+An inclusion entry contains a \emph{head form}, which records the outer
+structure of the inclusion after following stored definitions.
+We mark evaluated results with hats. The form $\form{id}$ says the
+endpoints agree; $\form{bot}$ says the source endpoint is $\bot$;
+$\form{top}$ says the destination endpoint is $\top$.
+Thus $\ev{top}(W)$ is evidence to evaluate, whereas $\form{top}$ is its
+evaluated form. Section~\ref{sec:normalization} adds function and object
+forms and explains their computation.
+
+An equality entry instead contains an equality marker. For our literal:
+\[
+ \view{\ell}=[\,\form{eq}\,].
+\]
+The marker $\form{eq}$ says that the equality's endpoints agree after
+following the definitions. It does not record a new equality axiom.
+The typing of the view relates that marker to the proposition
+$\ell.A\equiv W$.
+
+Let
+\[
+ a=\cast{\ell}{\ev{expose}}:\ty{Exact},\qquad
+ b=\cast{a}{\ev{forget}}:\ty{Abs}.
+\]
+
+The full translated program uses the reopened receiver
+$a^\circ=R(a)$ from Section~\ref{sec:closed-program}. Its wrappers
+preserve the view as well as the root:
+$\view{a^\circ}=\view{a}$ and $\ev{root}(a^\circ)=\ell$.
+We first compute the view of $a$, then use this equality when reading the
+program's bounds. Reading those bounds directly from the bare location
+$\ell:\ty{Lit}$ would select from the wrong telescope.
+
+To compute $\view{a}$, apply the two $\ev{expose}$ recipes to
+$[\,\form{eq}\,]$. Each recipe reads the same equality slot. Forward or
+backward, its endpoints resolve to the same type $W$, so each produces
+the identity inclusion form:
+\[
+ \view{a}=[\,\ev{le}\,\form{id},\ \ev{le}\,\form{id}\,].
+\]
+Here $\ev{le}$ tags an inclusion entry, distinguishing it from an
+equality entry.
+
+Applying $\ev{forget}$ uses composition of head forms, written $F;G$.
+This operation computes with normalized data, whereas $p;q$ constructs
+an evidence expression. The first recipe prepends $\form{bot}$ to the
+slot's $\form{id}$; the second appends $\form{top}$:
+\[
+ \begin{aligned}
+ \text{lower output}&:\ \form{bot};\form{id}=\form{bot},\\
+ \text{upper output}&:\ \form{id};\form{top}=\form{top}.
+ \end{aligned}
+\]
+Thus
+\[
+ \view{b}=[\,\ev{le}\,\form{bot},\ \ev{le}\,\form{top}\,].
+\]
+The same literal now supplies the weaker facts of $\ty{Abs}$.
+From that interface alone, the client cannot recover $W$;
+the store still records that definition. Figure~\ref{fig:presentations}
+records the three views and the normalization of the running program's
+member evidence. There $\hnf{e}$ denotes head normalization of evidence,
+the computation that produces its head form.
+
+\needspace{4\baselineskip}
+The notation $\operatorname{resolve}_{\Gamma_\sigma}(T)$ means following
+the definitions in $\Gamma_\sigma$ to expose the outer shape of $T$.
+Here it turns $\ell.A$ into $W$.
+
+
+\input{tutorial/figures/presentations}
+
+
+\remember{Evidence expressions, normalized object recipes, and concrete
+views are distinct representations. Normalized recipes retain holes;
+applying them to a stored object's facts produces a concrete view.}
+
+\exercise{views}{Through $a$, what head form does reading the upper bound
+produce? What about through $b$? Explain why these answers can differ
+even though $\ev{root}(a)=\ev{root}(b)=\ell$.}
+
+\lesson{Evidence normalization and composition}\label{sec:normalization}
+\focus{Head forms support composition while retaining the evidence needed for subsequent operations.}
+
+The three head forms used in the view calculation record identity,
+an inclusion from $\bot$, or an inclusion into $\top$.
+Function and object conversions need forms that retain their component
+evidence or templates. For our fragment, the possibilities are:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Form & What its typing establishes after resolving definitions\\
+\midrule
+$\form{bot}$ & The source endpoint is $\bot$.\\
+$\form{top}$ & The target endpoint is $\top$.\\
+$\form{id}$ & The two endpoints agree.\\
+$\form{pi}(d,c)$ & Both endpoints are functions; $d,c$ adapt argument and result.\\
+$\form{obj}(E_0,\ldots,E_n)$ & The object conversion has these normalized recipes.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+This table covers the forms used in the running examples. The full
+target also has forms for self-bounds, discussed in
+Section~\ref{sec:larger}.
+
+The form $\form{id}$ carries no endpoints; its typing judgment requires
+them to resolve equally. It is therefore a valid form for $\ell.A\le W$
+when the store defines $\ell.A$ as $W$.
+
+\subsection*{Normalizing the round trip}
+The view at $\ty{Exact}$ gives
+\[
+ \begin{aligned}
+ \hnf{\ev{lower}_A(a^\circ)}&=\form{id},\\
+ \hnf{\ev{upper}_A(a^\circ)}&=\form{id}.
+ \end{aligned}
+\]
+For composition the normalizer combines the two head forms,
+using the operation on forms introduced in the view calculation:
+\[
+ \hnf{\ev{lower}_A(a^\circ);\ev{upper}_A(a^\circ)}
+   =\form{id};\form{id}=\form{id}.
+\]
+The original inclusions have endpoints $W\le \ell.A$ and $\ell.A\le W$,
+and their composite has endpoints $W\le W$. Resolution justifies the
+identity forms at the intermediate endpoints.
+
+\subsection*{Composing interface coercions}
+The coercions $\ev{expose}$ and $\ev{forget}$ can also be composed
+before either is applied to $\ell$.
+The lower recipe of $\ev{forget}$ is
+\[
+ [\,\ev{bot}(W)\mid\text{inclusion slot }0\mid\text{absent}\,].
+\]
+Slot 0 of its input is the lower recipe produced by
+$\ev{expose}$:
+\[
+ [\,\text{absent}\mid\text{equality slot }0\text{ reversed}\mid
+       \text{absent}\,].
+\]
+Substituting the second recipe into the first hole yields
+\[
+ [\,\ev{bot}(W)\mid\text{equality slot }0\text{ reversed}\mid
+       \text{absent}\,].
+\]
+The upper composite is
+\[
+ [\,\text{absent}\mid\text{equality slot }0\text{ forward}\mid
+       \ev{top}(W)\,].
+\]
+The resulting morphism converts $\ty{Lit}$ directly to $\ty{Abs}$.
+Normalizing its sides leaves the equality holes intact; instantiating
+them with $\view{\ell}$ gives $\form{bot}$ and $\form{top}$, as with the
+two successive view transformations. The morphism representation thus
+supports composition by an explicit substitution operation on finite
+templates.
+
+\subsection*{Scope of head normalization}
+The representation determines how far normalization proceeds.
+Basic object templates access self through designated slots, with side
+evidence outside the self binder. Composition can therefore combine
+existing components without introducing a new member lookup through self.
+
+A function form $\form{pi}(d,c)$ retains its argument and result
+adaptations as evidence. In the dependent case, $c$ may mention a parameter
+whose value has not yet been supplied. The machine needs only the outer
+function form to perform a call; once the argument is available, it uses
+$d$ and $c$ as casts. Head normalization therefore does not require
+store-based normalization under an unapplied parameter.
+
+The executable normalizer in Lean takes \emph{fuel}: a natural-number
+budget that decreases during recursion. It terminates on every input
+and returns an optional form, with failure possible both for malformed
+evidence and for insufficient fuel. Failure at a particular budget
+therefore does not establish that the evidence is ill typed.
+
+The normalization theorem applies to evidence \emph{closed over a typed
+store}: every free variable names a location in that store, whose value
+has been checked at its precise type. Such evidence may mention $\ell$;
+its checking context contains no extra opaque parameter assumptions.
+For well-typed evidence in this setting, there is a fuel budget for which
+normalization succeeds with a form of the required type. The proof is by
+structural induction on typing derivations.
+This is the inclusion-evidence part of the \emph{canonical-forms theorem}.
+
+\exercise{compose}{Fill the slot in
+$[\,\ev{bot}(W)\mid\text{equality 0 reversed}\mid\text{absent}\,]$
+using the concrete view $[\,\form{eq}\,]$. Which head form results?
+Why is the unfilled recipe not already a concrete view?}
+
+\lesson{Function coercions and application}\label{sec:application}
+\focus{A function head form supplies the argument and result adaptations required by an application.}
+
+In the store constructed in Section~\ref{sec:closed-program}, location
+$z$ holds $\lambda(u:\top).u$ at precise type $W=\top\to\top$.
+Using the reopened exact-interface atom $a^\circ=R(a)$, that section's
+closing calculation gives
+\[
+ z'=\cast{\cast{z}{\ev{lower}_A(a^\circ)}}{\ev{upper}_A(a^\circ)}:W.
+\]
+The chain of casts from $z$ to $z'$ normalizes to $\form{id}$.
+If $r:\top$ is an argument atom, the machine can therefore call the
+lambda stored at $z$ directly. Substitution in the body $u$ returns $r$.
+For the original program, choose
+$r=\cast{z}{\ev{top}(W)}$.
+The result erases to $z$, as expected from evaluation of the identity.
+
+Establishing this step requires more than the type $z':W$: the atom
+$z'$ is a cast expression, while application must locate a stored lambda.
+The canonical-forms theorem connects the atom's presented type to the
+value at its root.
+
+\subsection*{One machine step, with its premises}
+Write $\langle\sigma,K,t\rangle$ for a state with store $\sigma$,
+continuation $K$, and current term $t$. Let
+$\operatorname{chain}_\sigma(c)$ normalize the wrappers from an atom's
+root to its presented type. For a wrapped receiver, the identity case
+of the machine's application rule is
+\[
+ \frac{\sigma(\ev{root}(c))=\lambda(u:S).t_0
+       \qquad c\ne\ev{root}(c)
+       \qquad \operatorname{chain}_\sigma(c)=\form{id}}
+      {\langle\sigma,K,c\,r\rangle
+         \longrightarrow\langle\sigma,K,t_0[u:=r]\rangle}.
+\]
+The comparison in the middle treats the root as a bare atom.
+The chain equation abbreviates successful normalization at some fuel;
+it is a premise of the step, not an unchecked optimization.
+
+For the closed program, set $c=z'$, $K=\epsilon$, $S=\top$, and
+$t_0=u$. The root is $z$, its stored value is the identity lambda,
+and both member casts have identity form by the preceding view
+calculation. Hence all three premises hold, and the actual step is
+\[
+ \langle\sigma,\epsilon,z'\,\cast{z}{\ev{top}(W)}\rangle
+ \longrightarrow
+ \langle\sigma,\epsilon,\cast{z}{\ev{top}(W)}\rangle.
+\]
+This is \texttt{Step.appCastRefl}. It changes neither the store nor the
+continuation, and its result is an atom. Earlier allocation and alias
+substitution took several steps; this display isolates one complete
+transition and all the evidence needed to enable it.
+
+\subsection*{Adapting an argument}
+For a nonidentity function coercion, present $z$ at the function type
+$W\to\top$, whose domain is narrower than that of $W$.
+The required inclusion is
+\[
+  (\top\to\top)\le(W\to\top).
+\]
+Clients of the new interface supply arguments at $W$, which the original
+function can accept at $\top$. The argument and result evidence are
+\[
+ d=\ev{top}(W):W\le\top,\qquad
+ c=\ev{refl}(\top):\top\le\top.
+\]
+The function constructor builds
+$\ev{pi}(d,c):(\top\to\top)\le(W\to\top)$.
+Head normalization exposes its function form:
+\[
+ \hnf{\ev{pi}(d,c)}=\form{pi}(d,c).
+\]
+The components $d,c$ remain evidence for the call's argument and result
+casts. The domain adaptation is contravariant: the function inclusion
+maps the original function interface to the client interface, while
+$d$ maps the client's argument type to the original domain.
+
+Figure~\ref{fig:function-call} gives the source rule, its target
+evidence, and the call. A client supplies $z:W$; the argument evidence
+presents it at $\top$ for the stored identity. The body returns that
+same atom, and the result evidence presents it to the client.
+Administrative steps arrange the pending casts around evaluation of the
+function body. The call erases to $z\,z$ and its result to $z$.
+
+
+\input{tutorial/figures/function-call}
+
+
+\FloatBarrier
+\needspace{8\baselineskip}
+\subsection*{Dependent results and composition}
+For nondependent function types, $c$ is independent of the argument.
+For a dependent function $(u:S)\to T(u)$, the result type can mention
+$u.A$. At a call, substitute the argument atom in term positions and its
+root in type positions. A wrapper changing the argument's interface
+must not create a different dependent result name.
+
+Composition of function coercions respects this order of adaptation.
+If a first adaptation expects an intermediate input and a second offers
+a still narrower one, the second input adaptation runs first.
+Result adaptations run in the order of the function coercions.
+In a dependent codomain, the earlier result evidence is instantiated
+with the adapted argument before being composed with the later result evidence.
+
+\remember{Application uses a function head form to adapt the argument,
+evaluate the stored lambda, and adapt the result. The component evidence
+is retained until the argument is available.}
+
+\exercise{variance}{Suppose $d:S_2\le S_1$ and $c:T_1\le T_2$,
+with nondependent results. Give the function inclusion built from them.
+When it is applied to $b:S_2$, at which type does the original body
+receive $b$, and at which type does the client receive the result?}
+
+\lesson{Bad bounds and uninhabited interfaces}\label{sec:bad}
+\focus{Inconsistent bounds can occur in an open context, but no typed store supplies an argument satisfying them.}
+
+Consider the source interface $\iface{\top}{\bot}$ and its target
+translation
+\[
+ \ty{Bad}=\obj{\top\le s.A,\ s.A\le\bot}.
+\]
+Under a hypothetical parameter $y:\ty{Bad}$, we can read both facts
+and compose them:
+\[
+ \ev{lower}_A(y);\ev{upper}_A(y):\top\le\bot.
+\]
+This evidence is well typed in the open context. In particular, a
+function body may be checked under an uninhabited parameter type.
+The safety argument must show that execution cannot supply an argument
+at that type.
+
+\needspace{10\baselineskip}
+\subsection*{The obstruction to constructing an argument}
+Our stored object defines $A=W$.
+To present it at $\ty{Bad}$ using the recipe pattern, we would need
+both chains:
+\[
+ \begin{aligned}
+ \text{lower: }&\top\le W\le \ell.A,\\
+ \text{upper: }&\ell.A\le W\le\bot.
+ \end{aligned}
+\]
+The definition equality handles the links next to $\ell.A$.
+The remaining obligations are $\top\le W$ and $W\le\bot$.
+Composing a successful construction would produce closed evidence for
+$\top\le\bot$ over the typed store.
+
+The normalization theorem excludes such evidence. None of the typed
+head forms for this fragment admits those endpoints:
+$\top$ is not $\bot$; $\bot$ is not $\top$; they do not resolve equally;
+they are not both functions; and they are not both object interfaces.
+The full target's consistency result covers its additional forms as well.
+
+The same consistency result excludes every atom at $\ty{Bad}$ over a
+typed store: selecting and composing its bounds would again yield
+closed evidence for $\top\le\bot$.
+
+\subsection*{Open assumptions and store contexts}
+The open derivation used $y:\ty{Bad}$ as an assumption.
+The runtime theorem requires a store context, which records the stored
+values' precise types and definitions. Well-scopedness or well-formedness of
+an open context alone does not establish this hypothesis.
+
+At application, substitution connects the open body, checked under its
+opaque parameter, to a typed atom over the store. No such atom exists
+for this parameter type, so execution cannot reach the body through a
+well-typed call. The argument does not require normalizing the open
+evidence under the impossible assumption.
+
+\exercise{bad}{Consider the claim that the well-typed open evidence
+$\ev{lower}_A(y);\ev{upper}_A(y)$ must have a typed head form, proving
+the system inconsistent. Identify the missing theorem hypothesis precisely.}
+
+\lesson{Canonical forms and type safety}\label{sec:proof}
+\focus{The canonical-forms theorem connects evidence normalization to the operations of the target machine.}
+
+The proof establishes properties of several judgments simultaneously,
+following the dependencies in the syntax: cast atoms contain inclusion evidence, member selection
+requires an atom, and object coercions contain templates. Normalization
+of inclusion evidence therefore depends on properties of atoms and views.
+
+\needspace{15\baselineskip}
+\subsection*{The canonical-forms theorem}
+Fix a typed store $\sigma$ with its context $\Gamma_\sigma$.
+All judgments below are in that store context, so their free variables
+are allocated locations. The canonical-forms theorem establishes the
+following related facts:
+\begin{enumerate}
+\item Well-typed inclusion evidence has a typed head form.
+\item Equality evidence relates endpoints that resolve equally.
+\item A well-typed atom has a typed view at its object interface.
+\item The atom's chain of wrappers has a form relating the root's
+precise type to its presented type.
+\item For the full target, field-presence evidence identifies a field actually stored in
+the appropriate object.
+\end{enumerate}
+The proof also excludes atoms whose types resolve to $\bot$. Alongside
+successful normalization, these statements establish the typing and
+semantic properties of the resulting forms.
+
+Three representative cases illustrate the dependencies. For transitivity,
+the induction hypotheses
+provide typed forms for both components; a composition lemma shows that
+combining them preserves typing. For a member read, the hypotheses provide the atom's
+view and the interface conversion's normalized recipes; selecting the
+appropriate resulting entry gives the needed fact. For a cast atom,
+the proof transforms its existing view and composes its chain.
+Each case uses an operation from the preceding calculations.
+
+\needspace{8\baselineskip}
+\subsection*{Target progress and preservation}
+A machine state consists of a store, a current expression, and a
+continuation recording pending lets and casts.
+
+\emph{Progress} says a well-typed machine state is final or can step.
+At application, the canonical-forms facts identify a lambda at the
+function atom's root and give the required argument and result evidence.
+At field projection, presence evidence identifies a field to read.
+The remaining cases handle lets and casts.
+
+\emph{Preservation} says a step keeps the program and store typed,
+allowing for newly allocated locations. Substitution must transport
+evidence as well as terms. Allocation must keep the bare value at its
+precise type and move its presentations into the body. A function call
+must cast the argument and result at the endpoints promised by its form.
+
+Together, progress and preservation ensure that a closed well-typed
+target program never reaches a stuck state. The program may diverge;
+termination of evidence normalization does not imply termination of
+program execution.
+
+\subsection*{Transporting safety to the source}
+The translation takes a source \emph{typing derivation}.
+For a well-formed source context, it produces a well-typed target term.
+Different source derivations can insert different evidence,
+but the translation erases to the same underlying source program:
+\[
+ \erase{\operatorname{translate}(h)}=\erase{t}
+ \quad\text{when }h\text{ derives }\Gamma\vdash t:T.
+\]
+Transporting safety additionally requires operational correspondence.
+
+Both source and target erase into a shared runtime. A simulated source
+state is one for which a typed target state has the same erasure.
+Translation establishes this relation initially. When the source steps,
+runtime correspondence and target simulation provide a matching target
+execution; preservation re-establishes the relation.
+Conversely, target progress, together with reflection of runtime steps
+by the source, shows the source state is final or can step.
+Here \emph{reflection} means that a runtime step out of an erased source
+state comes from a corresponding source step. Pending administrative
+cast steps can be cleared in finitely many steps before making this
+argument. Thus no infinite execution can consist solely of administrative
+steps. These additional target steps explain
+why the two machines do not run in lockstep.
+
+\remember{Canonical forms establish the runtime structure needed for
+target safety. Translation and operational correspondence then transport
+safety to the source: erasure relates program syntax, and simulation
+relates executions.}
+
+For the main source calculus, this argument derives safety from the
+target's metatheory and the simulations, without a separate source
+preservation proof as a premise.
+
+\exercise{proof}{Which fact is missing from each proposed proof?
+(a) A well-typed translation is claimed to establish source safety by itself.
+(b) The existence of one target step is claimed to establish safety for
+all future steps. Give a different missing ingredient for each.}

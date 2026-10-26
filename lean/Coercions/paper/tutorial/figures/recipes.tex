@@ -1,0 +1,40 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source widening --- the declaration subtyping rule}
+\[
+\src{\inferrule*[right=\textsc{Typ}]{
+ \bot<:W\\ W<:\top
+}{\iface{W}{W}<:\iface{\bot}{\top}}}
+\]
+Widening decreases the lower bound and increases the upper bound.
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Target interfaces}
+\[
+\tgt{\begin{aligned}
+ \ty{Lit}&=\obj{s.A\equiv W},\\
+ \ty{Exact}&=\obj{W\le s.A,\ s.A\le W},\\
+ \ty{Abs}&=\obj{\bot\le s.A,\ s.A\le\top}.
+\end{aligned}}
+\]
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Coercion templates --- one per destination proposition}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{@{}l l >{\raggedright\arraybackslash}X l@{}}
+\toprule
+Conversion and output & Left side & Input hole & Right side\\
+\midrule
+$\ev{expose}$, lower & absent & equality 0, reversed & absent\\
+$\ev{expose}$, upper & absent & equality 0, forward & absent\\
+$\ev{forget}$, lower & $\ev{bot}(W)$ & inclusion 0 & absent\\
+$\ev{forget}$, upper & absent & inclusion 1 & $\ev{top}(W)$\\
+\bottomrule
+\end{tabularx}
+\end{examplepanel}
+\caption{The coercion \(\ev{expose}:\ty{Lit}\le\ty{Exact}\) derives
+exact bounds from the definition equality, while
+\(\ev{forget}:\ty{Exact}\le\ty{Abs}\) translates the displayed
+widening derivation. Each hole indexes the source telescope of its
+coercion. The templates are independent of the object to which the
+coercion will be applied.}
+\label{fig:recipes}
+\end{figure}

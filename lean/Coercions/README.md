@@ -166,4 +166,8 @@ Each directory has a README.
 
 **`paper/`** is a tutorial report on the main line (acmart, `latexmk -pdf main.tex`) for a reader who knows System F but not DOT, with a table mapping its results to the Lean declarations.
 
+For a guided introduction, start with [*Learning to make the proof explicit*](paper/tutorial.tex): a worked tutorial that follows source derivations into target terms, builds interface evidence, computes views and function calls, explains the safety proof, and develops capture examples. Its figures distinguish source derivations, target evidence, and execution by color and panel labels. It includes exercises with worked answers and an [executable Lean companion](paper/TutorialExamples.lean). From the repository root, `make -C lean/Coercions/paper tutorial` builds `output/pdf/fcdot-tutorial.pdf`; `make -C lean/Coercions/paper tutorial-check` checks the companion after the imported libraries have been built. For a plain LaTeX build, use `latexmk -cd -pdf lean/Coercions/paper/tutorial.tex`; this writes `lean/Coercions/paper/tutorial.pdf`.
+
+The [coauthor review](paper/tutorial-review.txt) records the reconstruction tests, substantive revisions, and remaining limitations of the tutorial.
+
 **`paper-captures/`** is its sequel, a tutorial report on `Captures/`, `CapturesCC/` and `Classifiers/` (`make`, which builds `paper/` first for its cross-references) for a reader of the first report who has not seen capture checking.  It proves capture prediction and effect safety on a fragment with one running program, then walks through the three trees and their front ends, and maps every result to its Lean declaration and tree.

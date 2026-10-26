@@ -1,0 +1,37 @@
+\begin{figure}[!htbp]
+\begin{examplepanel}{srccol}{Source lambda rule}
+\small
+\[
+\src{\inferrule*[right=\textsc{All-I}]{
+ d_b:A^\uparrow\cup\{u\};\Gamma,u:T\vdash t:T'\\
+ T\ \mathrm{wf}
+}{\varnothing;\Gamma\vdash\lambda(u:T).t:((u:T)\to T')^A}}
+\]
+Only the parameter type and body occur in the source lambda. Its typing
+derivation selects the capture annotation and records the body's permitted uses.
+\end{examplepanel}
+\begin{examplepanel}{tgtcol}{Target lambda with closing evidence}
+\[
+\tgt{
+ \lambda^{\tr{A}}(u:\tr{T}).\
+       \underbrace{\tr{d_b}}_{\text{body}}\
+       \left\langle
+       \underbrace{\tr{d_b}_{\mathrm{uses}}}_{\text{closing evidence }g}
+       \right\rangle .}
+\]
+\small
+\[
+\tgt{
+\tr{\Gamma},u:\tr{T}\vdash^c
+ g:\uses{\tr{d_b}}\le_c\tr{A}^{\uparrow}\cup\{u\}.}
+\]
+\end{examplepanel}
+\caption{Translation of a lambda premise in a well-formed source context
+\(\Gamma\). The two components are the translated body \(\tr{d_b}\)
+and its closing evidence \(\tr{d_b}_{\mathrm{uses}}\).
+The superscript \(\uparrow\) carries outer names under the new parameter
+binder. Angle brackets delimit stored evidence; the lambda receives only
+its term argument at runtime. The functions \texttt{translate} and
+\texttt{translateUses} construct these components.}
+\label{fig:capture-translation}
+\end{figure}
