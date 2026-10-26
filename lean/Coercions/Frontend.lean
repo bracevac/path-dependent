@@ -17,6 +17,9 @@ import Coercions.Frontend.StepFC
 import Coercions.Frontend.Pipeline
 import Coercions.Frontend.Pretty
 import Coercions.Frontend.Examples
+import Coercions.Frontend.Scala
+import Coercions.Frontend.ScalaTests
+import Coercions.Frontend.ScalaCmd
 
 /-!
 # The vanilla front end
@@ -124,6 +127,29 @@ and the frozen trees it builds on are unchanged.
   (`Ek_erased`).  Seven erased programs compile to their written forms by
   `compile_complete_direct` (`Ek_complete`), and two show where completeness
   fails, at an ascription and at a call argument.
+* `Scala` reads a `.scala` file of the vanilla subset into a surface term
+  (plan IX).  `ofScala` maps the tree of the shared reader to an `STm`, and
+  refuses capture syntax, a prelude and any header but the one import.  `table`
+  numbers the member names of the file.  `outcome` parses, checks, translates
+  and compiles, and answers `ok`, `rejected`, `unknown`, `limit` or `outside`.
+  Its last step is the member check of S-17: a selection `x.A` in a written
+  type, where the type of `x` declares no `A`, makes the file `outside`, as
+  scalac refuses it (E008).
+  The printers go the other way.  `toScala` prints a surface term as a Scala
+  program, the inverse of `ofScala` on its image, or names why the term has no
+  Scala form.  `fillToScala` prints the fill of a compiled program.
+* `ScalaTests` is the tests of `Scala`: one kernel check per row of the
+  mapping and per refusal, and the outcomes of the judge's programs written as
+  Scala.
+  The member check is tested on every example program and on four texts.
+  The printers are tested by round trips in the kernel and on every example
+  program, and by the fill of every example program that compiles.
+* `ScalaCmd` is the only module with meta code: the commands that read Scala
+  files at elaboration.  `scala_example X from "path"` adds the characters of
+  a file, its term and label table, and the kernel theorem that the reader
+  gives that term.  `scala_corpus x "dir"` does the same for every file of a
+  corpus and adds a kernel theorem for the kind of its outcome, and a link to
+  an example where a header asks for one.
 -/
 
 #assert_no_wf Frontend
