@@ -3,6 +3,9 @@ import Coercions.PDot.Frontend.Notation
 import Coercions.PDot.Frontend.Ann
 import Coercions.PDot.Frontend.Resolve
 import Coercions.PDot.Frontend.Sources
+import Coercions.PDot.Frontend.Decide
+import Coercions.PDot.Frontend.Look
+import Coercions.PDot.Frontend.Sub
 
 /-!
 # The pDOT front end
