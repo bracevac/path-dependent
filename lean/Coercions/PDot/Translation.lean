@@ -9,6 +9,9 @@ import Coercions.PDot.Translation.Terms
 import Coercions.PDot.Translation.DefsTyped
 import Coercions.PDot.Translation.TermsTyped
 import Coercions.PDot.Translation.Erasure
+import Coercions.PDot.Translation.Safety
+import Coercions.PDot.Translation.Examples
+import Coercions.PDot.Translation.Pages
 
 /-!
 Import root for the translation of PDot: the pDOT source `PDot.Source` into the coercion calculus
