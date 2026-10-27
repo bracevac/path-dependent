@@ -117,3 +117,7 @@ needs = ["scala-vanilla"]
 [[lean_lib]]
 name = "PDot"
 roots = ["Coercions.PDot"]
+
+[[lean_lib]]
+name = "PDotFrontend"
+roots = ["Coercions.PDot.Frontend"]
