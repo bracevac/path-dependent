@@ -103,6 +103,26 @@ Axioms throughout both lines: `propext` and `Quot.sound`.  Neither line contains
 refinement `x.A ∧ {a : ⊤}` of an abstract type) have equal erasures on the two sides.  The
 target side is decided in the kernel.  The source side is a derivation built by hand.
 
+## The third line: full pDOT and FCp
+
+**`PDot/`** is full pDOT (Rapoport and Lhoták, OOPSLA 2019) by coercions, a tree of its own.  The
+source transcribes pDOT's Coq formalization rule for rule: paths of any length, singleton types,
+fields that hold paths, lambdas or nested literals, and the replacement of a path by its alias.
+Every source derivation translates to a typed term of the coercion calculus FCp, whose machine is
+pDOT's reduction with casts, and FCp is type safe.  The source and an untyped runtime agree step
+for step, and the FCp machine agrees with the runtime up to steps that keep the erasure.  So
+`PDot.safety` holds of pDOT's own reduction and lookup: in a configuration that a typed closed
+program reaches, the term is a normal form or the configuration steps, and a path in focus has a
+safe lookup.  `PDot.reachable_typed` gives every reachable configuration an FCp state typed at the
+translated type with the same erasure, over a store that proves no `⊤ ≤ ⊥`.  The restrictions of
+`Paths/` on fields, replacement, singleton-typed variables and `let` over a path do not apply here.
+Library `PDot`, see [PDot/README.md](PDot/README.md).
+
+pDOT's disjunctive safety, that a run ends or diverges, is not stated, since its proof needs
+excluded middle.  FCp types some terms that pDOT rejects, among them the reflexive singleton
+`x : x.type`, and its theorems cover them.  The path layer is imported from `Paths/FCdot` and the
+Paths tree does not change.  Axioms: `propext` and `Quot.sound`.
+
 ## Extensions
 
 Each extension copies a base tree, named in its `BASE` file, into a library of its own, keeps
