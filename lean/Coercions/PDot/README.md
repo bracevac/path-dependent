@@ -40,9 +40,14 @@ own reduction and lookup, carried from the target.  The design is plan X (`plan-
 - pDOT's disjunctive `safety` and `extended_safety`, that a run ends at a normal form or diverges,
   are not stated.  Their Coq proof reads excluded middle (`Sequences.v`, `infseq_or_finseq`), and
   the line admits no axiom beyond `propext` and `Quot.sound` (plan X, decision 3).  `PDot.safety`
-  is the constructive half: no reachable configuration is stuck.
-- pDOT's own preservation with its seven typing relations is not proved.  A reachable configuration
-  is typed through its image in FCp (`PDot.reachable_typed`).
+  is the constructive half: no reachable configuration is stuck.  Both follow from it with excluded
+  middle, by the argument of `Safety.v:485-556`.
+- pDOT's own preservation with its seven typing relations is not proved.  The source has no `inert`,
+  `wf` or store typing, so the typed conclusion `G ⊢ u : T` of Coq's `safety` for a reached normal
+  form is not stated, and pDOT's `path_safety` for every typed path of a well-typed store has no
+  counterpart.  `PDot.safety` states path safety for the path in focus only, which is the use Coq's
+  own theorem makes of the lemma.  A reachable configuration is typed through its image in FCp
+  (`PDot.reachable_typed`).
 - FCp types some terms that pDOT rejects: the reflexive singleton `x : x.type` (N4,
   `N4_target_refl`), the empty literal, and `lift` along a symmetric path equality (plan X,
   decision 21).  FCp's theorems hold of these terms too.  The transport reads only images of

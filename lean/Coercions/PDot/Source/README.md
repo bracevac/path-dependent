@@ -1,8 +1,10 @@
 # PDot.Source: pDOT as its Coq formalization states it
 
 This directory transcribes pDOT, the calculus of paths of any length, from its Coq formalization
-(`git.io/dotpaths`, the files `Definitions.v`, `Lookup.v`, `Reduction.v` and `Safety.v`).  Each Coq
-constructor is one Lean constructor with the Coq name, and its premises come in Coq's order.  The
+(`git.io/dotpaths`, the files `Definitions.v`, `Lookup.v`, `Reduction.v` and `Safety.v`).  Each
+constructor of a Coq judgment or relation is one Lean constructor with the Coq name, and its premises
+come in Coq's order.  The syntax constructors have Lean names, `Ty.sel` for `typ_path`, `Dec.typ` for
+`dec_typ`, and so on, in Coq's order.  The
 binders are de Bruijn binders of the Paths target: a family is indexed by a signature `s`, and
 `(s,x)` adds one variable, `.here`.  Plan X (`plan-10-pdot.md`, Part S) states the design, and its
 section S.6 lists the changes of form.
@@ -13,10 +15,11 @@ and not copied.  A path is a variable followed by field selections in the order 
 Coq's `p_sel x bs` keeps its fields newest first, so Coq's `p••bs` is `p.ext` of the reversed list,
 and `rpath` and `rsngl` range over the same paths.  Coq's two label sorts `typ_label` and
 `trm_label` are the two sorts `Label.typ` and `Label.trm` of the tree's one type `Label`
-(`Paths/FCdot/Debruijn.lean:16-19`).  `Dec.typ`, `Def.typ`, `Ty.sel` and `Path.sel` take a `Label`
-and do not check its sort.  So the Lean syntax holds ill-sorted terms that Coq has not, such as a
-type member selected at a term label.  The correspondence of the table below is on the well-sorted
-fragment.  A context binds a variable at a type of the outer signature, `G.cons T`, or at a type
+(`Paths/FCdot/Debruijn.lean:16-19`).  `Ty.sel`, `Dec.typ`, `Dec.trm`, `Def.typ`, `Def.trm` and
+`Path.sel` take a `Label` and do not check its sort, and `Def.label`, `Defs.get` and `Defs.hasnt`
+compare labels without their sort.  So the Lean syntax holds ill-sorted terms that Coq has not, such
+as a type member selected at a term label, and the judgments type some of them.  The correspondence
+of the table below is on the well-sorted fragment.  A context binds a variable at a type of the outer signature, `G.cons T`, or at a type
 that mentions the variable itself, `G.consSelf T`, which is the self of a literal.
 
 The judgments (`Repl.lean`, `Typing.lean`) are `Type`-valued.  Replacement `Repl p q T T'` is
@@ -63,10 +66,10 @@ The last column names the changes of form of plan S.6 that apply to the row, by 
 
 | Coq | line | Lean | change of form |
 |---|---|---|---|
-| `ty_var` | `Definitions.v:593` | `HasTy.ty_var` | Type, dB (`binds x T G` is `G.lookup x = T`) |
+| `ty_var` | `Definitions.v:593` | `HasTy.ty_var` | Type, dB, self (`binds x T G` is `G.lookup x = T`, at a self binder too) |
 | `ty_all_intro` | `Definitions.v:604` | `HasTy.ty_all_intro` | Type, dB |
 | `ty_all_elim` | `Definitions.v:616` | `HasTy.ty_all_elim` | Type, dB |
-| `ty_new_intro` | `Definitions.v:628` | `HasTy.ty_new_intro` | Type, dB, self |
+| `ty_new_intro` | `Definitions.v:628` | `HasTy.ty_new_intro` | Type, dB, self, path index |
 | `ty_new_elim` | `Definitions.v:639` | `HasTy.ty_new_elim` | Type |
 | `ty_rcd_intro` | `Definitions.v:649` | `HasTy.ty_rcd_intro` | Type |
 | `ty_let` | `Definitions.v:661` | `HasTy.ty_let` | Type, dB |
@@ -127,7 +130,9 @@ Two notes on plan S.6.
 First, the label sorts of the paragraph on the syntax are a change of form that S.6 does not list.
 Coq's `dec_typ`, `def_typ` and `typ_path` take a `typ_label`, and `dec_trm`, `def_trm` and
 `sel_field` take a `trm_label`.  Here each takes a `Label` of either sort.  The images of Coq's terms
-are the well-sorted Lean terms, and the table pairs the rules on them.
+are the well-sorted Lean terms, and the table pairs the rules on them.  The Lean source types a
+superset of pDOT's programs.  That the typing of well-sorted terms is pDOT's is argued by a map that
+keeps the two sorts apart, and it is not proved.
 
 Second, S.6 calls the function form of Coq's `infseq` "the same relation".  It is not, without
 choice.  The function form `∃ f : Nat → _` implies Coq's coinductive `infseq`
@@ -144,7 +149,12 @@ why Coq defines `infseq` coinductively (`Sequences.v:95-102`).  X0 only defines 
 ## Coq definitions not ported
 
 None of these is a rule of the calculus.  Each is a device of Coq's safety proof, and plan X replaces
-each by a device of the target.
+each by a device of the target.  Because `inert`, `wf` and `well_typed` are not ported, the source
+cannot state the typed conclusion of Coq's `safety`, `G ⊢ u : T` with `γ ⫶ G`, `wf G` and `inert G`
+(`Safety.v:416-424`), nor the general `path_safety` for every typed path of a well-typed store
+(`Safety.v:442-447`).  `PDot.safety` states progress and the safety of the path in focus, which is
+the use Coq's own theorem makes of the lemma (`Safety.v:534`), and `PDot.reachable_typed` types the
+reached configuration in FCp instead.
 
 | Coq | line | replaced by |
 |---|---|---|
