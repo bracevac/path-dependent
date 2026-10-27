@@ -12,6 +12,9 @@ import Coercions.PDot.FCp.Examples
 import Coercions.PDot.FCp.Erasure
 import Coercions.PDot.FCp.Checker
 import Coercions.PDot.FCp.CheckerCompleteness
+import Coercions.PDot.FCp.Canon
+import Coercions.PDot.FCp.Resolution
+import Coercions.PDot.FCp.CanonExamples
 
 /-!
 Import root for the target of PDot: FCp, the coercion calculus of plan X, Part T, in
