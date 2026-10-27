@@ -15,6 +15,13 @@ import Coercions.PDot.FCp.CheckerCompleteness
 import Coercions.PDot.FCp.Canon
 import Coercions.PDot.FCp.Resolution
 import Coercions.PDot.FCp.CanonExamples
+import Coercions.PDot.FCp.Normalizer
+import Coercions.PDot.FCp.FormTyping
+import Coercions.PDot.FCp.FormAlgebra
+import Coercions.PDot.FCp.CanonicalForms
+import Coercions.PDot.FCp.LookupSafety
+import Coercions.PDot.FCp.Consistency
+import Coercions.PDot.FCp.CanonicalExamples
 
 /-!
 Import root for the target of PDot: FCp, the coercion calculus of plan X, Part T, in
