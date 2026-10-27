@@ -6,6 +6,10 @@ import Coercions.PDot.Frontend.Sources
 import Coercions.PDot.Frontend.Decide
 import Coercions.PDot.Frontend.Look
 import Coercions.PDot.Frontend.Sub
+import Coercions.PDot.Frontend.Judgment
+import Coercions.PDot.Frontend.Avoid
+import Coercions.PDot.Frontend.Typer
+import Coercions.PDot.Frontend.Pipeline
 
 /-!
 # The pDOT front end
