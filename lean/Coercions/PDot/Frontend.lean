@@ -9,6 +9,7 @@ import Coercions.PDot.Frontend.Sub
 import Coercions.PDot.Frontend.Judgment
 import Coercions.PDot.Frontend.Avoid
 import Coercions.PDot.Frontend.Typer
+import Coercions.PDot.Frontend.Elab
 import Coercions.PDot.Frontend.Pipeline
 
 /-!
