@@ -34,7 +34,11 @@ jobs:
           auto-config: false
           build: false
       - run: lake build Frontend CapturesFrontend CapturesCCFrontend ClassifiersFrontend PathsFrontend Oopsla16Frontend PDotFrontend PDotScalaRead PDotScala
-      - run: lake build ScalaCorpusVanilla ScalaCorpusPDot
+      # One corpus module per step. A lean process that decides a corpus in the kernel peaks at 10.6 GB (vanilla)
+      # or 7.1 GB (pDOT), measured cold. Two at once exceed the 16 GB of the runner, which kills the step with
+      # exit code 143 (runs 40910837156 and 40909849834 on 2026-10-29).
+      - run: lake build ScalaCorpusVanilla
+      - run: lake build ScalaCorpusPDot
       - uses: coursier/setup-action@648df969f41ef15fda2baba8b37f9fa3d16390a3  # v3.0.4
         with:
           jvm: temurin:17
