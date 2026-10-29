@@ -1,4 +1,6 @@
 import Coercions.Frontend
+import Coercions.PDot.Frontend
+import Coercions.PDot.Frontend.ScalaCmd
 
 /-!
 # The harness of the Scala front ends
@@ -44,12 +46,13 @@ The checks cover the entries of the corpus dir, the headers each folder
 takes, the expectations of each folder, the markers (plan IX, S-22), the
 claim, the end of each run and the version of scalac.  F applies the claim to
 the fills: a fill is agree-accept, or it is ours-stricter, agree-reject or
-refuse-differently and prints a written self type as an ascribed literal
-(XV1 D-12).  R asks every file the reader takes to read back the same, and
-every example program to read back the same or to have no Scala form for one
-of the reasons of `gapReasons`.  Each failed check prints one line
-`FAIL <subject>: <what>`.  They replace XV2's shell scripts `scalac-run.sh`,
-`check-folders.sh` and `check-markers.sh`.
+refuse-differently and has a cause the front end names.  The vanilla cause is
+a written self type printed as an ascribed literal (XV1 D-12).  The pDOT
+causes are F-L and F-W (plan XI, XS3).  R asks every file the reader takes to
+read back the same, and every example program to read back the same, to have
+no Scala form, or to differ for the cause its front end records.  Each failed
+check prints one line `FAIL <subject>: <what>`.  They replace XV2's shell
+scripts `scalac-run.sh`, `check-folders.sh` and `check-markers.sh`.
 -/
 
 open Frontend Frontend.Scala
@@ -62,13 +65,13 @@ namespace Agree
 structure Ours where
   /-- `Kind.word` of the outcome. -/
   kind : String
-  /-- `Outcome.text`. -/
+  /-- `Outcome.text`, except that pDOT writes the type of `ok` with `ppTy`. -/
   text : String
   /-- For `ok`, the type in Scala, or `no Scala form: <reason>`. -/
   scala : Option String
   /-- For `ok`: the fill's text named `<Stem>Fill`, or why there is none. -/
   fill : Option (Except String (List Char))
-  /-- For a fill: `some "D-12"` when its strict printing fails with `gapSelfType`. -/
+  /-- For a fill: the cause that admits it to F, as its row writes it. -/
   fillCause : Option String
   /-- The round trip's answer and whether it is `same`, none when the reader refuses. -/
   trip : Option (String × Bool)
@@ -81,6 +84,14 @@ structure FrontEnd where
   ours : String → List Char → Ours
   /-- Name, round trip answer, and whether the answer is allowed. -/
   examples : List (String × String × Bool)
+  /-- The reasons of the printers.  A pos file without a fill for one of them passes F. -/
+  gaps : List String
+  /-- The causes that admit a fill, as a `FAIL` line names them. -/
+  causeName : String
+  /-- What the number of fills with a cause is, on the output line. -/
+  causeWord : String
+  /-- What the number of fills with a cause is, in the table, then the rule of F. -/
+  causeText : String
 
 /-- A type of the vanilla front end in Scala, with the printer context of a fill. -/
 def scalaType (Λ : LabelTable) (T : DotMNF.Ty []) : String :=
@@ -127,9 +138,138 @@ def vanilla : FrontEnd where
   examples := Frontend.Scala.Tests.examples.map fun (n, e) =>
     let t := roundTrip (labelsOfProgram e) e
     (n, tripText t, match t with | .same | .gap _ => true | _ => false)
+  gaps := gapReasons
+  causeName := "the cause of D-12"
+  causeWord := "in the form of D-12"
+  causeText := "print a written self type as an ascribed literal (XV1 D-12).  F admits a fill of another class than agree-accept only with that cause, and its row says (D-12)."
+
+/-- The answer of a pDOT round trip as the table writes it. -/
+def pdotTripText : PDotFrontend.Scala.Trip → String
+  | .same => "same"
+  | .gap why => s!"gap: {why}"
+  | .unreadable err => s!"unreadable {err.pos.line}:{err.pos.col}: {err.msg}"
+  | .differs => "differs"
+  | .unresolved => "unresolved"
+
+mutual
+/-- Whether an elaborated term holds a lambda field (F-L). -/
+def lamField : {s : Paths.FCdot.Sig} → PDotFrontend.ATm s → Bool
+  | _, .path _ => false
+  | _, .app _ _ => false
+  | _, .lam _ t => lamField t
+  | _, .new _ ds => lamFieldDefs ds
+  | _, .«let» _ _ t u => lamField t || lamField u
+/-- Whether elaborated definitions hold a lambda field. -/
+def lamFieldDefs : {s : Paths.FCdot.Sig} → PDotFrontend.ADefs s → Bool
+  | _, .nil => false
+  | _, .cons ds d => lamFieldDefs ds || lamFieldDef d
+/-- Whether an elaborated definition is or holds a lambda field. -/
+def lamFieldDef : {s : Paths.FCdot.Sig} → PDotFrontend.ADef s → Bool
+  | _, .typ _ _ => false
+  | _, .path _ _ => false
+  | _, .lam _ _ _ => true
+  | _, .new _ _ ds => lamFieldDefs ds
+end
+
+mutual
+/-- Whether an elaborated term holds a `let` the elaborator inserted (F-W). -/
+def inserted : {s : Paths.FCdot.Sig} → PDotFrontend.ATm s → Bool
+  | _, .path _ => false
+  | _, .app _ _ => false
+  | _, .lam _ t => inserted t
+  | _, .new _ ds => insertedDefs ds
+  | _, .«let» tag _ t u => tag == .arg || tag == .recv || inserted t || inserted u
+/-- Whether elaborated definitions hold an inserted `let`. -/
+def insertedDefs : {s : Paths.FCdot.Sig} → PDotFrontend.ADefs s → Bool
+  | _, .nil => false
+  | _, .cons ds d => insertedDefs ds || insertedDef d
+/-- Whether an elaborated definition holds an inserted `let`. -/
+def insertedDef : {s : Paths.FCdot.Sig} → PDotFrontend.ADef s → Bool
+  | _, .typ _ _ => false
+  | _, .path _ _ => false
+  | _, .lam _ _ t => inserted t
+  | _, .new _ _ ds => insertedDefs ds
+end
+
+/-- The causes of a pDOT fill, `F-L`, `F-W`, both, or none.  F-L: the fill
+drops every written self type, so a lambda field prints as `val f = (x: S) =>
+t` with no declared type.  F-W: a `let` the elaborator inserted prints as a
+`val` with no written type, which scalac widens. -/
+def pdotCause (a : PDotFrontend.ATm []) : Option String :=
+  match lamField a, inserted a with
+  | true, true => some "F-L, F-W"
+  | true, false => some "F-L"
+  | false, true => some "F-W"
+  | false, false => none
+
+/-- Whether a character continues a Scala identifier. -/
+def identChar (c : Char) : Bool := c.isAlphanum || c == '_' || c == '$'
+
+/-- A text with every whole word `Main` replaced by `name`.  The pDOT
+printers name the wrapper object `Main` and write a path through the stem
+from its name (`PDotFrontend.Scala.mainName`).  `prev` says whether the
+character before continues an identifier. -/
+def renameMain (name : List Char) : Bool → List Char → List Char
+  | prev, 'M' :: tl@('a' :: 'i' :: 'n' :: rest) =>
+    if !prev && !((rest.head?.map identChar).getD false) then name ++ renameMain name true rest
+    else 'M' :: renameMain name true tl
+  | _, c :: rest => c :: renameMain name (identChar c) rest
+  | _, [] => []
+
+/-- The programs of the pDOT front end written in `pdt%`, each with the
+label table it is compiled under: the hand programs of `Sources.lean`, the
+same with their slots erased (`Pipeline.lean`), and the programs of
+`Examples.lean`.  The last component is the cause of a known difference of
+the round trip, which R admits. -/
+def pdotExamples : List (String × PDotFrontend.LabelTable × PDotFrontend.STm × Option String) :=
+  open PDotFrontend.Sources PDotFrontend.ElabChecks PDotFrontend.Examples in
+  [("E1", Λ1, E1_src, none), ("E2", Λ2, E2_src, none), ("E3", Λ3, E3_src, none), ("E4", Λ4, E4_src, none),
+   ("E5", Λ5, E5_src, none), ("E6", Λ6, E6_src, none), ("E7", Λ7, E7_src, none), ("E8", Λ8, E8_src, none),
+   ("E13", Λ13, E13_src, none), ("N1", ΛN1, N1_src, none), ("N2", ΛN2, N2_src, none),
+   ("N3", ΛN3, N3_src, none),
+   ("E1I", Λ1, E1_srcI, none), ("E2I", Λ2, E2_srcI, none), ("E3I", Λ3, E3_srcI, none),
+   ("E4I", Λ4, E4_srcI, none), ("E5I", Λ5, E5_srcI, none), ("E6I", Λ6, E6_srcI, none),
+   ("E7I", Λ7, E7_srcI, none), ("E8I", Λ8, E8_srcI, none), ("E13I", Λ13, E13_srcI, none),
+   ("R2", ΛPQ, R2_src, some "an application that is a lambda body reads back with the widening bind of D-13"),
+   ("PQ", ΛPQ, PQ_src, none), ("R7", ΛR7, R7_src, none), ("E7w", Λ7, E7w_src, none),
+   ("E9l", Λ9, E9l_src, none), ("E10", Λ10, E10_src, none),
+   ("E11", Λ11, E11_src, some "a μ whose binder does not occur prints as its body (plan IX S-15)")]
+
+/-- The pDOT front end (plan XI, D-23).  `ours` writes the type in pDOT's
+notation, `ours in Scala` with the pDOT Scala printer.  The fill prints with
+`fillToScala`, its wrapper renamed from `Main` to `<Stem>Fill`, and its causes
+are `pdotCause`.  A file's round trip uses the file's own table, an example's
+the table it is compiled under. -/
+def pdot : FrontEnd where
+  name := "pdot"
+  ours stem cs :=
+    let o := PDotFrontend.Scala.outcome cs
+    let trip := match PDotFrontend.Scala.readPDot cs with
+      | .ok (e, Λ, _) =>
+        let t := PDotFrontend.Scala.roundTrip Λ e
+        some (pdotTripText t, match t with | .same => true | _ => false)
+      | .error _ => none
+    match o with
+    | .ok Λ r =>
+      { kind := o.kind.word, text := "ok : " ++ PDotFrontend.ppTy Λ r.2.ty,
+        scala := some (PDotFrontend.Scala.tyText Λ r.2.ty),
+        fill := some ((PDotFrontend.Scala.fillToScala Λ r.1).map fun F =>
+          renameMain (stem ++ "Fill").toList false (PDotFrontend.ScalaRead.print F)),
+        fillCause := pdotCause r.1, trip }
+    | _ => { kind := o.kind.word, text := o.text, scala := none, fill := none, fillCause := none, trip }
+  examples := pdotExamples.map fun (n, Λ, e, known) =>
+    match PDotFrontend.Scala.roundTrip Λ e, known with
+    | .same, _ => (n, "same", true)
+    | .gap why, _ => (n, s!"gap: {why}", true)
+    | .differs, some why => (n, s!"differs: {why}", true)
+    | t, _ => (n, pdotTripText t, false)
+  gaps := PDotFrontend.Scala.gapReasons
+  causeName := "a cause F-L or F-W"
+  causeWord := "with a cause F-L or F-W"
+  causeText := "have a cause of plan XI XS3.  F-L: the fill drops every written self type, so a lambda field prints with no declared type.  F-W: a `let` the elaborator inserted prints as a `val` with no written type, which scalac widens.  F admits a fill of another class than agree-accept only with a cause, and its row names it."
 
 /-- The front ends the command line names. -/
-def frontEnds : List FrontEnd := [vanilla]
+def frontEnds : List FrontEnd := [vanilla, pdot]
 
 /-! ## The runner -/
 
@@ -549,15 +689,16 @@ def fileFails (before : List (String × String)) (ms : Nat) (f : CFile) (s : See
   return out
 
 /-- F on the fill of a pos file (H-7): the `<what>` of the first item that
-applies, or none.  `stems` are the stems of the corpus, `fl` the fill with
-scalac's verdict on it. -/
-def fillWhat (stems : List String) (ms : Nat) (f : CFile) (fl : Option (FillOf × Seen)) :
+applies, or none.  `gaps` are the reasons of the front end's printers,
+`causeName` names its causes, `stems` are the stems of the corpus, `fl` the
+fill with scalac's verdict on it. -/
+def fillWhat (gaps : List String) (causeName : String) (stems : List String) (ms : Nat) (f : CFile) (fl : Option (FillOf × Seen)) :
     Option String :=
   if f.folder != "pos" then none
   else
     match f.ours.fill, fl with
     | some (.error why), _ =>
-      if gapReasons.contains why || why.startsWith "reader: " then none else some s!"no fill: {why}"
+      if gaps.contains why || why.startsWith "reader: " then none else some s!"no fill: {why}"
     | some (.ok _), some (g, s) =>
       let cls := classOf g.ours.kind s.verdict
       let tail := s!"scalac {scalacCell s}, ours {g.ours.text}"
@@ -568,7 +709,7 @@ def fillWhat (stems : List String) (ms : Nat) (f : CFile) (fl : Option (FillOf �
           if !fillFails cls f.ours.fillCause then none
           else if cls == "outside" then some s!"the fill does not read back: {g.ours.text}"
           else if cls == "ours-stricter" || cls == "agree-reject" || cls == "refuse-differently" then
-            some s!"the fill is {cls} without the cause of D-12: {tail}"
+            some s!"the fill is {cls} without {causeName}: {tail}"
           else some s!"the fill is {cls}: {tail}"
     | _, _ => none
 
@@ -582,7 +723,7 @@ def fillCell (f : CFile) (fl : Option (FillOf × Seen)) : String :=
       let cls := classOf g.ours.kind s.verdict
       if cls == "agree-accept" then cls
       else
-        let mark := if f.ours.fillCause.isSome then " (D-12)" else ""
+        let mark := match f.ours.fillCause with | some c => s!" ({c})" | none => ""
         s!"{cls}{mark}: scalac {scalacCell s}, ours {g.ours.text}"
     | _, _ => ""
 
@@ -633,7 +774,7 @@ structure Summary where
   fills : Nat
   /-- The fills' class counts, the classes with at least one fill. -/
   fillClasses : String
-  /-- The number of fills with the cause of D-12. -/
+  /-- The number of fills with a cause. -/
   d12 : Nat
   /-- The number of files the reader takes. -/
   trips : Nat
@@ -674,7 +815,7 @@ def tableText (fe : FrontEnd) (dir version : String) (ms : Nat) (fs : Array CFil
     s!"- scalac {version}, default flags, {deadlineText ms} per run.",
     s!"- Files: {fs.size}.  {allFolderCounts (fs.toList.map (·.folder))}.",
     s!"- Classes (plan S-21): {classCounts ((fs.zip ss).toList.map fun (f, s) => classOf f.ours.kind s.verdict)}.",
-    s!"- Fills of the pos files (F): {sum.fills}.  {fillClasses}{sum.d12} print a written self type as an ascribed literal (XV1 D-12).  F admits a fill of another class than agree-accept only with that cause, and its row says (D-12).",
+    s!"- Fills of the pos files (F): {sum.fills}.  {fillClasses}{sum.d12} {fe.causeText}",
     s!"- Round trips (R): {sum.trips} files the reader takes{andThen sum.tripCounts}.  {sum.examples} example programs{andThen sum.exampleCounts}.",
     "",
     "## Files",
@@ -818,7 +959,7 @@ def judge (fe : FrontEnd) (dir : String) (raw : Option String) (ms t0 : Nat) : I
       d12 := (fills.filter fun (i, _) => fs[i]!.ours.fillCause.isSome).size,
       trips := tripWords.length, tripCounts := someCounts answers tripWords,
       examples := exs.length, exampleCounts := someCounts answers (exs.map fun (_, a, _) => answerWord a) }
-    IO.println s!"agree: fills {sum.fills}{andThen sum.fillClasses}, {sum.d12} in the form of D-12"
+    IO.println s!"agree: fills {sum.fills}{andThen sum.fillClasses}, {sum.d12} {fe.causeWord}"
     IO.println s!"agree: round trips {sum.trips} files{andThen sum.tripCounts}, {sum.examples} examples{andThen sum.exampleCounts}"
     -- the expectations: the global ones, then for each file its checks, its fill and its round trip
     let mut fails := global
@@ -829,7 +970,7 @@ def judge (fe : FrontEnd) (dir : String) (raw : Option String) (ms t0 : Nat) : I
     for i in [0:fs.size] do
       let f := fs[i]!
       fails := fails ++ (fileFails before ms f ss[i]!).toArray
-      if let some w := fillWhat stems ms f fillOf[i]! then
+      if let some w := fillWhat fe.gaps fe.causeName stems ms f fillOf[i]! then
         fails := fails.push s!"FAIL {f.path}: {w}"
       if let some (a, false) := f.ours.trip then
         fails := fails.push s!"FAIL {f.path}: round trip {a}"

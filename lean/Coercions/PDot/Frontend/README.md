@@ -33,8 +33,9 @@ scalac does at a `val`, and keeps the singleton of a module path.
 `ScalaRead/` is the reader of the pDOT Scala subset, stage XS1a of plan XI. It
 reads a `.scala` file into a tree of its own on the lexer of `ScalaSyntax`,
 checks scopes and the kind table of paths, and prints a tree back as text. It
-builds as the library `PDotScalaRead` until a later stage maps its tree into
-`pdt%`'s surface syntax. Its root `ScalaRead.lean` describes its modules.
+builds as the library `PDotScalaRead`, and its root `ScalaRead.lean` describes
+its modules. The section "The Scala front end" says how its tree reaches the
+typer.
 
 The library is `PDotFrontend`, built by `lake build PDotFrontend`. It is not a
 default target, so the metatheory build does not wait on it. Every definition
@@ -116,6 +117,59 @@ The front end's own theorems.
 - In `Pipeline`: `Ek_checks` for E1 to E8 and E13 with every slot written, `Ek_fill` with the slots a goal or the definitions give erased, `N1_rejected` to `N3_rejected` and `N4_reason`.
 - In `Examples`: `X_checks` for the paths programs R2, PQ, R7, E7w and E9l, and for E10 and E11 as programs. `Ek_run` for E5, E7 and E8, the run of `PDot/Translation/Pages.lean` in 4, 2 and 9 steps, `Ek_fc_end`, the FCp machine at a final state with the erasure of the page's end, in 9, 7 and 24 steps, and `Ek_same`, the two runs at one erasure.
 
+## The Scala front end
+
+A pDOT program can also be a `.scala` file. The reader of `ScalaRead/` parses
+it and refuses a file outside the subset with a rule and a position. `Scala`
+maps the reader's tree to the surface syntax of `pdt%`, one case per construct
+of plan XI. The members of the wrapper object become the stem `σ`, a literal
+that holds them. Every template gets the hidden field `ℓself`, declared at the
+template's singleton (D-7). A term that names an object or `this` reads as its
+`ℓself` field, so it has the object's singleton type, which pDOT gives no path
+on its own (N4). The shortest unstable prefix of a term path is bound by a
+`let` first (D-10). An application that is a lambda body or a block result is
+bound by a `let` that widens, as scalac widens there (D-13). `readPDot` gives
+the term, the label table and the module paths of a file.
+
+`outcome` reads a file, compiles its term in the Scala mode with the file's
+module paths, and runs the member check R-M on the result. It answers `ok` with
+the compiled program, `rejected` with a reason, `limit`, or `outside` with the
+refusal and its position. It never answers `unknown`. `outcome_ok` says that an
+`ok` outcome is the compilation of the term `readPDot` gives, `outcome_checks`
+that its derivation checks in FCp, and `outcome_safe` that its term is safe by
+`PDot.safety`. `toScala` prints a term as Scala, or says why it has no Scala
+form. `fillToScala` prints a compiled program with every slot written, and
+`roundTrip` prints a term and reads it back. `ScalaCmd` holds the commands
+`pdot_scala_example` and `pdot_scala_corpus`. These three modules build as the
+library `PDotScala`, by `lake build PDotScala`.
+
+The corpus is `scala/pdot/`, 78 files, which `scala/README.md` describes. The
+module `Coercions.ScalaCorpus.PDot` judges each file in the kernel from its
+bytes when `lake build ScalaCorpusPDot` builds it. The harness
+`scripts/scala/Agree.lean` compiles each file with scalac 3.8.4 and writes
+`scala/pdot/TABLE.md`, and CI fails when that table changes.
+
+The claim is plan IX's: outside `disagree/`, every corpus file that this front
+end accepts, scalac 3.8.4 accepts. It is tested on these 78 files and not
+proved. It holds for the pinned compiler only, and it compares verdicts, not
+types. 33 files are agree-accept, 15 agree-reject and 22 outside. The 8 files
+of `disagree/` are the exceptions, each with its cause. DepCo, Mid and X3 are
+ours-looser. In DepCo pDOT compares the domains of dependent function types
+contravariantly (`subtyp_all`) and scalac by equality. In Mid scalac checks an
+argument against one function type of an intersection and DOT against the
+other. In X3 scalac types a closure at the function part of its expected type
+and DOT at the lower bound of `y.A`. SnglRefl, ReflSngl, TS, SnglInFn and
+DefThisInfer are ours-stricter. pDOT has no rule `x : x.type` (N4), its
+subtyping widens no singleton, and the elaborator widens an inferred `this`
+result. N holds: each file that scalac rejects fails exactly on its `// error`
+lines. R holds for the 57 files the reader takes. F holds in a weaker form. 25
+of the 32 fills are agree-accept, and the harness admits the other 7 by a
+cause. The fill printer drops every written self type, so a lambda field prints
+with no declared type (F-L), and it prints a `let` the elaborator inserted as a
+`val` with no written type, which scalac widens (F-W). So our side rejects 5
+fills that scalac compiles, and scalac rejects the fills of Recursion and
+UnstableSngl. The table names the cause of each.
+
 ## Modules
 
 | module | contents |
@@ -130,3 +184,6 @@ The front end's own theorems.
 | `Pipeline` | `compileE`, `compile`, `checkAt`, `compileLanded`, the two drivers, the theorems, and the checks of E1 to E8, E13 and N1 to N4 |
 | `Pretty` | printers of surface, partial, annotated and source terms, types, reasons and runs |
 | `Examples` | the paths programs compiled, E10 and E11 as programs, and the runs of E5, E7 and E8 on both machines |
+| `Scala` | the mapping from the reader's tree to `STm`, `readPDot`, `outcome` with the member check R-M and its three theorems, the printers `toScala` and `fillToScala`, and `roundTrip` |
+| `ScalaTests` | checks of the mapping, the outcomes, the member check, the printers and the round trips, by `#eval expect` |
+| `ScalaCmd` | the commands `pdot_scala_example` and `pdot_scala_corpus` |

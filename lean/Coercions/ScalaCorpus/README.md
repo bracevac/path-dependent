@@ -10,6 +10,7 @@ its headers say fails the build.
 | module | contents |
 |---|---|
 | `Vanilla` | the 169 files of `scala/vanilla/` by `scala_corpus`, the congruence lemmas and the template theorems |
+| `PDot` | the 78 files of `scala/pdot/` by `pdot_scala_corpus`, and the congruence lemmas |
 
 ## Main theorems
 
@@ -21,6 +22,10 @@ its headers say fails the build.
 - `E10t_compiles`, `E10t_checks`: E10t written as Scala compiles, and the target checker accepts its translation.
 - `P5_alpha`: P5 written as Scala is another term than `P5src`, with the same resolution.
 - `#assert_axioms ScalaCorpus.Vanilla` ends the module. It fails when a theorem of the namespace depends on an axiom other than `propext` and `Quot.sound`.
+- `ScalaCorpus.PDot.<folder>.<Stem>.read`, for each of the 57 files the pDOT reader takes: `readPDot` makes the term `prog`, the label table `table` and the module paths `modules` of the file's characters `chars`.
+- `ScalaCorpus.PDot.<folder>.<Stem>.verdict`, for each of the 78 files: the kind of `PDotFrontend.Scala.outcome chars` is the one that the folder and the `// ours:` header fix.
+- `ScalaCorpus.PDot.compileE_congr`, `ScalaCorpus.PDot.compile_congr`: the two lemmas for the pDOT front end. No file of `scala/pdot/` has a `// same as:` header, so the module has no `same` theorem.
+- `#assert_axioms ScalaCorpus.PDot` ends the pDOT module, with the same check.
 
 ## Building
 
@@ -28,3 +33,8 @@ its headers say fails the build.
 a minute. Lake rebuilds the module when a `.scala` file under `scala/vanilla/`
 changes, since the library needs the input directory `scala-vanilla` of
 `lakefile.toml`.
+
+`lake build ScalaCorpusPDot` builds the pDOT module in about a minute, and
+Lake rebuilds it when a `.scala` file under `scala/pdot/` changes, through the
+input directory `scala-pdot`. `scala/pdot/TABLE.md` is not an input, so a new
+table rebuilds nothing.
