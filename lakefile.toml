@@ -129,3 +129,14 @@ roots = ["Coercions.PDot.Frontend.ScalaRead"]
 [[lean_lib]]
 name = "PDotScala"
 roots = ["Coercions.PDot.Frontend.ScalaCmd"]
+
+[[input_dir]]
+name = "scala-pdot"
+path = "scala/pdot"
+text = true
+filter = { extension = ["scala"] }
+
+[[lean_lib]]
+name = "ScalaCorpusPDot"
+roots = ["Coercions.ScalaCorpus.PDot"]
+needs = ["scala-pdot"]
