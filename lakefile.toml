@@ -125,3 +125,7 @@ roots = ["Coercions.PDot.Frontend"]
 [[lean_lib]]
 name = "PDotScalaRead"
 roots = ["Coercions.PDot.Frontend.ScalaRead"]
+
+[[lean_lib]]
+name = "PDotScala"
+roots = ["Coercions.PDot.Frontend.ScalaCmd"]
