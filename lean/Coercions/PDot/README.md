@@ -84,6 +84,14 @@ typedness and erasure theorems, the transport `PDot.safety` and `PDot.reachable_
 examples on both sides.  Every translation function is structural, so the kernel runs the
 translation of a whole derivation.
 
+`Frontend/` is the front end, the library `PDotFrontend`, which is not a default target.  A program
+is written in the paper's notation under `pdt%`, and may leave out a lambda's domain, a literal's
+self type and the declared type of a lambda field.  The front end resolves names, fills those slots
+and searches for a `HasTy` derivation.  The FCp checker accepts its translation, and both machines
+run it.  Its theorems restate the ones above at a compiled program.  Its checks type E1 to E8 and
+E13 by search at the types of their hand derivations, and run E5, E7 and E8 on both machines.  See
+[Frontend/README.md](Frontend/README.md).
+
 ## Building
 
 `lake build PDot` builds the library, and `PDot` is a default target.  The path layer (`Sig`,
