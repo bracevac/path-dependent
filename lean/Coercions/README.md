@@ -123,6 +123,13 @@ excluded middle.  FCp types some terms that pDOT rejects, among them the reflexi
 `x : x.type`, and its theorems cover them.  The path layer is imported from `Paths/FCdot` and the
 Paths tree does not change.  Axioms: `propext` and `Quot.sound`.
 
+The pDOT front end, the library `PDotFrontend` in [PDot/Frontend/](PDot/Frontend/README.md), writes,
+types, checks and runs pDOT programs in the paper's notation under `pdt%`.  It fills a lambda's
+domain, a literal's self type and the declared type of a lambda field, and returns the
+`PDot.Source.HasTy` derivation, so it is sound by construction.  A path stays a path, so programs
+that the paths front end rejects compile here, among them a path as an argument (R7) and a
+singleton used at the type of its path (R2).  It is not a default target.
+
 ## Extensions
 
 Each extension copies a base tree, named in its `BASE` file, into a library of its own, keeps

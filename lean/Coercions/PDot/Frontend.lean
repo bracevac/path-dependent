@@ -11,6 +11,8 @@ import Coercions.PDot.Frontend.Avoid
 import Coercions.PDot.Frontend.Typer
 import Coercions.PDot.Frontend.Elab
 import Coercions.PDot.Frontend.Pipeline
+import Coercions.PDot.Frontend.Pretty
+import Coercions.PDot.Frontend.Examples
 
 /-!
 # The pDOT front end
