@@ -30,6 +30,11 @@ would read the text otherwise: `A & (B & C)`, `(S => T) & U`,
 `(S => T) => U`, and a lambda under an ascription, as a receiver or as a
 function.
 
+Classes and traits print as written: `[abstract] class C(val x: T, y: U)
+extends P(a, b) with Q {`, the members one per line two spaces further in, and
+`}`.  A body with no member prints no braces.  `new q.C(a, b)` prints in
+place, and `new q.C` without arguments prints no parentheses.
+
 `print` is structural and returns `List Char`, so the kernel runs it.  The
 fixed words are lists of characters spelled out, and names are read off their
 bytes by `ScalaSyntax.Print.name`.
@@ -38,12 +43,27 @@ bytes by `ScalaSyntax.Print.name`.
 namespace NominalFrontend.ScalaRead
 
 open ScalaSyntax.Print (name nl parensIf gap wAny wNothing wThis wType wVal wDef wProgram wNewObject wImport
-  wObject)
+  wObject wClass wTrait wExtends)
 
 namespace Print
 
 /-- `.type`. -/
 def wDotType : List Char := ['.', 't', 'y', 'p', 'e']
+
+/-- `new `. -/
+def wNew : List Char := ['n', 'e', 'w', ' ']
+
+/-- `abstract `. -/
+def wAbstract : List Char := ['a', 'b', 's', 't', 'r', 'a', 'c', 't', ' ']
+
+/-- `override `. -/
+def wOverride : List Char := ['o', 'v', 'e', 'r', 'r', 'i', 'd', 'e', ' ']
+
+/-- ` with `. -/
+def wWith : List Char := [' ', 'w', 'i', 't', 'h', ' ']
+
+/-- `override ` when `o`. -/
+def ovw (o : Bool) : List Char := if o then wOverride else []
 
 /-- The header line, `import scala.reflect.Selectable.reflectiveSelectable`. -/
 def wHeader : List Char := wImport ++ Parse.headerChars
@@ -159,11 +179,18 @@ def isLam : Tm → Bool
   | .lam .. => true
   | _ => false
 
+/-- Whether a term is `new` with no arguments, which a selection or an application parenthesizes, since
+`new K.v` reads as `new` of the class `K.v` and `new K(e)` as `new` with an argument (G-4). -/
+def isBareNew : Tm → Bool
+  | .new _ _ .nil => true
+  | _ => false
+
 /-- Whether a term is a block. -/
 def isBlock : Tm → Bool
   | .block .. => true
   | _ => false
 
+mutual
 /-- Whether a term spans lines: it holds a block or a literal, or a type that
 spans lines. -/
 def multi (t : Tm) : Bool :=
@@ -174,7 +201,15 @@ def multi (t : Tm) : Bool :=
   | .lam _ _ T b => (T.map long).getD false || multi b
   | .asc _ e T => multi e || long T
   | .block .. | .lit .. => true
+  | .new _ _ as => multiArgs as
 termination_by structural t
+/-- Whether an argument spans lines. -/
+def multiArgs (as : Args) : Bool :=
+  match as with
+  | .nil => false
+  | .cons t r => multi t || multiArgs r
+termination_by structural as
+end
 
 /-- Whether the right side of `=` or the body of `=>` goes on the next line:
 it spans lines and is not a block. -/
@@ -191,6 +226,28 @@ def selfLine (i : Nat) : Option String → List Char
   | some x => nl i ++ name x ++ [' ', '=', '>']
   | none => []
 
+/-- A class reference, `C` or `q.C`. -/
+def classRef (K : ClassRef) : List Char :=
+  match K.pre with
+  | some q => path q ++ '.' :: name K.name
+  | none => name K.name
+
+/-- A constructor parameter, `x: T` or `val x: T`. -/
+def cparam (i : Nat) (x : CParam) : List Char :=
+  (if x.isVal then wVal else []) ++ name x.name ++ [':', ' '] ++ ty (some i) x.ty
+
+/-- Constructor parameters separated by `, `. -/
+def cparams (i : Nat) : List CParam → List Char
+  | [] => []
+  | [x] => cparam i x
+  | x :: xs => cparam i x ++ [',', ' '] ++ cparams i xs
+
+/-- The keyword of a class definition. -/
+def clsWord : ClsKind → List Char
+  | .concrete => wClass
+  | .abstract => wAbstract ++ wClass
+  | .trait => wTrait
+
 /-- The parameter lists of a `def` in a row, `(x1: S1)(x2: S2)`. -/
 def params (i : Nat) : List Param → List Char
   | [] => []
@@ -205,11 +262,11 @@ def tm (i : Nat) (t : Tm) : List Char × Nat :=
   | .path q => (path q, i)
   | .sel s _ a =>
     let (u, j) := tm i s
-    (parensIf (isLam s) u ++ '.' :: name a, j)
+    (parensIf (isLam s || isBareNew s) u ++ '.' :: name a, j)
   | .app f e =>
     let (u, j) := tm i f
     let (v, k) := tm j e
-    (parensIf (isLam f) u ++ '(' :: v ++ [')'], k)
+    (parensIf (isLam f || isBareNew f) u ++ '(' :: v ++ [')'], k)
   | .lam _ x T b =>
     let param := match T with
       | some U => '(' :: name x ++ [':', ' '] ++ ty (some i) U ++ [')']
@@ -222,7 +279,52 @@ def tm (i : Nat) (t : Tm) : List Char × Nat :=
     ('(' :: parensIf (isLam e) u ++ [':', ' '] ++ ty (some j) T ++ [')'], j)
   | .block _ ss => ('{' :: stats (i + 2) ss ++ nl i ++ ['}'], i)
   | .lit _ s ms => (wNewObject ++ selfLine (i + 2) s ++ mems (i + 2) ms ++ nl i ++ ['}'], i)
+  | .new _ K as =>
+    match as with
+    | .nil => (wNew ++ classRef K, i)
+    | _ =>
+      let (u, j) := args i as
+      (wNew ++ classRef K ++ '(' :: u ++ [')'], j)
 termination_by structural t
+/-- Arguments separated by `, `, and the indentation of the line the last ends on. -/
+def args (i : Nat) (as : Args) : List Char × Nat :=
+  match as with
+  | .nil => ([], i)
+  | .cons t .nil => tm i t
+  | .cons t r =>
+    let (u, j) := tm i t
+    let (v, k) := args j r
+    (u ++ [',', ' '] ++ v, k)
+termination_by structural as
+/-- The parents of a class, ` extends P(args)` then ` with Q` each, `first` before the first. -/
+def parents (i : Nat) (first : Bool) (Ps : Parents) : List Char :=
+  match Ps with
+  | .nil => []
+  | .cons P as r =>
+    (if first then wExtends else wWith) ++ classRef P ++
+      (match as with
+       | .nil => []
+       | _ => '(' :: (args i as).1 ++ [')']) ++ parents i false r
+termination_by structural Ps
+/-- The members of a class or trait body, each on its own line at the indentation `i`. -/
+def cmems (i : Nat) (ms : CMems) : List Char :=
+  match ms with
+  | .nil => []
+  | .typ _ o A lo hi r =>
+    nl i ++ ovw o ++ wType ++ name A ++ bnd (some i) [' ', '>', ':', ' '] lo ++ bnd (some i) [' ', '<', ':', ' '] hi ++
+      cmems i r
+  | .alias _ o A T r => nl i ++ ovw o ++ wType ++ name A ++ [' ', '=', ' '] ++ ty (some i) T ++ cmems i r
+  | .valDecl _ o a T r => nl i ++ ovw o ++ wVal ++ name a ++ [':', ' '] ++ ty (some i) T ++ cmems i r
+  | .val _ o a T e r =>
+    let k := if breaks e then i + 2 else i
+    nl i ++ ovw o ++ wVal ++ name a ++ [':', ' '] ++ ty (some i) T ++ [' ', '='] ++ gap (breaks e) k ++ (tm k e).1 ++
+      cmems i r
+  | .defDecl _ o f ps R r => nl i ++ ovw o ++ wDef ++ name f ++ params i ps ++ [':', ' '] ++ ty (some i) R ++ cmems i r
+  | .defn _ o f ps R e r =>
+    let k := if breaks e then i + 2 else i
+    nl i ++ ovw o ++ wDef ++ name f ++ params i ps ++ [':', ' '] ++ ty (some i) R ++ [' ', '='] ++ gap (breaks e) k ++
+      (tm k e).1 ++ cmems i r
+termination_by structural ms
 /-- The statements of a block, each on its own line at the indentation
 `i`. -/
 def stats (i : Nat) (ss : Stats) : List Char :=
@@ -247,6 +349,14 @@ def mems (i : Nat) (ms : Mems) : List Char :=
     let k := if breaks e then i + 2 else i
     nl i ++ wDef ++ name f ++ params i ps ++ tyOpt i [':', ' '] R ++ [' ', '='] ++ gap (breaks e) k ++
       (tm k e).1 ++ mems i r
+  | .cls _ k C ps Ps b r =>
+    nl i ++ clsWord k ++ name C ++
+      (match ps with
+       | [] => []
+       | _ => '(' :: cparams i ps ++ [')']) ++ parents i true Ps ++
+      (match b with
+       | .nil => []
+       | _ => [' ', '{'] ++ cmems (i + 2) b ++ nl i ++ ['}']) ++ mems i r
 termination_by structural ms
 end
 

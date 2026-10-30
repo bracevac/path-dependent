@@ -21,6 +21,11 @@ on its line when the members start a later line, runs the column rule on the
 rest, and puts the pair back after its `{`.  A block `{ x =>` is no template
 and keeps the column rule's refusal.
 
+Classes and traits (plan XII, stage N5).  `pClassDef` reads a class or trait
+definition as a member of the wrapper or of an object, `pCMems` its body, and
+`pLiteral` also `new q.C(ē)`.  The refusals R-LC, R-CC, R-OE, R-AN, R-SU, R-W,
+R-TP and R-MO name the construct at its token.
+
 The descent has one function per production of the grammar, and the fuel falls
 by one at each call.  A selection on a path folds into a longer path
 (`selOn`), so a term path is always `Tm.path`.
@@ -106,10 +111,31 @@ def msgProgram : String := "`program` names the program of the wrapper object: r
 def msgDefTerm : String := "a def is a member of the wrapper, an object or a literal"
 /-- A member after `program`, or a wrapper with no `val program`. -/
 def msgAfter : String := "the wrapper object ends with `val program`"
-/-- R-T: `class` or `trait`. -/
-def msgRT : String := "classes and traits are outside the subset"
-/-- R-T: `extends`. -/
+/-- `extends` anywhere but after `class` and `trait`. -/
 def msgExtends : String := "`extends` is outside the subset"
+/-- R-LC: `class` or `trait` in a term, a block or a literal. -/
+def msgRLC : String := "a class or trait is a member of the wrapper or of an object"
+/-- R-CC: `class`, `trait` or `object` in a class or trait body. -/
+def msgRCC : String := "a class, trait or object inside a class or trait is outside the subset"
+/-- R-OE: `extends` after `object o`. -/
+def msgROE : String := "an object that extends a class or trait is outside the subset"
+/-- R-AN: a body after `new C(args)`. -/
+def msgRAN : String := "an anonymous class is outside the subset"
+/-- R-SU: `super`. -/
+def msgRSU : String := "`super` is outside the subset"
+/-- R-W: a `val` or `def` of a class or trait with no written type. -/
+def msgRW : String := "a member of a class or trait has a written type in this stage"
+/-- R-TP: `[` after a def's or a class's name. -/
+def msgRTP : String := "type parameters are outside the subset"
+/-- R-MO: a modifier `m` before a member. -/
+def msgRMO (m : String) : String := "the modifier `" ++ m ++ "` is outside the subset"
+
+/-- The modifiers of Scala 3 that R-MO names.  `abstract` before `class` and `override` in a class or trait
+body are read. -/
+def isModifier : String → Bool
+  | "abstract" | "final" | "sealed" | "private" | "protected" | "implicit" | "lazy" | "case" | "override"
+  | "open" | "inline" | "transparent" | "opaque" | "infix" => true
+  | _ => false
 /-- R-I: an import beyond the header. -/
 def msgRI : String := "imports other than the header's are outside the subset"
 /-- A file with no import, or whose first import is not the header. -/
@@ -291,8 +317,53 @@ def pParams : Nat → Parser (List Param)
     | .sym "(" =>
       let x ← pParam n
       return x :: (← pParams n)
-    | .sym "[" => refuse t.pos "type parameters are outside the subset"
+    | .sym "[" => refuse t.pos msgRTP
     | _ => return []
+
+/-- `C` or `q.C`: names after the path `q` read so far, the last the class.  The head is a name, or `this`
+when nothing is read. -/
+def pClassRef : Nat → Option Path → Parser ClassRef
+  | 0, _ => noFuel
+  | n + 1, q => do
+    let t ← next
+    match t.tok, q with
+    | .ident x _, _ =>
+      advance
+      if (← sees (.sym ".")) then
+        advance
+        pClassRef n (some (match q with
+          | some q' => .sel q' t.pos x
+          | none => .var t.pos x))
+      else return ⟨t.pos, q, x⟩
+    | .kw "this", none =>
+      advance
+      expectSym "."
+      pClassRef n (some (.this t.pos))
+    | _, _ => expected "a class name"
+
+/-- `[val] x: T`, a constructor parameter. -/
+def pCParam (n : Nat) : Parser CParam := do
+  let v ← sees (.kw "val")
+  if v then advance
+  let (p, x) ← pName
+  expectSym ":"
+  let T ← pType n
+  return ⟨p, v, x, T⟩
+
+/-- Constructor parameters separated by `,`, then `)`. -/
+def pCParams : Nat → Parser (List CParam)
+  | 0 => noFuel
+  | n + 1 => do
+    let x ← pCParam n
+    let c ← next
+    match c.tok with
+    | .sym "," =>
+      advance
+      return x :: (← pCParams n)
+    | .sym ")" =>
+      advance
+      return [x]
+    | _ => expected "`,` or `)`"
 
 mutual
 /-- A lambda in one of its three forms, or Postfix. -/
@@ -382,7 +453,8 @@ def pAtom : Nat → Parser Tm
       expectSym "}"
       return .block t.pos ss
     | .kw "new" => pLiteral n
-    | .kw "class" | .kw "trait" => refuse t.pos msgRT
+    | .kw "class" | .kw "trait" => refuse t.pos msgRLC
+    | .reserved "super" => refuse t.pos msgRSU
     | .kw "extends" => refuse t.pos msgExtends
     | .kw "object" => refuse t.pos msgRO
     | .kw "def" => refuse t.pos msgDefTerm
@@ -417,7 +489,7 @@ def pStats : Nat → Parser Stats
         refuse u.pos "a block holds `val`s and then one result"
       if (← sees (.sym "}")) then return .last e
       afterExpr "`}`"
-/-- `new Object { [s =>] Mems }`. -/
+/-- `new Object { [s =>] Mems }`, or `new C`, `new q.C(e1, …, en)`.  A body after a class is R-AN. -/
 def pLiteral : Nat → Parser Tm
   | 0 => noFuel
   | n + 1 => do
@@ -425,20 +497,148 @@ def pLiteral : Nat → Parser Tm
     advance
     let c ← next
     match c.tok with
-    | .ident "Object" _ => advance
-    | .ident _ _ => refuse c.pos "`new` takes only `Object` in the subset: write `new Object { … }`"
-    | _ => expected "`Object`"
-    expectSym "{"
-    let self ← pSelf
-    if (← sees (.sym "}")) then refuse t.pos "an empty object literal is outside the subset"
-    let ms ← pMems n false
-    expectSym "}"
-    return .lit t.pos self ms
-/-- Members, one or more.  At the wrapper's level (`top`) they stop before
-`val program`. -/
-def pMems : Nat → Bool → Parser Mems
+    | .ident "Object" _ =>
+      advance
+      expectSym "{"
+      let self ← pSelf
+      if (← sees (.sym "}")) then refuse t.pos "an empty object literal is outside the subset"
+      let ms ← pMems n false false
+      expectSym "}"
+      return .lit t.pos self ms
+    | .ident _ _ | .kw "this" =>
+      let K ← pClassRef n none
+      if (← sees (.sym "[")) then refuse (← next).pos "type arguments are outside the subset"
+      let as ← if (← sees (.sym "(")) then pArgs n else pure .nil
+      if (← sees (.sym "{")) then refuse (← next).pos msgRAN
+      return .new t.pos K as
+    | _ => expected "`Object` or a class name"
+/-- `(e1, …, en)` or `()`.  The head is `(`. -/
+def pArgs : Nat → Parser Args
+  | 0 => noFuel
+  | n + 1 => do
+    advance
+    if (← sees (.sym ")")) then
+      advance
+      return .nil
+    pArgsRest n
+/-- An argument, then `,` and more, or `)`. -/
+def pArgsRest : Nat → Parser Args
+  | 0 => noFuel
+  | n + 1 => do
+    let t ← pExpr n
+    let c ← next
+    match c.tok with
+    | .sym "," =>
+      advance
+      return .cons t (← pArgsRest n)
+    | .sym ")" =>
+      advance
+      return .cons t .nil
+    | _ => afterExpr "`,` or `)`"
+/-- The parents after `extends`: a class reference with its arguments when `args`, then `with Q` and
+more. -/
+def pParents : Nat → Bool → Parser Parents
   | 0, _ => noFuel
-  | n + 1, top => do
+  | n + 1, args => do
+    let P ← pClassRef n none
+    let as ← if args && (← sees (.sym "(")) then pArgs n else pure .nil
+    if (← sees (.reserved "with")) then
+      advance
+      return .cons P as (← pParents n false)
+    return .cons P as .nil
+/-- A class or trait definition of the kind `k` after its keyword, as the member before the rest. -/
+def pClassDef : Nat → ClsKind → Parser (Mems → Mems)
+  | 0, _ => noFuel
+  | n + 1, k => do
+    let (p, C) ← pName
+    if (← sees (.sym "[")) then refuse (← next).pos msgRTP
+    let ps ← if k != .trait && (← sees (.sym "(")) then do
+        advance
+        if (← sees (.sym ")")) then do
+          advance
+          pure []
+        else pCParams n
+      else pure []
+    let Ps ← if (← sees (.kw "extends")) then do
+        advance
+        pParents n (k != .trait)
+      else pure .nil
+    let b ← if (← sees (.sym "{")) then do
+        advance
+        if (← sees (.sym "}")) then do
+          advance
+          pure .nil
+        else do
+          let b ← pCMems n
+          expectSym "}"
+          pure b
+      else pure .nil
+    return fun r => .cls p k C ps Ps b r
+/-- The members of a class or trait body, one or more.  `override` before a member is read. -/
+def pCMems : Nat → Parser CMems
+  | 0 => noFuel
+  | n + 1 => do
+    let ov ← sees (.reserved "override")
+    if ov then advance
+    let t ← next
+    match t.tok with
+    | .kw "type" =>
+      advance
+      let (p, A) ← pName
+      if (← sees (.sym "=")) then
+        advance
+        let T ← pType n
+        return .alias p ov A T (← pCMemsRest n)
+      let lo ← bound ">:" (pType n)
+      let hi ← bound "<:" (pType n)
+      return .typ p ov A (match lo with | some T => .given T | none => .absent)
+        (match hi with | some T => .given T | none => .absent) (← pCMemsRest n)
+    | .kw "val" =>
+      advance
+      let (p, a) ← pName
+      if !(← sees (.sym ":")) then refuse p msgRW
+      advance
+      let T ← pType n
+      if (← sees (.sym "=")) then
+        advance
+        let e ← pExpr n
+        return .val p ov a T e (← pCMemsRest n)
+      return .valDecl p ov a T (← pCMemsRest n)
+    | .kw "def" =>
+      advance
+      let (p, f) ← pName
+      let ps ← pParams n
+      if ps.isEmpty then refuse p msgRP
+      if !(← sees (.sym ":")) then refuse p msgRW
+      advance
+      let R ← pType n
+      if (← sees (.sym "=")) then
+        advance
+        let e ← pExpr n
+        return .defn p ov f ps R e (← pCMemsRest n)
+      return .defDecl p ov f ps R (← pCMemsRest n)
+    | .kw "class" | .kw "trait" | .kw "object" => refuse t.pos msgRCC
+    | .reserved "abstract" =>
+      match (← get) with
+      | _ :: ⟨.kw "class", q, _⟩ :: _ => refuse q msgRCC
+      | _ => refuse t.pos (msgRMO "abstract")
+    | .reserved m => if isModifier m then refuse t.pos (msgRMO m) else expected "a member"
+    | _ => expected "a member"
+/-- After a class member: separators and more, or the `}`. -/
+def pCMemsRest : Nat → Parser CMems
+  | 0 => noFuel
+  | n + 1 => do
+    if isSep (← next).tok then
+      skipSeps
+      if (← sees (.sym "}")) then return .nil
+      pCMems n
+    else if (← sees (.sym "}")) then return .nil
+    else afterExpr "`;` or `}`"
+/-- Members, one or more.  At the wrapper's level (`top`) they stop before
+`val program`.  `cls`: classes and traits are members here (the wrapper and objects, not literals). -/
+def pMems : Nat → Bool → Bool → Parser Mems
+  | 0, _, _ => noFuel
+  | n + 1, top, cls => do
     match (← get) with
     | ⟨.kw "val", _, _⟩ :: ⟨.ident "program" _, q, _⟩ :: _ =>
       if top then return .nil
@@ -450,28 +650,28 @@ def pMems : Nat → Bool → Parser Mems
       advance
       let (p, o) ← pName
       if decide (o = "program") then refuse p msgProgram
-      if (← sees (.kw "extends")) then refuse (← next).pos msgExtends
+      if (← sees (.kw "extends")) then refuse (← next).pos msgROE
       let b ← next
       expectSym "{"
       let self ← pSelf
       if (← sees (.sym "}")) then refuse b.pos "an empty object is outside the subset"
-      let body ← pMems n false
+      let body ← pMems n false true
       expectSym "}"
-      return .obj p o self body (← pMemsRest n top)
+      return .obj p o self body (← pMemsRest n top cls)
     | .kw "type" =>
       advance
       let (p, A) ← pName
       if !(← sees (.sym "=")) then refuse p msgRA
       advance
       let T ← pType n
-      return .typ p A T (← pMemsRest n top)
+      return .typ p A T (← pMemsRest n top cls)
     | .kw "val" =>
       advance
       let (p, a) ← pName
       let T ← bound ":" (pType n)
       expectSym "="
       let e ← pExpr n
-      return .val p a T e (← pMemsRest n top)
+      return .val p a T e (← pMemsRest n top cls)
     | .kw "def" =>
       advance
       let (p, f) ← pName
@@ -481,21 +681,36 @@ def pMems : Nat → Bool → Parser Mems
       let R ← bound ":" (pType n)
       expectSym "="
       let e ← pExpr n
-      return .defn p f ps R e (← pMemsRest n top)
-    | .kw "class" | .kw "trait" => refuse t.pos msgRT
+      return .defn p f ps R e (← pMemsRest n top cls)
+    | .kw "class" | .kw "trait" =>
+      if !cls then refuse t.pos msgRLC
+      advance
+      let f ← pClassDef n (if t.tok == .kw "trait" then .trait else .concrete)
+      return f (← pMemsRest n top cls)
+    | .reserved "abstract" =>
+      match (← get) with
+      | _ :: ⟨.kw "class", q, _⟩ :: _ =>
+        if !cls then refuse q msgRLC
+        advanceBy 2
+        let f ← pClassDef n .abstract
+        return f (← pMemsRest n top cls)
+      | _ => refuse t.pos (msgRMO "abstract")
+    | .reserved m =>
+      if isModifier m then refuse t.pos (msgRMO m)
+      expected (if top then "a member or `val program`" else "a member")
     | .kw "extends" => refuse t.pos msgExtends
     | .kw "import" => refuse t.pos msgRI
     | _ => expected (if top then "a member or `val program`" else "a member")
 /-- After a member: separators and more, or the `}`.  At the wrapper's level a
 `}` is refused: the wrapper has no `val program`. -/
-def pMemsRest : Nat → Bool → Parser Mems
-  | 0, _ => noFuel
-  | n + 1, top => do
+def pMemsRest : Nat → Bool → Bool → Parser Mems
+  | 0, _, _ => noFuel
+  | n + 1, top, cls => do
     if isSep (← next).tok then
       skipSeps
       if (← sees (.sym "}")) then
         if top then refuse (← next).pos msgAfter else return .nil
-      pMems n top
+      pMems n top cls
     else if (← sees (.sym "}")) then
       if top then refuse (← next).pos msgAfter else return .nil
     else afterExpr (if top then "a line break or `;`" else "`;` or `}`")
@@ -523,7 +738,7 @@ def pFile (n : Nat) : Parser File := do
   match (← get) with
   | ⟨.ident _ _, _, _⟩ :: ⟨.sym "=>", q, _⟩ :: _ => refuse q "a self name on the wrapper object is outside the subset"
   | _ => pure ()
-  let ms ← pMems n true
+  let ms ← pMems n true true
   advanceBy 2
   let T ← bound ":" (pType n)
   expectSym "="

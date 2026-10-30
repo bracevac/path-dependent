@@ -30,13 +30,19 @@ The printer checks give the printed text of three XS0 files, as the planner's
 `notes-pdot-xs1a/plan/P5Corpus.lean` printed them.  Then the round trip: every
 text of this file that `check` takes reads back from its printed text to the
 same tree up to positions.
+
+The class checks (plan XII, stage N5) give each new row of the grammar with its tree, each refusal of
+the parser and of the walk at its line and column with its message, the planner's
+`notes-nominal-n5/plan/T4Rules.out.txt`, the rows of the refutation's repairs (`notes-nominal-n5/revise/`), the
+kinds of class instances, the label table of a class file, and the printed text of a class file.  Their texts
+join the round trip.
 -/
 
 namespace NominalFrontend.ScalaRead.Tests
 
 open NominalFrontend.ScalaRead
-open NominalFrontend.ScalaRead.Parse (msgRA msgRP msgRO msgProgram msgDefTerm msgAfter msgRT msgExtends msgRI
-  msgHeader)
+open NominalFrontend.ScalaRead.Parse (msgRA msgRP msgRO msgProgram msgDefTerm msgAfter msgExtends msgRI
+  msgHeader msgRLC msgRCC msgROE msgRAN msgRSU msgRW msgRTP msgRMO)
 open ScalaSyntax (Pos Err)
 
 /-- The tree of a text with its positions erased, or `none` when it is refused. -/
@@ -223,10 +229,12 @@ def at? (s : String) (line col : Nat) (msg : String) : Bool := refusal s == some
 #eval expect (at? (file ["val program = {", "  def f(x: Any): Any = x", "  f", "}"]) 5 5 msgDefTerm) "RO-defblock"
 #eval expect (at? (file ["val program = A", "object o { type T = Any }"]) 5 3 msgAfter) "RO-after"
 #eval expect (at? (file ["val program = {", "  import scala.language.experimental", "  A", "}"]) 5 5 msgRI) "RI-term"
-#eval expect (at? (file ["class C", "val program = A"]) 4 3 msgRT) "RT-class"
-#eval expect (at? (file ["trait C", "val program = A"]) 4 3 msgRT) "RT-trait"
+#eval expect (parsed (file ["class C", "val program = A"]) ==
+  some ⟨z, "A", .cls z .concrete "C" [] .nil .nil .nil, none, .path (.var z "A")⟩) "class C, read (N5)"
+#eval expect (parsed (file ["trait C", "val program = A"]) ==
+  some ⟨z, "A", .cls z .trait "C" [] .nil .nil .nil, none, .path (.var z "A")⟩) "trait C, read (N5)"
 #eval expect (at? (file ["object o { type T = Any }"]) 5 1 msgAfter) "RO-noprogram"
-#eval expect (at? (file ["object o extends Any { type T = Any }", "val program = o"]) 4 12 msgExtends) "RT-extends"
+#eval expect (at? (file ["object o extends Any { type T = Any }", "val program = o"]) 4 12 msgROE) "R-OE"
 
 -- A second import after the header
 #eval expect (at? ("import scala.reflect.Selectable.reflectiveSelectable\n\nimport scala.language.experimental\n" ++
@@ -527,7 +535,7 @@ def msgR4 : String := "inside `(x: S) => T` scalac reads `this` as the enclosing
 #eval expect (verdict (file ["val program = A", "object o { type T = Any }"]) == at! 5 3 msgAfter) "RO-after, check"
 #eval expect (verdict (file ["val program = {", "  import scala.language.experimental", "  A", "}"]) ==
   at! 5 5 msgRI) "RI-term, check"
-#eval expect (verdict (file ["class C", "val program = A"]) == at! 4 3 msgRT) "RT-class, check"
+#eval expect (verdict (file ["class C", "val program = A"]) == "taken") "class C, check (N5)"
 
 /-! ## Labels -/
 
@@ -797,7 +805,460 @@ def texts : List String :=
 /-- The texts of this file that `check` takes. -/
 def takenTexts : List String := texts.filter fun s => verdict s == "taken"
 
-#eval expect (takenTexts.length == 47) "47 texts of this file that check takes"
+#eval expect (takenTexts.length == 49) "49 texts of this file that check takes"
 #eval expect (takenTexts.all roundTrips) "round trip of every text that check takes"
+
+/-! ## Classes and traits (N5): the grammar, one row each -/
+
+-- ClassDef: parameters with and without `val`, a first parent with arguments, `with`
+#eval expect (parsed (file ["trait T", "class K(val v: Any, w: Any) extends T",
+    "class L(val u: Any) extends K(u, A) with T",
+    "val program = A"]) ==
+  some ⟨z, "A",
+    .cls z .trait "T" [] .nil .nil
+      (.cls z .concrete "K" [⟨z, true, "v", .any z⟩, ⟨z, false, "w", .any z⟩] (.cons ⟨z, none, "T"⟩ .nil .nil) .nil
+        (.cls z .concrete "L" [⟨z, true, "u", .any z⟩]
+          (.cons ⟨z, none, "K"⟩ (.cons (.path (.var z "u")) (.cons (.path (.var z "A")) .nil)) (.cons ⟨z, none,
+    "T"⟩ .nil .nil))
+          .nil .nil)),
+    none, .path (.var z "A")⟩) "class definitions"
+
+-- `abstract class`, TraitDef with `extends … with`, ClassRef `q.C`
+#eval expect (parsed (file ["object m { trait T }", "trait U", "abstract class K extends m.T with U",
+    "trait V extends m.T with U", "val program = A"]) ==
+  some ⟨z, "A",
+    .obj z "m" none (.cls z .trait "T" [] .nil .nil .nil)
+      (.cls z .trait "U" [] .nil .nil
+        (.cls z .abstract "K" [] (.cons ⟨z, some (.var z "m"), "T"⟩ .nil (.cons ⟨z, none, "U"⟩ .nil .nil)) .nil
+          (.cls z .trait "V" [] (.cons ⟨z, some (.var z "m"), "T"⟩ .nil (.cons ⟨z, none, "U"⟩ .nil .nil)) .nil .nil))),
+    none, .path (.var z "A")⟩) "abstract class, trait, a parent through an object"
+
+-- ClassMem and ClassDecl: bounds, an alias, `val` and `def` abstract and defined, `override`
+#eval expect (parsed (file ["trait T {", "  type B >: Nothing <: Any", "  type C = Any", "  val a: Any",
+    "  val b: Any = A",
+    "  def f(x: Any): Any", "  override def g(x: Any)(y: Any): Any = y", "}", "val program = A"]) ==
+  some ⟨z, "A",
+    .cls z .trait "T" [] .nil
+      (.typ z false "B" (.given (.nothing z)) (.given (.any z))
+        (.alias z false "C" (.any z)
+          (.valDecl z false "a" (.any z)
+            (.val z false "b" (.any z) (.path (.var z "A"))
+              (.defDecl z false "f" [⟨z, "x", .any z⟩] (.any z)
+                (.defn z true "g" [⟨z, "x", .any z⟩, ⟨z, "y", .any z⟩] (.any z) (.path (.var z "y")) .nil))))))
+      .nil,
+    none, .path (.var z "A")⟩) "class members"
+
+-- Expr: `new C()` reads as `new C`, `new q.C(e1, e2)`
+#eval expect (parsed (file ["object m { class K(val v: Any, val w: Any) }", "class L",
+    "val program = { val l = new L(); new m.K(l, A) }"]) ==
+  some ⟨z, "A",
+    .obj z "m" none (.cls z .concrete "K" [⟨z, true, "v", .any z⟩, ⟨z, true, "w", .any z⟩] .nil .nil .nil)
+      (.cls z .concrete "L" [] .nil .nil .nil),
+    none,
+    .block z (.val z "l" none (.new z ⟨z, none, "L"⟩ .nil)
+      (.last (.new z ⟨z, some (.var z "m"), "K"⟩ (.cons (.path (.var z "l")) (.cons (.path (.var z "A")) .nil)))))⟩)
+  "new"
+
+-- An empty body `{}` reads as no body
+#eval expect (parsed (file ["class K {}", "val program = new K"]) == parsed (file ["class K", "val program = new K"]))
+  "empty class body"
+
+/-! ## Classes and traits (N5): the parser's refusals, at their positions -/
+
+#eval expect (at? (file ["val program = {", "  class L(val v: Any)", "  A", "}"]) 5 5 msgRLC) "LC-block"
+#eval expect (at? (file ["val program: { type T } = new Object {", "  class L", "  type T = Any",
+    "}"]) 5 5 msgRLC) "LC-lit"
+#eval expect (at? (file ["val program: { type T } = new Object {", "  abstract class L", "  type T = Any",
+    "}"]) 5 14 msgRLC) "LC-abstract-lit"
+#eval expect (at? (file ["class O {", "  class I", "}", "val program = A"]) 5 5 msgRCC) "CC-class"
+#eval expect (at? (file ["trait O { object o { type T = Any } }", "val program = A"]) 4 13 msgRCC) "CC-object"
+#eval expect (at? (file ["trait O { abstract class I }", "val program = A"]) 4 22 msgRCC) "CC-abstract"
+#eval expect (at? (file ["trait T", "object o extends T { type U = Any }", "val program = o"]) 5 12 msgROE) "OE"
+#eval expect (at? (file ["trait T", "val program = new T { type U = Any }"]) 5 23 msgRAN) "AN-trait"
+#eval expect (at? (file ["class K(val v: Any)", "val program = new K(A) { type U = Any }"]) 5 26 msgRAN) "AN-class"
+#eval expect (at? (file ["class B { def m(u: Any): Any = u }",
+    "class K extends B { override def m(u: Any): Any = super.m(u) }", "val program = A"]) 5 53 msgRSU) "SU"
+#eval expect (at? (file ["class K { val v = A }", "val program = A"]) 4 17 msgRW) "W-val"
+#eval expect (at? (file ["class K { def m(u: Any) = u }", "val program = A"]) 4 17 msgRW) "W-def"
+#eval expect (at? (file ["class K[X]", "val program = A"]) 4 10 msgRTP) "TP-class"
+#eval expect (at? (file ["trait T[X]", "val program = A"]) 4 10 msgRTP) "TP-trait"
+#eval expect (at? (file ["class K", "val program = new K[Any]"]) 5 22 "type arguments are outside the subset") "TP-new"
+#eval expect (at? (file ["final class K", "val program = A"]) 4 3 (msgRMO "final")) "MO-final"
+#eval expect (at? (file ["class K { private val v: Any = A }", "val program = A"]) 4 13 (msgRMO "private")) "MO-private"
+#eval expect (at? (file ["object o { override def m(u: Any): Any = u }",
+    "val program = o"]) 4 14 (msgRMO "override")) "MO-override-obj"
+#eval expect (at? (file ["lazy val x = A", "val program = A"]) 4 3 (msgRMO "lazy")) "MO-lazy"
+#eval expect (at? (file ["abstract trait T", "val program = A"]) 4 3 (msgRMO "abstract")) "MO-abstract-trait"
+#eval expect (at? (file ["case class K(v: Any)", "val program = A"]) 4 3 (msgRMO "case")) "MO-case"
+#eval expect (at? (file ["class K { def m: Any }", "val program = A"]) 4 17 msgRP) "RP-class"
+#eval expect (at? (file ["object o { type T }", "val program = o"]) 4 19 msgRA) "RA-obj-stays"
+#eval expect (at? (file ["def f(x: Any): Any = x",
+    "val program = f(A, A)"]) 5 20 "several arguments are outside the subset") "several-args-app"
+#eval expect (at? (file ["trait T(x: Any)",
+    "val program = A"]) 4 10 "expected a line break or `;`, found `(`") "trait-param"
+
+/-! ## Classes and traits (N5): the refusals of the walk, at their positions -/
+
+#eval expect (verdict (file ["class K(val v: Any, val w: Any)", "class L(val u: Any) extends K(u, A)",
+    "val program = new L(A)"]) == "taken") "args-ok"
+#eval expect (verdict (file ["class K", "class L extends K()", "val program = new L()"]) == "taken") "args-empty"
+#eval expect (verdict (file ["val program = new Q"]) == at! 4 21 (Scope.msgNoCls "Q")) "new-unknown"
+#eval expect (verdict (file ["object m { class K(val v: Any) }", "val program = new m.K(m)"]) == "taken") "new-path"
+#eval expect (verdict (file ["object m { class K }", "object k {", "  val a: m.type = m", "  class D extends a.K",
+    "}", "val program = A"]) == at! 7 23 Scope.msgRPP) "PP-alias"
+#eval expect (verdict (file ["class D extends Q", "val program = A"]) == at! 4 19 Scope.msgRPP) "PP-unknown"
+#eval expect (verdict (file ["object m { type T = Any }", "class D extends m.T", "val program = A"])
+    == at! 5 21 Scope.msgRPP) "PP-typealias"
+#eval expect (verdict (file ["object m { object n { trait T } }", "class D extends m.n.T", "val program = A"])
+    == "taken") "PP-ok"
+#eval expect (verdict (file ["class K", "object o { type K = Any }", "val program = o"])
+    == at! 5 19 Scope.msgRCN) "CN-obj"
+#eval expect (verdict (file ["class K", "val program = (x: { type K }) => x"]) == at! 5 28 Scope.msgRCN) "CN-ref"
+#eval expect (verdict (file ["class K", "trait T { type K }", "val program = A"]) == at! 5 18 Scope.msgRCN) "CN-cls"
+#eval expect (verdict (file ["object a { class K }", "object b { class K }", "val program = A"])
+    == at! 5 20 Scope.msgRCN2) "CN-dup"
+#eval expect (verdict (file ["class K { val me: Any = this }", "val program = A"]) == at! 4 17 Scope.msgRVT) "VT"
+#eval expect (verdict (file ["class K(val w: Any) { val v: Any = this.w }", "val program = A"])
+    == at! 4 29 Scope.msgRVT) "VT-sel"
+#eval expect (verdict (file ["class K { val v: Any = { A } }", "val program = A"]) == at! 4 17 Scope.msgRR) "R-cls"
+#eval expect (verdict (file ["class K { val f: Any => Any = (x: Any) => x }", "val program = A"])
+    == "taken") "cls-val-lambda"
+#eval expect (verdict (file ["class K(x: Any)", "val program = (c: K) => c.x"])
+    == at! 5 29 (Scope.msgRPA "x")) "PA-path"
+#eval expect (verdict (file ["class K(x: Any)", "val program = new K(A).x"]) == at! 5 26 (Scope.msgRPA "x")) "PA-new"
+#eval expect (verdict (file ["class K(x: Any) {", "  def get(u: Any): Any = x", "  def me(u: Any): Any = this.x", "}",
+    "val program = A"]) == "taken") "PA-inside"
+#eval expect (verdict (file ["trait T { val v: Any }", "object o {", "  val v: o.type = o",
+    "  class K(val v2: Any) extends T { def get(u: Any): Any = v }", "}", "val program = o"])
+    == at! 7 61 (Scope.msgRBN "v")) "BN"
+#eval expect (verdict (file ["trait T { val v: Any }", "object o {", "  val v: o.type = o",
+    "  class K(val w: Any) extends T { val v: Any = w; def get(u: Any): Any = v }", "}", "val program = o"])
+    == "taken") "BN-own"
+#eval expect (verdict (file ["trait P extends Q", "trait Q extends P", "val program = A"])
+    == at! 4 19 (Scope.msgRCI "trait" "P")) "CI"
+#eval expect (verdict (file ["trait P extends P", "val program = A"]) == at! 4 19 (Scope.msgRCI "trait" "P")) "CI-self"
+#eval expect (verdict (file ["trait X extends P", "trait P extends Q", "trait Q extends P", "val program = A"])
+    == at! 5 19 (Scope.msgRCI "trait" "P")) "CI-below"
+#eval expect (verdict (file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "class K extends L with R", "val program = A"]) == at! 8 9 (Scope.msgRLB "X")) "LB"
+#eval expect (verdict (file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "class K extends L with R { type X = a.type }", "val program = A"])
+    == "taken") "LB-alias"
+#eval expect (verdict (file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "trait K extends L with R", "val program = A"]) == "taken") "LB-trait"
+#eval expect (verdict (file ["object a { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: a.type }", "class K extends L with R", "val program = A"]) == "taken") "LB-same"
+#eval expect (verdict (file ["class P { def m(y: Any): Any = y }", "class K extends P { def m(y: P): Any = y }",
+    "val program = A"]) == at! 5 27 (Scope.msgROL "m")) "OL"
+#eval expect (verdict (file ["trait P { def m(y: Any): Any }", "class K extends P { def m(y: K): Any = y }",
+    "val program = A"]) == "taken") "OL-abstract"
+#eval expect (verdict (file ["class P { def m(y: Any): Any = y }", "class K extends P { def m(y: Any): Any = y }",
+    "val program = A"]) == "taken") "OL-same"
+#eval expect (verdict (file ["class K { def v(u: Any): Any = u }", "trait T { val v: Any }", "val program = A"])
+    == at! 5 17 Scope.msgRD) "RD-cls"
+#eval expect (verdict (file ["class K { def m(u: Any): Any = this.z }", "val program = A"])
+    == at! 4 39 "value z is not a member of the class (scalac E008)") "R5-cls"
+#eval expect (verdict (file ["trait T { val v: Any }",
+    "class K(val w: Any) extends T { val v: Any = w; def m(u: Any): Any = this.v }", "val program = A"])
+    == "taken") "this-inherited"
+#eval expect (verdict (file ["object o { type T = Any }", "class K(val p: o.type)",
+    "val program = (k: K) => (y: k.p.T) => y"]) == "taken") "inst-prefix"
+#eval expect (verdict (file ["object o { type T = Any }", "class K(val p: o.type)", "val program = {",
+    "  val k = new K(o)", "  (y: k.p.T) => y", "}"]) == "taken") "inst-prefix-new"
+#eval expect (verdict (file ["object o { type T = Any }", "class K { def p(u: Any): o.type = o }",
+    "val program = (k: K) => (y: k.p.T) => y"])
+    == at! 6 33 "a method is called with all its parameter lists") "inst-prefix-def"
+#eval expect (verdict (file ["class k", "val program = A"])
+    == at! 4 9 "the type member `k` starts lower case: type members start upper case") "R7-cls"
+#eval expect (verdict (file ["class K(val v: Any) { val v: Any = A }", "val program = A"])
+    == at! 4 29 "conflicting definitions of `v` in one class (scalac E120)") "R8-cls"
+#eval expect (verdict (file ["class K(v: Any, v: Any)", "val program = A"])
+    == at! 4 19 "`v` is already a parameter of `K`") "R8-param"
+#eval expect (verdict (file ["class K {}", "val program = new K"]) == "taken") "empty-body"
+
+/-! ## Classes and traits (N5): the repairs of the refutation, at their positions -/
+
+#eval expect (verdict (file ["class D(val w: Any)", "class K(val x: Any) extends D(y) { val y: Any = x }", "val program = new K(A)"])
+    == at! 5 33 "`y` is not in scope") "head-parent-arg-member"
+#eval expect (verdict (file ["trait T { val y: Any = A }", "class D(val w: Any)", "class K extends D(y) with T", "val program = new K"])
+    == at! 6 21 "`y` is not in scope") "head-parent-arg-inherited"
+#eval expect (verdict (file ["class D(val w: Any)", "class K(z: Any) extends D(z)", "val program = new K(A)"])
+    == "taken") "head-parent-arg-param"
+#eval expect (verdict (file ["class C(val v: L) { type L = Any }", "val program = new C(A)"])
+    == at! 4 18 "the type `L` is outside the subset") "head-param-type-member"
+#eval expect (verdict (file ["trait M { type T }", "class C(val v: o.T, val o: M)", "val program = A"])
+    == at! 5 18 "forward reference: `o` is defined later in this block (scalac E039)") "head-param-forward"
+#eval expect (verdict (file ["trait M { type T }", "class C(val o: M, val v: o.T)", "val program = A"])
+    == "taken") "head-param-earlier"
+#eval expect (verdict (file ["type L = Any", "class C(val v: this.L) { type L = Nothing }", "val program = new C(A)"])
+    == "taken") "head-this-outer"
+#eval expect (verdict (file ["trait T { type L = Any }", "object o {", "  type L = A.type", "  class C extends T { def f(y: L): Any = y }", "}", "val program = A"])
+    == at! 7 34 (Scope.msgRBN "L")) "BN-type"
+#eval expect (verdict (file ["trait T { type L = Any }", "object o {", "  type L = A.type", "  class C extends T { type L = Any; def f(y: L): Any = y }", "}", "val program = A"])
+    == "taken") "BN-type-own"
+#eval expect (verdict (file ["class D(x: Any) { def get(y: Any): Any = x }", "class K(z: Any) extends D(z) { def h(y: Any): Any = x }", "val program = new K(A)"])
+    == at! 5 55 "`x` is not in scope") "plain-inherited"
+#eval expect (verdict (file ["class D(x: Any) { def get(y: Any): Any = x }", "class K(z: Any) extends D(z) { def h(y: Any): Any = this.x }", "val program = new K(A)"])
+    == at! 5 60 "value x is not a member of the class (scalac E008)") "plain-inherited-this"
+#eval expect (verdict (file ["object o {", "  object x { type T = Any }", "  class D(x: Any) { def get(y: Any): Any = x }", "  class K(z: Any) extends D(z) { def h(y: Any): Any = x }", "}", "val program = new o.K(A)"])
+    == "taken") "plain-inherited-outer"
+#eval expect (verdict (file ["trait P { def m(y: Any): Any }", "trait K extends P { def m(y: K): Any = y }", "val program = A"])
+    == at! 5 27 (Scope.msgROL "m")) "OL-trait-abstract"
+#eval expect (verdict (file ["trait P { def m(y: Any): Any = y }", "trait Q { def m(y: P): Any = y }", "class K extends P with Q", "val program = new K"])
+    == at! 6 9 (Scope.msgROL2 "m")) "OL-two-parents"
+#eval expect (verdict (file ["trait P { def m(y: Any): Any }", "trait Q { def m(y: P): Any }", "trait K extends P with Q", "val program = A"])
+    == at! 6 9 (Scope.msgROL2 "m")) "OL-two-parents-abstract"
+#eval expect (verdict (file ["trait P { def m(y: Any): Any = y }", "trait R { def m(y: P): Any }", "class K extends P with R { override def m(y: P): Any = y }", "val program = new K"])
+    == at! 6 43 (Scope.msgROL "m")) "OL-override-overload"
+#eval expect (verdict (file ["class D", "class P { def m(y: D): Any = y }", "class K extends P { override def m(y: Any): Any = y }", "val program = A"])
+    == "taken") "OL-override-widen"
+#eval expect (verdict (file ["class C {", "  type A = B", "  type B = A", "}", "val program = new C"])
+    == at! 5 10 (Scope.msgRY true "alias" "A")) "RY-cls"
+#eval expect (verdict (file ["class C {", "  type A = this.B", "  type B = this.A", "}", "val program = new C"])
+    == at! 5 10 (Scope.msgRY true "alias" "A")) "RY-cls-this"
+#eval expect (verdict (file ["trait T { type A = B; type B }", "class K extends T { type B = A }", "val program = new K"])
+    == at! 5 28 (Scope.msgRY true "alias" "B")) "RY-cls-inherited"
+#eval expect (verdict (file ["trait T { type A = B; type B }", "trait U { type B = A; type A }", "class K extends T with U", "val program = new K"])
+    == at! 6 9 (Scope.msgRY false "inherited alias or bound" "B")) "RY-cls-two-parents"
+#eval expect (verdict (file ["class C {", "  val x: y.type = y", "  val y: x.type = x", "}", "val program = new C"])
+    == at! 5 9 (Scope.msgRC "x")) "RC-cls"
+#eval expect (verdict (file ["trait T { val x: y.type = y; val y: Any }", "class K extends T { val y: x.type = x }", "val program = new K"])
+    == at! 5 27 (Scope.msgRC "y")) "RC-cls-inherited"
+#eval expect (verdict (file ["class K { val v: Any = A }", "val program = (new K).v"])
+    == "taken") "sel-new-nil"
+#eval expect (verdict (file ["class K", "val program = (new K)(A)"])
+    == "taken") "app-new-nil"
+#eval expect (verdict (file ["object m { class K { val v: Any = A } }", "val program = (new m.K).v"])
+    == "taken") "sel-new-path-nil"
+
+-- G-1: a parameter's type is read outside the body, so `this.w` is the wrapper's object `w`
+#eval expect (kindAt (file ["object w { type T = Any }", "class C(val v: this.w.type) { val w: Any = A }",
+  "val program = (k: C) => k"]) (.sel (.var z "k") z "v") == some .obj) "kind k.v: a parameter type read in the head"
+-- G-4: `new` with no arguments under a selection or an application prints in parentheses
+#eval expect (printed (file ["class K { val v: Any = A }", "val program = (new K).v"]) ==
+  some (file ["class K {", "  val v: Any = A", "}", "val program = (new K).v"])) "print of (new K).v"
+
+/-! ## Classes and traits (N5): kinds, linearization, labels -/
+
+#eval expect (kindAt (file ["class K(val p: Any)", "val program = (k: K) => k"]) (.var z "k") == some .inst)
+  "kind k: a parameter at a class"
+#eval expect (kindAt (file ["object o { type T = Any }", "class K(val p: o.type)", "val program = (k: K) => k"])
+  (.sel (.var z "k") z "p") == some .obj) "kind k.p: a val parameter at a module singleton"
+#eval expect (kindAt (file ["class K { def get(u: Any): Any = u }", "val program = (k: K) => k"])
+  (.sel (.var z "k") z "get") == some (.meth 1)) "kind k.get: a def of a class"
+#eval expect (kindAt (file ["trait T { val v: Any }", "class K(val w: Any) extends T { val v: Any = w }",
+  "val program = (k: K) => k"]) (.sel (.var z "k") z "v") == some .str) "kind k.v: an own val at Any"
+#eval expect (kindAt (file ["trait T { val v: Any }", "class K extends T", "val program = (k: K) => k"])
+  (.sel (.var z "k") z "v") == some .str) "kind k.v: an inherited val"
+#eval expect (kindAt (file ["class K", "val program = { val k = new K; k }"]) (.var z "k") == some .inst)
+  "kind k: a block val bound to new"
+
+/-- The names of `L(C)` for the class `C` of a text, in order, or `none`. -/
+def linNames (s : String) (C : String) : Option (List String) :=
+  (parseFile s.toList).toOption.bind fun F =>
+    match (F.mems.clsEnvs (Scope.stemEnv F)).find? fun e => ((Scope.clsOf? e).map (·.name)) == some C with
+    | some e => (Scope.linOf e).map fun L => L.filterMap fun e' => (Scope.clsOf? e').map (·.name)
+    | none => none
+
+-- facts 6.7, scout S07: L(E) = E, D, B, C, A
+#eval expect (linNames (file ["trait A", "trait B extends A", "trait C extends A", "trait D extends B with C",
+  "class E extends C with B with D", "val program = A"]) "E" == some ["E", "D", "B", "C", "A"]) "L(E), S07"
+-- the diamond of S06: L(K) = K, R, L, Base
+#eval expect (linNames (file ["class Base", "trait L extends Base", "trait R extends Base",
+  "class K extends Base with L with R", "val program = A"]) "K" == some ["K", "R", "L", "Base"]) "L(K), a diamond"
+-- a cycle answers none
+#eval expect (linNames (file ["trait P extends Q", "trait Q extends P", "val program = A"]) "P" == none) "L(P), a cycle"
+
+#eval expect ((parseFile (file ["class C(x: Any) { def get(u: Any): Any = x }",
+    "val program = new C(A)"]).toList).toOption.map labels ==
+  some [("C", .typ 0), ("get", .trm 0), ("new$C", .trm 1), ("get$C", .trm 2), ("ℓx$C", .trm 3), ("ℓself", .trm 4)])
+  "labels: new$C, get$C, ℓx$C"
+#eval expect ((parseFile (file ["trait T { def m(u: Any): Any }", "class K extends T { def m(u: Any): Any = u }",
+    "val program = new K"]).toList).toOption.map labels ==
+  some [("T", .typ 0), ("m", .trm 0), ("K", .typ 1), ("new$K", .trm 1), ("m$K", .trm 2), ("ov$K$m$K", .trm 3),
+    ("ovp$K$m$K", .trm 4), ("ov$K$m$T", .trm 5), ("ovp$K$m$T", .trm 6), ("ℓself", .trm 7)])
+  "labels: the override witnesses"
+#eval expect ((parseFile (file ["trait T { type L <: Any }", "class K extends T { type L = Any }",
+    "val program = new K"]).toList).toOption.map labels ==
+  some [("T", .typ 0), ("L", .typ 1), ("K", .typ 2), ("new$K", .trm 0), ("ovl$K$L$T", .trm 1), ("ovu$K$L$T", .trm 2),
+    ("ℓself", .trm 3)])
+  "labels: the type member witnesses"
+
+/-! ## Classes and traits (N5): the printer -/
+
+/-- `scala/nominal/pos/Running.scala`, verbatim. -/
+def running : String := "import scala.reflect.Selectable.reflectiveSelectable
+
+// from: notes-nominal/scratch-d1/sc/Running.scala, d1 Running
+object Running {
+  trait Shape {
+    type Unit
+    def area(u: Any): Any
+    def me(u: Any): Shape = this
+    def self2(u: Any): this.type = this
+  }
+  class Square(val side: Any) extends Shape {
+    type Unit = Any
+    def area(u: Any): Any = side
+  }
+  object geo {
+    class Point(val x: Any) { def move(d: Any): Point = new Point(d) }
+  }
+  val program = {
+    val s: Shape = new Square(geo)
+    val p: geo.Point = new geo.Point(s)
+    val q = s.me(p)
+    val w: q.type = q.self2(p)
+    val a = p.move(w)
+    a.x
+  }
+}
+"
+
+-- Members one per line, a class body two spaces further in, `new` in place
+#eval expect (printed running == some "import scala.reflect.Selectable.reflectiveSelectable
+
+object Running {
+  trait Shape {
+    type Unit
+    def area(u: Any): Any
+    def me(u: Any): Shape = this
+    def self2(u: Any): this.type = this
+  }
+  class Square(val side: Any) extends Shape {
+    type Unit = Any
+    def area(u: Any): Any = side
+  }
+  object geo {
+    class Point(val x: Any) {
+      def move(d: Any): Point = new Point(d)
+    }
+  }
+  val program = {
+    val s: Shape = new Square(geo)
+    val p: geo.Point = new geo.Point(s)
+    val q = s.me(p)
+    val w: q.type = q.self2(p)
+    val a = p.move(w)
+    a.x
+  }
+}
+") "print of Running"
+
+/-- The texts of the rows of the refutation's repairs. -/
+def repairTexts : List String :=
+  [file ["class D(val w: Any)", "class K(val x: Any) extends D(y) { val y: Any = x }", "val program = new K(A)"],
+    file ["trait T { val y: Any = A }", "class D(val w: Any)", "class K extends D(y) with T", "val program = new K"],
+    file ["class D(val w: Any)", "class K(z: Any) extends D(z)", "val program = new K(A)"],
+    file ["class C(val v: L) { type L = Any }", "val program = new C(A)"],
+    file ["trait M { type T }", "class C(val v: o.T, val o: M)", "val program = A"],
+    file ["trait M { type T }", "class C(val o: M, val v: o.T)", "val program = A"],
+    file ["type L = Any", "class C(val v: this.L) { type L = Nothing }", "val program = new C(A)"],
+    file ["trait T { type L = Any }", "object o {", "  type L = A.type", "  class C extends T { def f(y: L): Any = y }", "}", "val program = A"],
+    file ["trait T { type L = Any }", "object o {", "  type L = A.type", "  class C extends T { type L = Any; def f(y: L): Any = y }", "}", "val program = A"],
+    file ["class D(x: Any) { def get(y: Any): Any = x }", "class K(z: Any) extends D(z) { def h(y: Any): Any = x }", "val program = new K(A)"],
+    file ["class D(x: Any) { def get(y: Any): Any = x }", "class K(z: Any) extends D(z) { def h(y: Any): Any = this.x }", "val program = new K(A)"],
+    file ["object o {", "  object x { type T = Any }", "  class D(x: Any) { def get(y: Any): Any = x }", "  class K(z: Any) extends D(z) { def h(y: Any): Any = x }", "}", "val program = new o.K(A)"],
+    file ["trait P { def m(y: Any): Any }", "trait K extends P { def m(y: K): Any = y }", "val program = A"],
+    file ["trait P { def m(y: Any): Any = y }", "trait Q { def m(y: P): Any = y }", "class K extends P with Q", "val program = new K"],
+    file ["trait P { def m(y: Any): Any }", "trait Q { def m(y: P): Any }", "trait K extends P with Q", "val program = A"],
+    file ["trait P { def m(y: Any): Any = y }", "trait R { def m(y: P): Any }", "class K extends P with R { override def m(y: P): Any = y }", "val program = new K"],
+    file ["class D", "class P { def m(y: D): Any = y }", "class K extends P { override def m(y: Any): Any = y }", "val program = A"],
+    file ["class C {", "  type A = B", "  type B = A", "}", "val program = new C"],
+    file ["class C {", "  type A = this.B", "  type B = this.A", "}", "val program = new C"],
+    file ["trait T { type A = B; type B }", "class K extends T { type B = A }", "val program = new K"],
+    file ["trait T { type A = B; type B }", "trait U { type B = A; type A }", "class K extends T with U", "val program = new K"],
+    file ["class C {", "  val x: y.type = y", "  val y: x.type = x", "}", "val program = new C"],
+    file ["trait T { val x: y.type = y; val y: Any }", "class K extends T { val y: x.type = x }", "val program = new K"],
+    file ["class K { val v: Any = A }", "val program = (new K).v"],
+    file ["class K", "val program = (new K)(A)"],
+    file ["object m { class K { val v: Any = A } }", "val program = (new m.K).v"]]
+
+/-- The texts of the class checks. -/
+def classTexts : List String :=
+  [running,
+    file ["val program = {", "  class L(val v: Any)", "  A", "}"],
+    file ["val program: { type T } = new Object {", "  class L", "  type T = Any", "}"],
+    file ["val program: { type T } = new Object {", "  abstract class L", "  type T = Any", "}"],
+    file ["class O {", "  class I", "}", "val program = A"],
+    file ["trait O { object o { type T = Any } }", "val program = A"],
+    file ["trait O { abstract class I }", "val program = A"],
+    file ["trait T", "object o extends T { type U = Any }", "val program = o"],
+    file ["trait T", "val program = new T { type U = Any }"],
+    file ["class K(val v: Any)", "val program = new K(A) { type U = Any }"],
+    file ["class B { def m(u: Any): Any = u }", "class K extends B { override def m(u: Any): Any = super.m(u) }",
+    "val program = A"],
+    file ["class K { val v = A }", "val program = A"],
+    file ["class K { def m(u: Any) = u }", "val program = A"],
+    file ["class K[X]", "val program = A"],
+    file ["trait T[X]", "val program = A"],
+    file ["class K", "val program = new K[Any]"],
+    file ["final class K", "val program = A"],
+    file ["class K { private val v: Any = A }", "val program = A"],
+    file ["object o { override def m(u: Any): Any = u }", "val program = o"],
+    file ["lazy val x = A", "val program = A"],
+    file ["abstract trait T", "val program = A"],
+    file ["case class K(v: Any)", "val program = A"],
+    file ["class K { def m: Any }", "val program = A"],
+    file ["object o { type T }", "val program = o"],
+    file ["class K(val v: Any, val w: Any)", "class L(val u: Any) extends K(u, A)", "val program = new L(A)"],
+    file ["class K", "class L extends K()", "val program = new L()"],
+    file ["def f(x: Any): Any = x", "val program = f(A, A)"],
+    file ["val program = new Q"],
+    file ["object m { class K(val v: Any) }", "val program = new m.K(m)"],
+    file ["object m { class K }", "object k {", "  val a: m.type = m", "  class D extends a.K", "}", "val program = A"],
+    file ["class D extends Q", "val program = A"],
+    file ["object m { type T = Any }", "class D extends m.T", "val program = A"],
+    file ["object m { object n { trait T } }", "class D extends m.n.T", "val program = A"],
+    file ["class K", "object o { type K = Any }", "val program = o"],
+    file ["class K", "val program = (x: { type K }) => x"],
+    file ["class K", "trait T { type K }", "val program = A"],
+    file ["object a { class K }", "object b { class K }", "val program = A"],
+    file ["class K { val me: Any = this }", "val program = A"],
+    file ["class K(val w: Any) { val v: Any = this.w }", "val program = A"],
+    file ["class K { val v: Any = { A } }", "val program = A"],
+    file ["class K { val f: Any => Any = (x: Any) => x }", "val program = A"],
+    file ["class K(x: Any)", "val program = (c: K) => c.x"],
+    file ["class K(x: Any)", "val program = new K(A).x"],
+    file ["class K(x: Any) {", "  def get(u: Any): Any = x", "  def me(u: Any): Any = this.x", "}", "val program = A"],
+    file ["trait T { val v: Any }", "object o {", "  val v: o.type = o",
+    "  class K(val v2: Any) extends T { def get(u: Any): Any = v }", "}", "val program = o"],
+    file ["trait T { val v: Any }", "object o {", "  val v: o.type = o",
+    "  class K(val w: Any) extends T { val v: Any = w; def get(u: Any): Any = v }", "}", "val program = o"],
+    file ["trait P extends Q", "trait Q extends P", "val program = A"],
+    file ["trait P extends P", "val program = A"],
+    file ["trait X extends P", "trait P extends Q", "trait Q extends P", "val program = A"],
+    file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "class K extends L with R", "val program = A"],
+    file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "class K extends L with R { type X = a.type }", "val program = A"],
+    file ["object a { type T = Any }", "object b { type T = Any }", "trait L { type X >: a.type }",
+    "trait R { type X >: b.type }", "trait K extends L with R", "val program = A"],
+    file ["object a { type T = Any }", "trait L { type X >: a.type }", "trait R { type X >: a.type }",
+    "class K extends L with R", "val program = A"],
+    file ["class P { def m(y: Any): Any = y }", "class K extends P { def m(y: P): Any = y }", "val program = A"],
+    file ["trait P { def m(y: Any): Any }", "class K extends P { def m(y: K): Any = y }", "val program = A"],
+    file ["class P { def m(y: Any): Any = y }", "class K extends P { def m(y: Any): Any = y }", "val program = A"],
+    file ["class K { def v(u: Any): Any = u }", "trait T { val v: Any }", "val program = A"],
+    file ["class K { def m(u: Any): Any = this.z }", "val program = A"],
+    file ["trait T { val v: Any }", "class K(val w: Any) extends T { val v: Any = w; def m(u: Any): Any = this.v }",
+    "val program = A"],
+    file ["object o { type T = Any }", "class K(val p: o.type)", "val program = (k: K) => (y: k.p.T) => y"],
+    file ["object o { type T = Any }", "class K(val p: o.type)", "val program = {", "  val k = new K(o)",
+    "  (y: k.p.T) => y", "}"],
+    file ["object o { type T = Any }", "class K { def p(u: Any): o.type = o }",
+    "val program = (k: K) => (y: k.p.T) => y"],
+    file ["class k", "val program = A"],
+    file ["class K(val v: Any) { val v: Any = A }", "val program = A"],
+    file ["class K(v: Any, v: Any)", "val program = A"],
+    file ["trait T(x: Any)", "val program = A"],
+    file ["class K {}", "val program = new K"]] ++
+  repairTexts
+
+/-- The class texts that `check` takes. -/
+def takenClassTexts : List String := classTexts.filter fun s => verdict s == "taken"
+#eval expect (takenClassTexts.length == 26) "26 class texts that check takes"
+#eval expect (takenClassTexts.all roundTrips) "round trip of every class text that check takes"
+#eval expect (takenClassTexts.all selfLast) "labels: ℓself last in every class text that check takes"
 
 end NominalFrontend.ScalaRead.Tests

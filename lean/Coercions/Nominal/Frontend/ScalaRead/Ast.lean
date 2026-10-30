@@ -24,6 +24,14 @@ is structural.  `File.erase` sets every position to `⟨0, 0⟩`, so tests and
 round trips compare trees up to positions.  `Path.text`, `Path.pos`,
 `Path.root`, `Path.isRoot` and `Path.firstStep?` serve the later checks.
 
+Classes and traits (plan XII, stage N5).  `Mems.cls` is a definition
+`[abstract] class C(ps) extends P(ā) with Q { ms }` or `trait C extends P with
+Q { ms }`, at `C`.  `ClassRef` is a reference `C` or `q.C`, `CParam` a
+constructor parameter, `Parents` the parents with the arguments of the first,
+`CMems` the members of a body, `Tm.new` the creation `new q.C(ē)`, `Args` its
+arguments.  Every `val` and `def` of a body has a written type (R-W), so
+`CMems` has an abstract and a defined form of each.
+
 This module imports the vanilla tree, for `ScalaSyntax.Pos.zero`, and opens
 only `Pos`, so the vanilla `Path` and `Ty` stay out of scope.
 -/
@@ -82,6 +90,32 @@ inductive Decls where
 end
 deriving instance DecidableEq, Repr for Ty, Bound, Decls
 
+/-- A reference to a class or trait, `C` or `q.C`, at `C`. -/
+structure ClassRef where
+  /-- At the class name. -/
+  pos : Pos
+  /-- `q` of `q.C`, none for a bare `C`. -/
+  pre : Option Path
+  name : String
+deriving DecidableEq, Repr
+
+/-- A constructor parameter, `x: T` or `val x: T`, at `x`. -/
+structure CParam where
+  /-- At the name. -/
+  pos : Pos
+  /-- Written with `val`. -/
+  isVal : Bool
+  name : String
+  ty : Ty
+deriving DecidableEq, Repr
+
+/-- What a class definition is: `class`, `abstract class` or `trait`. -/
+inductive ClsKind where
+  | concrete
+  | abstract
+  | trait
+deriving DecidableEq, Repr
+
 /-- A parameter of a `def`, `(x: T)`. -/
 structure Param where
   /-- At the name. -/
@@ -110,6 +144,37 @@ inductive Tm where
   | block (p : Pos) (ss : Stats)
   /-- `new Object { s => ms }`, at `new`. -/
   | lit (p : Pos) (self : Option String) (ms : Mems)
+  /-- `new C`, `new q.C(e1, …, en)`, at `new`. -/
+  | new (p : Pos) (K : ClassRef) (args : Args)
+/-- The arguments of `new` or of a parent, in order.  `()` reads as `nil`. -/
+inductive Args where
+  /-- No more arguments. -/
+  | nil
+  /-- An argument, then the rest. -/
+  | cons (t : Tm) (rest : Args)
+/-- The parents after `extends`, in text order: the first with its arguments, then those after `with`, each
+with `nil`. -/
+inductive Parents where
+  /-- No more parents. -/
+  | nil
+  /-- `P(args)`, then the rest. -/
+  | cons (P : ClassRef) (args : Args) (rest : Parents)
+/-- The members of a class or trait body.  `ov`: written with `override`. -/
+inductive CMems where
+  /-- No more members. -/
+  | nil
+  /-- `type A >: lo <: hi`, at `A`. -/
+  | typ (p : Pos) (ov : Bool) (A : String) (lo hi : Bound) (rest : CMems)
+  /-- `type A = T`, at `A`. -/
+  | alias (p : Pos) (ov : Bool) (A : String) (T : Ty) (rest : CMems)
+  /-- `val a: T`, abstract, at `a`. -/
+  | valDecl (p : Pos) (ov : Bool) (a : String) (T : Ty) (rest : CMems)
+  /-- `val a: T = rhs`, at `a`. -/
+  | val (p : Pos) (ov : Bool) (a : String) (T : Ty) (rhs : Tm) (rest : CMems)
+  /-- `def f(x1: S1)…(xn: Sn): R`, abstract, at `f`. -/
+  | defDecl (p : Pos) (ov : Bool) (f : String) (ps : List Param) (R : Ty) (rest : CMems)
+  /-- `def f(x1: S1)…(xn: Sn): R = body`, at `f`. -/
+  | defn (p : Pos) (ov : Bool) (f : String) (ps : List Param) (R : Ty) (body : Tm) (rest : CMems)
 /-- The statements of a block. -/
 inductive Stats where
   /-- The result, `e`. -/
@@ -128,8 +193,10 @@ inductive Mems where
   | val (p : Pos) (a : String) (T : Option Ty) (rhs : Tm) (rest : Mems)
   /-- `def f(x1: S1)…(xn: Sn) [: R] = body`, at `f`. -/
   | defn (p : Pos) (f : String) (ps : List Param) (R : Option Ty) (body : Tm) (rest : Mems)
+  /-- `[abstract] class C(ps) extends P(args) with Q { ms }` or `trait C extends P with Q { ms }`, at `C`. -/
+  | cls (p : Pos) (k : ClsKind) (C : String) (ps : List CParam) (parents : Parents) (body : CMems) (rest : Mems)
 end
-deriving instance DecidableEq, Repr for Tm, Stats, Mems
+deriving instance DecidableEq, Repr for Tm, Args, Parents, CMems, Stats, Mems
 
 /-- A file: the wrapper object, its members, and `val program [: T] = body`. -/
 structure File where
@@ -185,6 +252,12 @@ end
 /-- A parameter without positions. -/
 def Param.erase (x : Param) : Param := ⟨ScalaSyntax.Pos.zero, x.name, x.ty.erase⟩
 
+/-- A class reference without positions. -/
+def ClassRef.erase (K : ClassRef) : ClassRef := ⟨ScalaSyntax.Pos.zero, K.pre.map Path.erase, K.name⟩
+
+/-- A constructor parameter without positions. -/
+def CParam.erase (x : CParam) : CParam := ⟨ScalaSyntax.Pos.zero, x.isVal, x.name, x.ty.erase⟩
+
 mutual
 /-- A term without positions. -/
 def Tm.erase (t : Tm) : Tm :=
@@ -196,7 +269,32 @@ def Tm.erase (t : Tm) : Tm :=
   | .asc _ u T => .asc ScalaSyntax.Pos.zero (Tm.erase u) T.erase
   | .block _ ss => .block ScalaSyntax.Pos.zero (Stats.erase ss)
   | .lit _ s ms => .lit ScalaSyntax.Pos.zero s (Mems.erase ms)
+  | .new _ K as => .new ScalaSyntax.Pos.zero K.erase (Args.erase as)
 termination_by structural t
+/-- Arguments without positions. -/
+def Args.erase (as : Args) : Args :=
+  match as with
+  | .nil => .nil
+  | .cons t r => .cons (Tm.erase t) (Args.erase r)
+termination_by structural as
+/-- Parents without positions. -/
+def Parents.erase (Ps : Parents) : Parents :=
+  match Ps with
+  | .nil => .nil
+  | .cons P as r => .cons P.erase (Args.erase as) (Parents.erase r)
+termination_by structural Ps
+/-- Class members without positions. -/
+def CMems.erase (ms : CMems) : CMems :=
+  match ms with
+  | .nil => .nil
+  | .typ _ o A lo hi r => .typ ScalaSyntax.Pos.zero o A lo.erase hi.erase (CMems.erase r)
+  | .alias _ o A T r => .alias ScalaSyntax.Pos.zero o A T.erase (CMems.erase r)
+  | .valDecl _ o a T r => .valDecl ScalaSyntax.Pos.zero o a T.erase (CMems.erase r)
+  | .val _ o a T e r => .val ScalaSyntax.Pos.zero o a T.erase (Tm.erase e) (CMems.erase r)
+  | .defDecl _ o f ps R r => .defDecl ScalaSyntax.Pos.zero o f (ps.map Param.erase) R.erase (CMems.erase r)
+  | .defn _ o f ps R e r =>
+    .defn ScalaSyntax.Pos.zero o f (ps.map Param.erase) R.erase (Tm.erase e) (CMems.erase r)
+termination_by structural ms
 /-- Statements without positions. -/
 def Stats.erase (ss : Stats) : Stats :=
   match ss with
@@ -212,6 +310,8 @@ def Mems.erase (ms : Mems) : Mems :=
   | .val _ a T e r => .val ScalaSyntax.Pos.zero a (T.map Ty.erase) (Tm.erase e) (Mems.erase r)
   | .defn _ f ps R e r =>
     .defn ScalaSyntax.Pos.zero f (ps.map Param.erase) (R.map Ty.erase) (Tm.erase e) (Mems.erase r)
+  | .cls _ k C ps Ps b r =>
+    .cls ScalaSyntax.Pos.zero k C (ps.map CParam.erase) (Parents.erase Ps) (CMems.erase b) (Mems.erase r)
 termination_by structural ms
 end
 

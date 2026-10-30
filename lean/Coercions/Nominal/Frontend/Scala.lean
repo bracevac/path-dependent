@@ -119,6 +119,8 @@ def msgEmptyRefinement : String := "an empty refinement is outside the subset"
 def msgLitNoType : String := "an object literal needs a written type: scalac types it as Object"
 /-- A field whose right side is neither a path nor a lambda. -/
 def msgField : String := "a field holds a path or a value in pDOT: move the computation into `program`"
+/-- A class, a trait or `new` of a class, which the reader takes and the mapping of stage N6 maps. -/
+def msgClassesN6 : String := "classes and traits are mapped in stage N6"
 
 /-! ## Contexts -/
 
@@ -405,6 +407,7 @@ def tmS (c : MCtx) (wr res : Bool) (under : Option ScalaRead.Ty) (t : ScalaRead.
       let T' ← tyS c T
       pure (litForm z ds T')
     | none => throw ⟨p, msgLitNoType⟩
+  | .new p _ _ => throw ⟨p, msgClassesN6⟩ -- N6 replaces this arm with ⟦new p.K(ē)⟧
 termination_by structural t
 /-- A block's statements, the last one its result. -/
 def statsS (c : MCtx) (wr : Bool) (ss : Stats) : Except Err STm :=
@@ -469,6 +472,7 @@ def memsS (c : MCtx) (ds : SDefs) (ms : Mems) : Except Err SDefs :=
     let R' ← tyOptS cP R
     let body ← tmS cP R.isSome true R e
     memsS c (.trm ds f (R'.map (allChain doms)) (lamChain doms body)) r
+  | .cls p _ _ _ _ _ _ => throw ⟨p, msgClassesN6⟩ -- N6 replaces this arm with ⟦class K …⟧ᶻ
 termination_by structural ms
 end
 
@@ -697,6 +701,7 @@ def selTm (typ : Bool) (x : String) (t : ScalaRead.Tm) : Option (Pos × String) 
   | .asc _ e T => (selTm typ x e).or (selTy typ x T)
   | .block _ ss => selStats typ x ss
   | .lit _ _ ms => selMems typ x ms
+  | .new .. => none -- N6 replaces this arm: the selections of the class reference and the arguments
 termination_by structural t
 /-- The first selection of the member `x` in a written type inside a block. -/
 def selStats (typ : Bool) (x : String) (ss : Stats) : Option (Pos × String) :=
@@ -713,6 +718,7 @@ def selMems (typ : Bool) (x : String) (ms : Mems) : Option (Pos × String) :=
   | .val _ _ T e r => (selTyOpt typ x T).or ((selTm typ x e).or (selMems typ x r))
   | .defn _ _ ps R e r =>
     (selParams typ x ps).or ((selTyOpt typ x R).or ((selTm typ x e).or (selMems typ x r)))
+  | .cls _ _ _ _ _ _ r => selMems typ x r -- N6 replaces this arm: the selections inside the class
 termination_by structural ms
 end
 
@@ -1068,6 +1074,7 @@ def appendMems (ds es : Mems) : Mems :=
   | .typ p A T r => .typ p A T (appendMems r es)
   | .val p a T e r => .val p a T e (appendMems r es)
   | .defn p f ps R e r => .defn p f ps R e (appendMems r es)
+  | .cls p k C ps Ps b r => .cls p k C ps Ps b (appendMems r es)
 
 /-- A def's lists, its result and its body: the binders of the declared type equal those of the
 lambdas, at the same domains, at least one. -/
