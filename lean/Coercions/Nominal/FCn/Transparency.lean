@@ -21,6 +21,7 @@ open Paths.FCdot (Sig BVar Kind Label Rename Path PathSubst)
 structure Ctx.Refines (Γ Γ' : Ctx s) : Prop where
   ty : ∀ x, Γ'.ty x = Γ.ty x
   defAt : ∀ p A W, Γ.defAt p A = some W → Γ'.defAt p A = some W
+  clsAt : ∀ p C U, Γ.clsAt p C = some U → Γ'.clsAt p C = some U
 
 /-- Two contexts that bind the newest variable alike read the same node at every path rooted at
 it. -/
@@ -35,10 +36,12 @@ theorem Ctx.nodeAt_cons_here {Γ Γ' : Ctx s} (b : Binding s) :
 theorem Ctx.Refines.refl (Γ : Ctx s) : Γ.Refines Γ where
   ty := fun _ => rfl
   defAt := fun _ _ _ h => h
+  clsAt := fun _ _ _ h => h
 
 theorem Ctx.Refines.here (Γ : Ctx s) (T : Ty s) (B : Block (s,x)) : (Γ.cons (.opaque T)).Refines (Γ.cons (.transparent T B)) where
   ty := fun x => by cases x <;> rfl
   defAt := fun _ _ _ h => Ctx.defAt_opaque_cons h
+  clsAt := fun _ _ _ h => Ctx.clsAt_opaque_cons h
 
 theorem Ctx.Refines.cons {Γ Γ' : Ctx s} (h : Γ.Refines Γ') (b : Binding s) : (Γ.cons b).Refines (Γ'.cons b) where
   ty := fun
@@ -56,6 +59,16 @@ theorem Ctx.Refines.cons {Γ Γ' : Ctx s} (h : Γ.Refines Γ') (b : Binding s) :
       show (Γ'.cons b).defAt (p₀.rename Rename.succ) A = some (W₀.rename Rename.succ)
       rw [Ctx.defAt_weaken, h.defAt p₀ A W₀ e₀]
       rfl
+  clsAt := fun p C U hU => by
+    rcases Path.root_here_or_weaken p with hr | ⟨p₀, rfl⟩
+    · have e : (Γ'.cons b).nodeAt p = (Γ.cons b).nodeAt p := Ctx.nodeAt_cons_here b p hr
+      show ((Γ'.cons b).nodeAt p).bind (·.cls C) = some U
+      rw [e]
+      exact hU
+    · obtain ⟨U₀, e₀, rfl⟩ := Ctx.clsAt_weaken_some hU
+      show (Γ'.cons b).clsAt (p₀.rename Rename.succ) C = some (U₀.rename Rename.succ)
+      rw [Ctx.clsAt_weaken, h.clsAt p₀ C U₀ e₀]
+      rfl
 
 theorem Ctx.Refines.typed {Γ Γ' : Ctx s} (h : Γ.Refines Γ') : CoSubst.Typed Γ CoSubst.id Γ' where
   var := fun x => .var (by
@@ -64,6 +77,9 @@ theorem Ctx.Refines.typed {Γ Γ' : Ctx s} (h : Γ.Refines Γ') : CoSubst.Typed 
   defAt := fun p A W hW => by
     rw [CoSubst.id_paths, Path.subst_ofRename, Path.rename_id, Ty.subst_ofRename, Ty.rename_id]
     exact h.defAt p A W hW
+  clsAt := fun p C U hU => by
+    rw [CoSubst.id_paths, Path.subst_ofRename, Path.rename_id, Ty.subst_ofRename, Ty.rename_id]
+    exact h.clsAt p C U hU
 
 /-! ## Monotonicity of every judgment -/
 

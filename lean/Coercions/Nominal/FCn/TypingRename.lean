@@ -74,6 +74,12 @@ theorem Ctx.defAt_here_opaque (Γ : Ctx s) (T : Ty s) (p : Path (s,x)) (A : Labe
   rw [Ctx.nodeAt_here_opaque Γ T p h]
   rfl
 
+theorem Ctx.clsAt_here_opaque (Γ : Ctx s) (T : Ty s) (p : Path (s,x)) (C : Label)
+    (h : p.root = .here) : (Γ.cons (.opaque T)).clsAt p C = none := by
+  show ((Γ.cons (.opaque T)).nodeAt p).bind (·.cls C) = none
+  rw [Ctx.nodeAt_here_opaque Γ T p h]
+  rfl
+
 /-- A definition read at a weakened path is a weakened definition of the smaller context. -/
 theorem Ctx.defAt_weaken_some {Γ : Ctx s} {b : Binding s} {p : Path s} {A : Label} {W : Ty (s,x)}
     (h : (Γ.cons b).defAt (p.rename Rename.succ) A = some W) :
@@ -84,6 +90,17 @@ theorem Ctx.defAt_weaken_some {Γ : Ctx s} {b : Binding s} {p : Path s} {A : Lab
   | some W₀ =>
       rw [e] at h
       exact ⟨W₀, rfl, (Option.some.inj h).symm⟩
+
+/-- A class read at a weakened path is a weakened class of the smaller context. -/
+theorem Ctx.clsAt_weaken_some {Γ : Ctx s} {b : Binding s} {p : Path s} {C : Label} {U : Ty (s,x)}
+    (h : (Γ.cons b).clsAt (p.rename Rename.succ) C = some U) :
+    ∃ U₀, Γ.clsAt p C = some U₀ ∧ U = U₀.rename Rename.succ := by
+  rw [Ctx.clsAt_weaken] at h
+  cases e : Γ.clsAt p C with
+  | none => rw [e] at h; cases h
+  | some U₀ =>
+      rw [e] at h
+      exact ⟨U₀, rfl, (Option.some.inj h).symm⟩
 
 /-- At a path rooted at the newest binder, the node is read off that binder's block, so it renames
 when the block does. -/
@@ -107,6 +124,7 @@ theorem Ctx.nodeAt_lift_rename {Γ₁ : Ctx s₁} {b₁ : Binding s₁} {Γ₂ :
 structure Rename.Typed (Γ₁ : Ctx s₁) (ρ : Rename s₁ s₂) (Γ₂ : Ctx s₂) : Prop where
   ty : ∀ x, Γ₂.ty (ρ.var x) = (Γ₁.ty x).rename ρ
   defAt : ∀ p A W, Γ₁.defAt p A = some W → Γ₂.defAt (p.rename ρ) A = some (W.rename ρ)
+  clsAt : ∀ p C U, Γ₁.clsAt p C = some U → Γ₂.clsAt (p.rename ρ) C = some (U.rename ρ)
 
 /-- The types of a lifted renaming, for any two binders whose types agree. -/
 theorem Rename.Typed.ty_lift {Γ₁ : Ctx s₁} {ρ : Rename s₁ s₂} {Γ₂ : Ctx s₂} (h : Rename.Typed Γ₁ ρ Γ₂)
@@ -145,17 +163,46 @@ theorem Rename.Typed.defAt_lift {Γ₁ : Ctx s₁} {ρ : Rename s₁ s₂} {Γ�
     show some ((W₀.rename ρ).rename Rename.succ) = some ((W₀.rename Rename.succ).rename ρ.lift)
     rw [Ty.rename_rename, Ty.rename_rename, Rename.succ_lift]
 
+/-- The classes of a lifted renaming, for any two binders whose blocks agree. -/
+theorem Rename.Typed.clsAt_lift {Γ₁ : Ctx s₁} {ρ : Rename s₁ s₂} {Γ₂ : Ctx s₂}
+    (h : Rename.Typed Γ₁ ρ Γ₂) {b₁ : Binding s₁} {b₂ : Binding s₂}
+    (hb : (Γ₂.cons b₂).blockAt .here = ((Γ₁.cons b₁).blockAt .here).map (Block.rename · ρ.lift))
+    (p : Path (s₁,x)) (C : Label) (U : Ty (s₁,x)) (hU : (Γ₁.cons b₁).clsAt p C = some U) :
+    (Γ₂.cons b₂).clsAt (p.rename ρ.lift) C = some (U.rename ρ.lift) := by
+  rcases Path.root_here_or_weaken p with hr | ⟨p₀, rfl⟩
+  · have e₁ : (Γ₂.cons b₂).clsAt (p.rename ρ.lift) C =
+        ((Γ₂.cons b₂).nodeAt (p.rename ρ.lift)).bind (·.cls C) := rfl
+    have e₂ : ((Γ₁.cons b₁).nodeAt p).bind (·.cls C) = some U := hU
+    rw [e₁, Ctx.nodeAt_lift_rename hb p hr]
+    cases e : (Γ₁.cons b₁).nodeAt p with
+    | none => rw [e] at e₂; cases e₂
+    | some B =>
+        rw [e] at e₂
+        have e₃ : B.cls C = some U := e₂
+        show (B.rename ρ.lift).cls C = some (U.rename ρ.lift)
+        rw [Block.cls_rename, e₃]
+        rfl
+  · obtain ⟨U₀, e₀, rfl⟩ := Ctx.clsAt_weaken_some hU
+    have e₁ : (p₀.weaken (k := .var)).rename ρ.lift = (p₀.rename ρ).rename Rename.succ :=
+      Path.weaken_rename p₀ ρ
+    rw [e₁, Ctx.clsAt_weaken, h.clsAt p₀ C U₀ e₀]
+    show some ((U₀.rename ρ).rename Rename.succ) = some ((U₀.rename Rename.succ).rename ρ.lift)
+    rw [Ty.rename_rename, Ty.rename_rename, Rename.succ_lift]
+
 theorem Rename.Typed.succ (Γ : Ctx s) (b : Binding s) : Rename.Typed Γ Rename.succ (Γ.cons b) where
   ty := fun _ => rfl
   defAt := fun p A W h => by rw [Ctx.defAt_weaken, h]; rfl
+  clsAt := fun p C U h => by rw [Ctx.clsAt_weaken, h]; rfl
 
 theorem Rename.Typed.lift_opaque {Γ₁ : Ctx s₁} {ρ : Rename s₁ s₂} {Γ₂ : Ctx s₂} (h : Rename.Typed Γ₁ ρ Γ₂) (T : Ty s₁) : Rename.Typed (Γ₁.cons (.opaque T)) ρ.lift (Γ₂.cons (.opaque (T.rename ρ))) where
   ty := Rename.Typed.ty_lift h rfl
   defAt := Rename.Typed.defAt_lift h rfl
+  clsAt := Rename.Typed.clsAt_lift h rfl
 
 theorem Rename.Typed.lift_transparent {Γ₁ : Ctx s₁} {ρ : Rename s₁ s₂} {Γ₂ : Ctx s₂} (h : Rename.Typed Γ₁ ρ Γ₂) (T : Ty s₁) (B : Block (s₁,x)) : Rename.Typed (Γ₁.cons (.transparent T B)) ρ.lift (Γ₂.cons (.transparent (T.rename ρ) (B.rename ρ.lift))) where
   ty := Rename.Typed.ty_lift h rfl
   defAt := Rename.Typed.defAt_lift h rfl
+  clsAt := Rename.Typed.clsAt_lift h rfl
 
 /-! ## Evidence
 
@@ -246,6 +293,7 @@ theorem LeCo.HasType.rename (hρ : Rename.Typed Γ₁ ρ Γ₂) : LeCo.HasType �
       show LeCo.HasType Γ₂ (.member (P₀.rename ρ) (e₀.rename ρ) i) ((S'.substPath P₀.path).rename ρ) ((T'.substPath P₀.path).rename ρ)
       rw [Ty.substPath_rename, Ty.substPath_rename, ← PathCo.path_rename]
       exact h
+  | .seal (p := p₀) (C := C) (U := U) h => .seal (hρ.clsAt p₀ C U h)
 theorem EqCo.HasType.rename (hρ : Rename.Typed Γ₁ ρ Γ₂) : EqCo.HasType Γ₁ φ S T → EqCo.HasType Γ₂ (φ.rename ρ) (S.rename ρ) (T.rename ρ)
   | .refl => .refl
   | .symm h => .symm (EqCo.HasType.rename hρ h)
@@ -336,6 +384,11 @@ theorem Defs.HasType.rename (hρ : Rename.Typed Γ₁ ρ Γ₂) : Defs.HasType �
       show Defs.HasType Γ₂ (p₀.rename ρ) (.fld (ds₀.rename ρ) a (.nest ((Tel'.subst (PathSubst.one p₀).lift).rename ρ.lift) (ds'.rename ρ))) (.cons (Tel₀.rename ρ.lift) (.fld a (.mu (Tel'.rename ρ.lift.lift))))
       rw [Telescope.subst_one_lift_rename]
       exact h
+  | .cls (p := p₀) (ds := ds₀) (C := C) (U := U) (TelB := TelB) hds hC hU => by
+      have hC' : C ∉ (ds₀.rename ρ).labels := by rw [Defs.labels_rename]; exact hC
+      have hU' : U.rename ρ = (Ty.mu (TelB.rename ρ.lift.lift)).substPath (p₀.rename ρ) := by
+        rw [hU, Ty.substPath_rename]; rfl
+      exact .cls (Defs.HasType.rename hρ hds) hC' hU'
 end
 
 /-! ## Continuations -/

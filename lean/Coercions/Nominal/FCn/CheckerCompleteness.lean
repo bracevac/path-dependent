@@ -64,6 +64,7 @@ theorem synthLe_complete {Γ : Ctx s} {e : LeCo s} {S T : Ty s} : LeCo.HasType �
   | .member hP he hi => by
       simp only [synthLe, synthPath_complete hP, synthLe_complete he, Telescope.get?_iff.2 hi,
         ↓reduceIte]
+  | .seal h => by simp only [synthLe, h, Option.map_some]
 theorem synthEq_complete {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} : EqCo.HasType Γ φ S T → synthEq Γ φ = some (S, T)
   | .refl => by simp only [synthEq]
   | .symm h => by simp only [synthEq, synthEq_complete h]
@@ -118,6 +119,9 @@ theorem checkDefs_complete {Γ : Ctx s} {p : Path s} {ds : Defs s} {Tel : Telesc
   | .typ hds hA hU => by
       simp only [checkDefs, checkDefs_complete hds, Bool.and_true]
       exact decide_eq_true ⟨trivial, trivial, trivial, hA, hU⟩
+  | .cls hds hC hU => by
+      simp only [checkDefs, checkDefs_complete hds, Bool.and_true]
+      exact decide_eq_true ⟨trivial, trivial, trivial, hC, hU⟩
   | .path hds ha hP hq => by
       simp only [checkDefs, Ty.sngl, Path.unweaken_iff.2 rfl, synthPath_complete hP,
         checkDefs_complete hds, Bool.and_true]

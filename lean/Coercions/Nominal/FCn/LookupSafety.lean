@@ -109,6 +109,7 @@ theorem Defs.HasType.field {Γ : Ctx s} : ∀ {p : Path s} {ds : Defs s} {Tel : 
       · rw [if_pos e] at h; cases h; subst e
         exact ⟨_, Tel', .here, rfl, hds'⟩
       · rw [if_neg e] at h; exact (Defs.HasType.field hds h).there
+  | _, _, _, .cls hds _ _, _, _, h => (Defs.HasType.field hds h).there.there
 
 /-! ## A path that looks up to a literal or a nested literal is a location -/
 

@@ -189,6 +189,7 @@ theorem Model.sound_le {Γ : Ctx s} (M : Model Γ) : ∀ {e : LeCo s} {S T : Ty 
   | _, _, _, .member hP he hi, p, h => by
       have h₀ := Model.sound_path M hP
       exact ((M.mu _ _).1 (Model.sound_le M he _ h₀)).2 _ _ hi p h
+  | _, _, _, .seal h, p, h' => M.teq_sem _ _ (M.teq_symm _ _ (M.teq_defP _ _ _ (Ctx.defAt_of_clsAt h))) p h'
 theorem Model.sound_eq {Γ : Ctx s} (M : Model Γ) : ∀ {φ : EqCo s} {S T : Ty s}, EqCo.HasType Γ φ S T → M.teq S T
   | _, _, _, .refl => M.teq_refl _
   | _, _, _, .symm h => M.teq_symm _ _ (Model.sound_eq M h)

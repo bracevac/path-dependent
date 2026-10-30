@@ -797,10 +797,12 @@ def Defs.getFld : Defs s → Label → Option (Rhs s)
   | .nil, _ => none
   | .typ ds _ _, a => ds.getFld a
   | .fld ds a' rhs, a => if a' = a then some rhs else ds.getFld a
+  | .cls ds _ _, a => ds.getFld a
 
 theorem Defs.erase_getFld : ∀ (ds : Defs s) (a : Label), ds.erase.get a = (ds.getFld a).map Rhs.erase
   | .nil, _ => rfl
   | .typ ds _ _, a => Defs.erase_getFld ds a
+  | .cls ds _ _, a => Defs.erase_getFld ds a
   | .fld ds a' rhs, a => by
       simp only [Defs.erase, PDot.Runtime.Defs.get, Defs.getFld]
       split
@@ -811,6 +813,7 @@ theorem Defs.getFld_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂) (a : L
     (ds.rename ρ).getFld a = (ds.getFld a).map (·.rename ρ)
   | .nil, _, _ => rfl
   | .typ ds _ _, ρ, a => Defs.getFld_rename ds ρ a
+  | .cls ds _ _, ρ, a => Defs.getFld_rename ds ρ a
   | .fld ds a' rhs, ρ, a => by
       simp only [Defs.rename, Defs.getFld]
       split
@@ -821,6 +824,7 @@ theorem Defs.kids_get_of_getFld : ∀ (ds : Defs s) (a : Label) (rhs : Rhs s), d
     ds.kids.get a = some rhs.child
   | .nil, _, _, h => by cases h
   | .typ ds _ _, a, rhs, h => Defs.kids_get_of_getFld ds a rhs h
+  | .cls ds _ _, a, rhs, h => Defs.kids_get_of_getFld ds a rhs h
   | .fld ds a' rhs', a, rhs, h => by
       simp only [Defs.getFld] at h
       simp only [Defs.kids, Kids.get]
@@ -839,6 +843,7 @@ theorem Defs.getFld_of_kids_get : ∀ (ds : Defs s) (a : Label) (B : Block s), d
     ∃ rhs, ds.getFld a = some rhs ∧ rhs.child = B
   | .nil, _, _, h => by cases h
   | .typ ds _ _, a, B, h => Defs.getFld_of_kids_get ds a B h
+  | .cls ds _ _, a, B, h => Defs.getFld_of_kids_get ds a B h
   | .fld ds a' rhs, a, B, h => by
       simp only [Defs.kids, Kids.get] at h
       simp only [Defs.getFld]

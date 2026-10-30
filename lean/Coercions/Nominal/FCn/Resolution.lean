@@ -38,6 +38,7 @@ def Ctx.resFuel (Γ : Ctx s) : Nat → Ty s → Ty s
 def TyDefs.all : TyDefs s → List (Ty s)
   | .nil => []
   | .cons W _ U => U :: W.all
+  | .cls W _ U => U :: W.all                                 -- v1: a class entry counts as a definition
 
 mutual
 def Block.defs : Block s → List (Ty s)
@@ -70,10 +71,20 @@ theorem TyDefs.get_mem : ∀ (W : TyDefs s) (A : Label) (U : Ty s), W.get A = so
       · have : TyDefs.get (.cons W A' U') A = W.get A := by simp [TyDefs.get, e]
         rw [this] at h
         exact List.mem_cons_of_mem _ (TyDefs.get_mem W A U h)
+  | .cls W C U', A, U, h => by
+      by_cases e : A = C
+      · have : TyDefs.get (.cls W C U') A = some U' := by simp [TyDefs.get, e]
+        rw [this] at h; cases h; exact List.mem_cons_self ..
+      · have : TyDefs.get (.cls W C U') A = W.get A := by simp [TyDefs.get, e]
+        rw [this] at h
+        exact List.mem_cons_of_mem _ (TyDefs.get_mem W A U h)
 
 theorem TyDefs.all_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂), (W.rename ρ).all = W.all.map (·.rename ρ)
   | .nil, _ => rfl
   | .cons W A U, ρ => by
+      show U.rename ρ :: (W.rename ρ).all = _
+      rw [TyDefs.all_rename W ρ]; rfl
+  | .cls W C U, ρ => by
       show U.rename ρ :: (W.rename ρ).all = _
       rw [TyDefs.all_rename W ρ]; rfl
 

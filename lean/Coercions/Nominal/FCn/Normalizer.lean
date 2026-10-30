@@ -256,6 +256,7 @@ def litView : Path s → Defs s → VEntries s
   | l, .typ ds A _ =>
       .cons (.cons (litView l ds) (.le (.single (.eqv (.symm (.defP l A)))))) (.le (.single (.eqv (.defP l A))))
   | l, .fld ds a rhs => .cons (litView l ds) (.fld a (rhsView l a rhs))
+  | l, .cls ds C _ => .cons (.cons (litView l ds) (.le (.single .bot))) (.le (.single (.eqv (.defP l C))))
 def rhsView : Path s → Label → Rhs s → View s
   | _, _, .path _ => .obj (.cons .nil .alias)
   | _, _, .fn v => .fn v .nil
@@ -293,6 +294,7 @@ inductive Hnf (σ : Store s) (Γ : Ctx s) : LeCo s → Ty s → Ty s → Form s 
   | member : PV σ Γ P S W → Hnf σ Γ e S (.mu Tel) F → Tel.At i (.le S' T') →
       (View.applyForm F P.path W) = .obj V → V.get i = some (.le G) →
       Hnf σ Γ (.member P e i) (S'.substPath P.path) (T'.substPath P.path) G
+  | seal : Γ.clsAt p C = some U → Hnf σ Γ (.seal p C) U (.sel p C) (.single (.eqv (.symm (.defP p C))))
 inductive HnfM (σ : Store s) (Γ : Ctx s) : Telescope (s,x) → Morphism s → Telescope (s,x) → Entries s → Prop
   | nil : HnfM σ Γ src .nil .nil .nil
   | le : HnfM σ Γ src m Tel Es → src.At j (.le X Y) → HnfS σ Γ pre S X pre' → HnfS σ Γ post Y T post' →
@@ -512,6 +514,9 @@ theorem Hnf.idx : Hnf σ Γ e S T F → ∀ {S' T' F'}, Hnf σ Γ e S' T' F' →
           obtain ⟨e₂, e₃⟩ := Pr.le_inj (Telescope.At.fun_idx hi hi')
           subst e₂; subst e₃
           exact ⟨rfl, rfl⟩
+  | .seal h₁, _, _, _, h => by
+      cases h with
+      | «seal» h₁' => rw [h₁] at h₁'; exact ⟨Option.some.inj h₁', rfl⟩
 theorem HnfM.idx : HnfM σ Γ src m Tel Es → ∀ {Tel' Es'}, HnfM σ Γ src m Tel' Es' → Tel = Tel'
   | .nil, _, _, h => by cases h; rfl
   | .le hm hj hpre hpost, _, _, h => by
@@ -609,6 +614,7 @@ theorem Hnf.det : Hnf σ Γ e S T F → ∀ {S' T' F'}, Hnf σ Γ e S' T' F' →
           subst e
           rw [hg'] at hg
           exact (VEntry.le_inj (Option.some.inj hg)).symm
+  | .seal _, _, _, _, h => by cases h; rfl
 theorem HnfM.det : HnfM σ Γ src m Tel Es → ∀ {Tel' Es'}, HnfM σ Γ src m Tel' Es' → Es = Es'
   | .nil, _, _, h => by cases h; rfl
   | .le hm _ hpre hpost, _, _, h => by
@@ -770,6 +776,10 @@ def hnf (σ : Store s) (Γ : Ctx s) : LeCo s → Option (Ty s × Ty s × Form s)
             | _, _ => none
           else none
       | _, _ => none
+  | .seal p C =>                                                                  -- HN-Seal₁
+      match Γ.clsAt p C with
+      | some U => some (U, .sel p C, .single (.eqv (.symm (.defP p C))))
+      | none => none
 /-- `hnfM σ Γ src m = some (Tel, Es)` when `σ ⊢ m ⇓ₘ Es : src ⇒ Tel`. -/
 def hnfM (σ : Store s) (Γ : Ctx s) (src : Telescope (s,x)) : Morphism s → Option (Telescope (s,x) × Entries s)
   | .nil => some (.nil, .nil)                                                     -- HM-Nil
@@ -1014,6 +1024,13 @@ theorem hnf_sound : ∀ (e : LeCo s) {S T : Ty s} {F : Form s}, hnf σ Γ e = so
               | bot => simp [hnf, h₁, h₂] at h
               | sel _ _ => simp [hnf, h₁, h₂] at h
               | pi _ _ => simp [hnf, h₁, h₂] at h
+  | .seal p C, _, _, _, h => by
+      cases h₁ : Γ.clsAt p C with
+      | none => simp [hnf, h₁] at h
+      | some U =>
+          simp only [hnf, h₁, Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .seal h₁
 theorem hnfM_sound (src : Telescope (s,x)) : ∀ (m : Morphism s) {Tel : Telescope (s,x)} {Es : Entries s},
     hnfM σ Γ src m = some (Tel, Es) → HnfM σ Γ src m Tel Es
   | .nil, _, _, h => by
@@ -1306,6 +1323,7 @@ theorem hnf_complete : Hnf σ Γ e S T F → hnf σ Γ e = some (S, T, F)
   | .intoBnd h => by simp [hnf, hnf_complete h]
   | .member hP he hi hV hg => by
       simp [hnf, pview_complete hP, hnf_complete he, Telescope.get?_iff.2 hi, hV, hg]
+  | .seal h => by simp [hnf, h]
 theorem hnfM_complete : HnfM σ Γ src m Tel Es → hnfM σ Γ src m = some (Tel, Es)
   | .nil => rfl
   | .le hm hj hpre hpost => by

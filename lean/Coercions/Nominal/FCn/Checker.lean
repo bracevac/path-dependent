@@ -340,6 +340,7 @@ def synthLe (Γ : Ctx s) : LeCo s → Option (Ty s × Ty s)
         | _ => none
       else none
     | _, _ => none
+  | .seal p C => (Γ.clsAt p C).map fun U => (U, .sel p C)                   -- LE-Seal
 def synthEq (Γ : Ctx s) : EqCo s → Option (Ty s × Ty s)
   | .refl T => some (T, T)                                                  -- EQ-Refl
   | .symm φ => match synthEq Γ φ with                                       -- EQ-Symm
@@ -428,6 +429,11 @@ def checkDefs (Γ : Ctx s) (p : Path s) : Defs s → Telescope (s,x) → Bool
   | .typ ds A U, Tel => match Tel with                                      -- DF-Typ
     | .cons (.cons Tel (.le W X)) (.le X' W') =>
       decide (X = .sel (.var .here) A ∧ X' = .sel (.var .here) A ∧ W' = W ∧ A ∉ ds.labels ∧ U = W.substPath p) &&
+        checkDefs Γ p ds Tel
+    | _ => false
+  | .cls ds C U, Tel => match Tel with                                      -- DF-Cls
+    | .cons (.cons Tel (.le L X)) (.le X' (.mu TelB)) =>
+      decide (L = .bot ∧ X = .sel (.var .here) C ∧ X' = .sel (.var .here) C ∧ C ∉ ds.labels ∧ U = (Ty.mu TelB).substPath p) &&
         checkDefs Γ p ds Tel
     | _ => false
   | .fld ds a (.path P), Tel => match Tel with                              -- DF-Path
@@ -683,6 +689,11 @@ theorem synthLe_sound {Γ : Ctx s} {e : LeCo s} {S T : Ty s} : synthLe Γ e = so
           next => cases h
         next => cases h
       next => cases h
+  | .seal p C => fun h => by
+      simp only [synthLe] at h
+      obtain ⟨U, hU, he⟩ := Option.map_eq_some_iff.1 h
+      cases he
+      exact .seal hU
 theorem synthEq_sound {Γ : Ctx s} {φ : EqCo s} {S T : Ty s} : synthEq Γ φ = some (S, T) → EqCo.HasType Γ φ S T :=
   match φ with
   | .refl U => fun h => by
@@ -931,6 +942,14 @@ theorem checkDefs_sound {Γ : Ctx s} {p : Path s} {ds : Defs s} {Tel : Telescope
         obtain ⟨⟨rfl, rfl, rfl, hA, hU⟩, hds⟩ := h
         exact .typ (checkDefs_sound hds) hA hU
       next => cases h
+  | .cls ds C U => fun h => by
+      simp only [checkDefs] at h
+      split at h
+      next Tel L X X' TelB =>
+        rw [Bool.and_eq_true, decide_eq_true_iff] at h
+        obtain ⟨⟨rfl, rfl, rfl, hC, hU⟩, hds⟩ := h
+        exact .cls (checkDefs_sound hds) hC hU
+      next => cases h
   | .fld ds a (.path P) => fun h => by
       simp only [checkDefs] at h
       split at h
@@ -961,5 +980,36 @@ theorem checkDefs_sound {Γ : Ctx s} {p : Path s} {ds : Defs s} {Tel : Telescope
         exact .nest (checkDefs_sound hds) ha (checkDefs_sound hds')
       next => cases h
 end
+
+/-! ## Tests of the class clauses
+
+The class literal `obj TelC dsC` with `TelC = [⊥ ⊑ w∙C, w∙C ⊑ Bd]`, `dsC = [] ▹ {class C = Bd}` and
+`Bd = μ(o : [fld get (Π(y : ⊤) ⊤)])`.  A seal reads the class of a transparent binder and fails at
+an opaque one.  DF-Cls rejects a body that differs from the bound and a bound that is no object
+type, and accepts the body `⊤ = μ(o : [])`. -/
+
+namespace ClsCheckTests
+
+private def C : Label := .typ 0
+private def get : Label := .trm 0
+private def Bd : Ty ([],x) := .mu (.cons .nil (.fld get (.pi .top .top)))      -- μ(o : [fld get (Π(y : ⊤) ⊤)])
+private def TelC : Telescope ([],x) :=                                          -- [⊥ ⊑ w∙C, w∙C ⊑ Bd]
+  .cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) Bd)
+private def dsC : Defs ([],x) := .cls .nil C Bd                                 -- [] ▹ {class C = Bd}
+private def Γc : Ctx ([],x) := Ctx.nil.cons (.transparent (.mu TelC) dsC.block)
+
+example : synthValue Ctx.nil (.obj TelC dsC) = some (.mu TelC) := by decide
+example : synthLe Γc (.seal (.var .here) C) = some (Bd, .sel (.var .here) C) := by decide
+example : synthLe (Ctx.nil.cons (.opaque (.mu TelC))) (.seal (.var .here) C) = none := by decide
+example : synthValue Ctx.nil (.obj TelC (.cls .nil C .bot)) = none := by decide
+example : synthValue Ctx.nil
+    (.obj (.cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) .bot))
+      (.cls .nil C .bot)) = none := by decide
+example : synthValue Ctx.nil
+    (.obj (.cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) .top))
+      (.cls .nil C .top))
+    = some (.mu (.cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) .top))) := by decide
+
+end ClsCheckTests
 
 end Nominal.FCn

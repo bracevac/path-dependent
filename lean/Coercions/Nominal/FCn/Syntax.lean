@@ -76,6 +76,7 @@ inductive LeCo : Sig → Type where
   | bound : Telescope (s,x) → Nat → LeCo s                  -- bound Tel i
   | intoBnd : LeCo s → LeCo s                               -- intoBnd e
   | member : PathCo s → LeCo s → Nat → LeCo s               -- member P e i
+  | seal : Path s → Label → LeCo s                          -- seal p C
 inductive EqCo : Sig → Type where
   | refl : Ty s → EqCo s                                    -- refl T
   | symm : EqCo s → EqCo s                                  -- symm φ
@@ -112,6 +113,7 @@ inductive Defs : Sig → Type where
   | nil : Defs s                                            -- []
   | typ : Defs s → Label → Ty s → Defs s                    -- ds ▹ {A = U}
   | fld : Defs s → Label → Rhs s → Defs s                   -- ds ▹ {a = rhs}
+  | cls : Defs s → Label → Ty s → Defs s                    -- ds ▹ {class C = U}
 inductive Rhs : Sig → Type where
   | path : PathCo s → Rhs s                                 -- path P
   | fn : Value s → Rhs s                                    -- fun v
@@ -121,6 +123,7 @@ end
 inductive TyDefs : Sig → Type where                        -- W, type labels to types, newest last
   | nil : TyDefs s
   | cons : TyDefs s → Label → Ty s → TyDefs s               -- W[A ↦ U]
+  | cls : TyDefs s → Label → Ty s → TyDefs s                -- W[class C ↦ U]
 
 mutual
 inductive Block : Sig → Type where
@@ -183,6 +186,7 @@ end
 def TyDefs.rename : TyDefs s₁ → Rename s₁ s₂ → TyDefs s₂
   | .nil, _ => .nil
   | .cons W A U, ρ => .cons (W.rename ρ) A (U.rename ρ)
+  | .cls W C U, ρ => .cls (W.rename ρ) C (U.rename ρ)
 
 mutual
 def Block.rename : Block s₁ → Rename s₁ s₂ → Block s₂
@@ -215,6 +219,7 @@ end
 def TyDefs.subst : TyDefs s₁ → PathSubst s₁ s₂ → TyDefs s₂
   | .nil, _ => .nil
   | .cons W A U, σ => .cons (W.subst σ) A (U.subst σ)
+  | .cls W C U, σ => .cls (W.subst σ) C (U.subst σ)
 
 mutual
 def Block.subst : Block s₁ → PathSubst s₁ s₂ → Block s₂
@@ -259,6 +264,7 @@ def LeCo.rename : LeCo s₁ → Rename s₁ s₂ → LeCo s₂
   | .bound Tel i, ρ => .bound (Tel.rename ρ.lift) i                             -- Tel under w
   | .intoBnd e, ρ => .intoBnd (e.rename ρ)
   | .member P e i, ρ => .member (P.rename ρ) (e.rename ρ) i
+  | .seal p C, ρ => .seal (p.rename ρ) C
 def EqCo.rename : EqCo s₁ → Rename s₁ s₂ → EqCo s₂
   | .refl T, ρ => .refl (T.rename ρ)
   | .symm φ, ρ => .symm (φ.rename ρ)
@@ -295,6 +301,7 @@ def Defs.rename : Defs s₁ → Rename s₁ s₂ → Defs s₂
   | .nil, _ => .nil
   | .typ ds A U, ρ => .typ (ds.rename ρ) A (U.rename ρ)
   | .fld ds a rhs, ρ => .fld (ds.rename ρ) a (rhs.rename ρ)
+  | .cls ds C U, ρ => .cls (ds.rename ρ) C (U.rename ρ)
 def Rhs.rename : Rhs s₁ → Rename s₁ s₂ → Rhs s₂
   | .path P, ρ => .path (P.rename ρ)
   | .fn v, ρ => .fn (v.rename ρ)
@@ -399,6 +406,7 @@ def LeCo.subst : LeCo s₁ → CoSubst s₁ s₂ → LeCo s₂
   | .bound Tel i, σ => .bound (Tel.subst σ.paths.lift) i                        -- Tel under w
   | .intoBnd e, σ => .intoBnd (e.subst σ)
   | .member P e i, σ => .member (P.subst σ) (e.subst σ) i
+  | .seal p C, σ => .seal (p.subst σ.paths) C
 def EqCo.subst : EqCo s₁ → CoSubst s₁ s₂ → EqCo s₂
   | .refl T, σ => .refl (T.subst σ.paths)
   | .symm φ, σ => .symm (φ.subst σ)
@@ -435,6 +443,7 @@ def Defs.subst : Defs s₁ → CoSubst s₁ s₂ → Defs s₂
   | .nil, _ => .nil
   | .typ ds A U, σ => .typ (ds.subst σ) A (U.subst σ.paths)
   | .fld ds a rhs, σ => .fld (ds.subst σ) a (rhs.subst σ)
+  | .cls ds C U, σ => .cls (ds.subst σ) C (U.subst σ.paths)
 def Rhs.subst : Rhs s₁ → CoSubst s₁ s₂ → Rhs s₂
   | .path P, σ => .path (P.subst σ)
   | .fn v, σ => .fn (v.subst σ)
@@ -474,9 +483,36 @@ def Defs.labels : Defs s → List Label                      -- plan-10-pdot.md:
   | .nil => []
   | .typ ds A _ => A :: ds.labels
   | .fld ds a _ => a :: ds.labels
+  | .cls ds C _ => C :: ds.labels
 def Tm.adjust (u : Tm (s,x)) (v : Value s) : Tm (s,x) :=   -- plan-10-pdot.md:410
   match v.composite with
   | none => u
   | some E => u.subst (CoSubst.selfCast E)
+
+/-! ## Tests of the class clauses
+
+Each clause of a class constructor at `Rename.succ`, and at `PathSubst.one` or `CoSubst.one`, on a
+term whose one free variable is `.here`.  The substituted path is `z∙a`, `z` the one variable left. -/
+
+namespace ClsSyntaxTests
+
+private def pz : Path ([],x) := .var .here                                      -- z
+private def pza : Path ([],x) := .sel (.var .here) (.trm 0)                     -- z∙a
+private def Qza : PathCo ([],x) := .sel (.var .here) (.trm 0) 0                 -- sel z a 0
+
+example : (TyDefs.cls .nil (.typ 0) (.sel pz (.typ 1))).rename Rename.succ
+    = TyDefs.cls (.nil : TyDefs (([],x),x)) (.typ 0) (.sel (.var (.there .here)) (.typ 1)) := by rfl
+example : (LeCo.seal pz (.typ 0)).rename Rename.succ
+    = (LeCo.seal (.var (.there .here)) (.typ 0) : LeCo (([],x),x)) := by rfl
+example : (Defs.cls .nil (.typ 0) (.sel pz (.typ 1))).rename Rename.succ
+    = Defs.cls (.nil : Defs (([],x),x)) (.typ 0) (.sel (.var (.there .here)) (.typ 1)) := by rfl
+example : (TyDefs.cls .nil (.typ 0) (.sel (.var .here) (.typ 1)) : TyDefs (([],x),x)).subst (PathSubst.one pza)
+    = TyDefs.cls .nil (.typ 0) (.sel pza (.typ 1)) := by rfl
+example : (LeCo.seal (.var .here) (.typ 0) : LeCo (([],x),x)).subst (CoSubst.one Qza)
+    = LeCo.seal pza (.typ 0) := by rfl
+example : (Defs.cls .nil (.typ 0) (.sel (.var .here) (.typ 1)) : Defs (([],x),x)).subst (CoSubst.one Qza)
+    = Defs.cls .nil (.typ 0) (.sel pza (.typ 1)) := by rfl
+
+end ClsSyntaxTests
 
 end Nominal.FCn

@@ -42,6 +42,12 @@ The checker of T.8 decides three programs by `decide +kernel` (group g5).
 - `fact2Prog` is the twin of `fact2_untyped`, the literal with the field body `x.a`.  The checker
   returns nothing, and `fact2Prog_untyped` is `checkTm_iff` with that verdict.
 - `danglingProg` is the literal of N3 with the field body `x.zz`.  The checker returns nothing.
+
+`namespace Nominal.FCn.Class` holds a class (group g7 of N1).  The module literal `mC` declares a class
+`C` by `DF-Cls` and a constructor `newC` that seals its instance at `C` by `LE-Seal`.
+`classProg_checks` decides the program that builds an instance and calls its method.
+`sealOpaque_rejected` decides that a seal at a let-bound module fails, with `litOnly_typed` as its
+positive control.  `classDefP_v1` records the v1 reading of a class entry by `EQ-Def`.
 -/
 
 namespace Nominal.FCn
@@ -640,5 +646,63 @@ theorem fact2Prog_untyped (T : Ty []) : ¬ Tm.HasType .nil fact2Prog T := fun h 
   cases e
 def danglingProg : Tm [] := .val (.obj danglingTel (danglingDefs (.sel (.var .here) lzz 0)))
 theorem danglingProg_synth : synthTm .nil danglingProg = none := by decide +kernel
+
+
+/-! ## A class (group g7 of N1)
+
+A module literal `mC` declares a class `C` by `DF-Cls` and a constructor `newC` whose instance is
+sealed at `C` by `LE-Seal`.  In v1 a class entry of a block is read by `defAt`, so `EQ-Def` at
+`z∙C` answers the body `Bd` (`classDefP_v1`).  Stage NT of plan XII removes that reading. -/
+
+namespace Class
+
+abbrev C : Label := .typ 30
+abbrev get : Label := .trm 30
+abbrev newC : Label := .trm 31
+/-- `Bd := μ(o : [fld get (Π(y : ⊤) ⊤)])`, the body of the class. -/
+def Bd : Ty s := .mu (.cons .nil (.fld get (.pi .top .top)))
+/-- `TelI := [fld get (Π(y : ⊤) ⊤)]`, the instance's telescope, under its self `w`. -/
+def TelI : Telescope (s,x) := .cons .nil (.fld get (.pi .top .top))
+/-- `TelmC := [⊥ ⊑ z∙C, z∙C ⊑ Bd, fld newC (Π(x : ⊤) z∙C)]`, the module's telescope, under its self `z`. -/
+def TelmC : Telescope (s,x) :=
+  .cons (.cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) Bd))
+    (.fld newC (.pi .top (.sel (.var (.there .here)) C)))
+/-- The instance `obj (w : [fld get (Π(y : ⊤) ⊤)]) ([] ▹ {get = fun (lam ⊤ (path x))})`, in `[z, x]`. -/
+def inst : Value (([],x),x) := .obj TelI (.fld .nil get (.fn (.lam .top (.path (.var (.there (.there .here)))))))
+/-- The constructor `lam ⊤ (let i = val inst in path (cast (var i) (seal z C)))`, in `[z]`. -/
+def ctorC : Value ([],x) := .lam .top (.lett (.val inst) (.path (.cast (.var .here) (.seal (.var (.there (.there .here))) C))))
+/-- `dsmC := [] ▹ {class C = Bd} ▹ {newC = fun ctorC}`, the module's definitions. -/
+def dsmC : Defs ([],x) := .fld (.cls .nil C Bd) newC (.fn ctorC)
+/-- `mC := obj (z : TelmC) dsmC`. -/
+def mC : Value [] := .obj TelmC dsmC
+/-- `progC := let m = val mC in let c = app (sel (var m) newC) (cast (var m) (top (μ TelmC))) in
+let g = app (sel (cast (var c) (member (var m) (refl (μ TelmC)) 1)) get) (cast (var m) (top (μ TelmC))) in
+path (var g)`.  Each argument is cast to `⊤`, since `TM-App` asks the parameter type exactly. -/
+def progC : Tm [] :=
+  .lett (.val mC)
+    (.lett (.app (.sel (.var .here) newC 2) (.cast (.var .here) (.top (.mu TelmC))))
+      (.lett (.app (.sel (.cast (.var .here) (.member (.var (.there .here)) (.refl (.mu TelmC)) 1)) get 0)
+          (.cast (.var (.there .here)) (.top (.mu TelmC))))
+        (.path (.var .here))))
+/-- `progSealOut := let m = val mC in let s = val (obj (w : TelI) ([] ▹ {get = fun (lam ⊤ (path y))})) in
+path (cast (var s) (seal m C))`.  The seal names the let-bound `m`, which has no block. -/
+def progSealOut : Tm [] :=
+  .lett (.val mC) (.lett (.val (.obj TelI (.fld .nil get (.fn (.lam .top (.path (.var .here)))))))
+    (.path (.cast (.var .here) (.seal (.var (.there .here)) C))))
+/-- `litOnly := let m = val mC in val (obj (w : TelI) ([] ▹ {get = fun (lam ⊤ (path y))}))`, the literal of
+`progSealOut` without the seal. -/
+def litOnly : Tm [] := .lett (.val mC) (.val (.obj TelI (.fld .nil get (.fn (.lam .top (.path (.var .here)))))))
+
+/-- The class program checks at `⊤`. -/
+theorem classProg_checks : checkTm .nil progC .top = true := by decide +kernel
+/-- The positive control of `sealOpaque_rejected`: the literal types without the seal. -/
+theorem litOnly_typed : synthTm .nil litOnly = some (.mu TelI) := by decide +kernel
+/-- A seal at a let-bound module is rejected: `LE-Seal` finds no block at an opaque binder. -/
+theorem sealOpaque_rejected : checkTm .nil progSealOut .top = false := by decide +kernel
+/-- The v1 reading of a class entry: `EQ-Def` at `z∙C` answers the body `Bd`. -/
+theorem classDefP_v1 : synthLe (Ctx.nil.cons (.transparent (.mu TelmC) dsmC.block))
+    (.eqToLe (.defP (.var .here) C)) = some (.sel (.var .here) C, (Bd : Ty []).weaken) := by decide +kernel
+
+end Class
 
 end Nominal.FCn

@@ -111,11 +111,26 @@ theorem Ctx.defAt_opaque_cons {Γ : Ctx s} {T : Ty s} {b : Binding s} {p : Path 
       Ctx.defAt_weaken Γ (.opaque T) p₀ A
     exact e.trans (e'.symm.trans h)
 
+/-- An opaque binder holds no class, so a context that binds the same variable otherwise reads
+every class the opaque one reads. -/
+theorem Ctx.clsAt_opaque_cons {Γ : Ctx s} {T : Ty s} {b : Binding s} {p : Path (s,x)} {C : Label}
+    {U : Ty (s,x)} (h : (Γ.cons (.opaque T)).clsAt p C = some U) : (Γ.cons b).clsAt p C = some U := by
+  rcases Path.root_here_or_weaken p with hr | ⟨p₀, rfl⟩
+  · rw [Ctx.clsAt_here_opaque Γ T p C hr] at h
+    cases h
+  · have e : (Γ.cons b).clsAt (p₀.rename Rename.succ) C = (Γ.clsAt p₀ C).map (Ty.rename · Rename.succ) :=
+      Ctx.clsAt_weaken Γ b p₀ C
+    have e' : (Γ.cons (.opaque T)).clsAt (p₀.rename Rename.succ) C =
+        (Γ.clsAt p₀ C).map (Ty.rename · Rename.succ) :=
+      Ctx.clsAt_weaken Γ (.opaque T) p₀ C
+    exact e.trans (e'.symm.trans h)
+
 /-! ## Typed evidence substitutions -/
 
 structure CoSubst.Typed (Γ₁ : Ctx s₁) (σ : CoSubst s₁ s₂) (Γ₂ : Ctx s₂) : Prop where
   var : ∀ x, PathCo.HasType Γ₂ (σ.var x) ((Γ₁.ty x).subst σ.paths)
   defAt : ∀ p A W, Γ₁.defAt p A = some W → Γ₂.defAt (p.subst σ.paths) A = some (W.subst σ.paths)
+  clsAt : ∀ p C U, Γ₁.clsAt p C = some U → Γ₂.clsAt (p.subst σ.paths) C = some (U.subst σ.paths)
 
 /-- The variables of a lifted substitution, for any two binders whose types agree.  The old
 variables are weakened, which is `PathCo.HasType.rename` at `Rename.succ`. -/
@@ -158,6 +173,33 @@ theorem CoSubst.Typed.defAt_lift {Γ₁ : Ctx s₁} {σ : CoSubst s₁ s₂} {Γ
     show some ((W₀.subst σ.paths).weaken) = some (W₀.weaken.subst σ.paths.lift)
     rw [Ty.weaken_subst_lift]
 
+/-- The classes of a lifted substitution, for any two binders whose blocks agree. -/
+theorem CoSubst.Typed.clsAt_lift {Γ₁ : Ctx s₁} {σ : CoSubst s₁ s₂} {Γ₂ : Ctx s₂}
+    (h : CoSubst.Typed Γ₁ σ Γ₂) {b₁ : Binding s₁} {b₂ : Binding s₂}
+    (hb : (Γ₂.cons b₂).blockAt .here = ((Γ₁.cons b₁).blockAt .here).map (Block.subst · σ.paths.lift))
+    (p : Path (s₁,x)) (C : Label) (U : Ty (s₁,x)) (hU : (Γ₁.cons b₁).clsAt p C = some U) :
+    (Γ₂.cons b₂).clsAt (p.subst σ.lift.paths) C = some (U.subst σ.lift.paths) := by
+  rw [CoSubst.lift_paths]
+  rcases Path.root_here_or_weaken p with hr | ⟨p₀, rfl⟩
+  · have e₁ : (Γ₂.cons b₂).clsAt (p.subst σ.paths.lift) C =
+        ((Γ₂.cons b₂).nodeAt (p.subst σ.paths.lift)).bind (·.cls C) := rfl
+    have e₂ : ((Γ₁.cons b₁).nodeAt p).bind (·.cls C) = some U := hU
+    rw [e₁, Ctx.nodeAt_lift_subst hb p hr]
+    cases e : (Γ₁.cons b₁).nodeAt p with
+    | none => rw [e] at e₂; cases e₂
+    | some B =>
+        rw [e] at e₂
+        have e₃ : B.cls C = some U := e₂
+        show (B.subst σ.paths.lift).cls C = some (U.subst σ.paths.lift)
+        rw [Block.cls_subst, e₃]
+        rfl
+  · obtain ⟨U₀, e₀, rfl⟩ := Ctx.clsAt_weaken_some hU
+    have e₁ : (p₀.weaken (k := .var)).subst σ.paths.lift = (p₀.subst σ.paths).rename Rename.succ :=
+      Path.weaken_subst_lift p₀ σ.paths
+    rw [e₁, Ctx.clsAt_weaken, h.clsAt p₀ C U₀ e₀]
+    show some ((U₀.subst σ.paths).weaken) = some (U₀.weaken.subst σ.paths.lift)
+    rw [Ty.weaken_subst_lift]
+
 theorem CoSubst.Typed.one {Γ : Ctx s} {Q : PathCo s} {S : Ty s} (hQ : PathCo.HasType Γ Q S) : CoSubst.Typed (Γ.cons (.opaque S)) (CoSubst.one Q) Γ where
   var := fun
     | .here => by
@@ -180,14 +222,27 @@ theorem CoSubst.Typed.one {Γ : Ctx s} {Q : PathCo s} {S : Ty s} (hQ : PathCo.Ha
       have e₂ : (W₀.rename Rename.succ).subst (PathSubst.one Q.path) = W₀ := Ty.weaken_substPath W₀ Q.path
       rw [e₁, e₂]
       exact e₀
+  clsAt := fun p C U hU => by
+    rw [CoSubst.one_paths]
+    rcases Path.root_here_or_weaken p with hr | ⟨p₀, rfl⟩
+    · rw [Ctx.clsAt_here_opaque Γ S p C hr] at hU
+      cases hU
+    · obtain ⟨U₀, e₀, rfl⟩ := Ctx.clsAt_weaken_some hU
+      have e₁ : (p₀.weaken (k := .var)).subst (PathSubst.one Q.path) = p₀ := by
+        rw [Path.subst_one, Path.weaken_substPath]
+      have e₂ : (U₀.rename Rename.succ).subst (PathSubst.one Q.path) = U₀ := Ty.weaken_substPath U₀ Q.path
+      rw [e₁, e₂]
+      exact e₀
 
 theorem CoSubst.Typed.lift_opaque {Γ₁ : Ctx s₁} {σ : CoSubst s₁ s₂} {Γ₂ : Ctx s₂} (h : CoSubst.Typed Γ₁ σ Γ₂) (T : Ty s₁) : CoSubst.Typed (Γ₁.cons (.opaque T)) σ.lift (Γ₂.cons (.opaque (T.subst σ.paths))) where
   var := CoSubst.Typed.var_lift h rfl
   defAt := CoSubst.Typed.defAt_lift h rfl
+  clsAt := CoSubst.Typed.clsAt_lift h rfl
 
 theorem CoSubst.Typed.lift_transparent {Γ₁ : Ctx s₁} {σ : CoSubst s₁ s₂} {Γ₂ : Ctx s₂} (h : CoSubst.Typed Γ₁ σ Γ₂) (T : Ty s₁) (B : Block (s₁,x)) : CoSubst.Typed (Γ₁.cons (.transparent T B)) σ.lift (Γ₂.cons (.transparent (T.subst σ.paths) (B.subst σ.paths.lift))) where
   var := CoSubst.Typed.var_lift h rfl
   defAt := CoSubst.Typed.defAt_lift h rfl
+  clsAt := CoSubst.Typed.clsAt_lift h rfl
 
 /-- `MS-LetVal` with a composite cast `E : S ≤ T`: a body typed at `z : opaque T` reads `z` as
 `cast (var z) E↑` in a context that binds `z` at `S`, opaque or transparent. -/
@@ -205,6 +260,9 @@ theorem CoSubst.Typed.selfCast {Γ : Ctx s} {E : LeCo s} {S T : Ty s} (hE : LeCo
   defAt := fun p A W hW => by
     rw [CoSubst.selfCast_paths, Path.subst_ofRename, Path.rename_id, Ty.subst_ofRename, Ty.rename_id]
     exact Ctx.defAt_opaque_cons hW
+  clsAt := fun p C U hU => by
+    rw [CoSubst.selfCast_paths, Path.subst_ofRename, Path.rename_id, Ty.subst_ofRename, Ty.rename_id]
+    exact Ctx.clsAt_opaque_cons hU
 
 /-! ## Evidence
 
@@ -300,6 +358,7 @@ theorem LeCo.HasType.subst (hσ : CoSubst.Typed Γ₁ σ Γ₂) : LeCo.HasType �
       show LeCo.HasType Γ₂ (.member (P₀.subst σ) (e₀.subst σ) i) ((S'.substPath P₀.path).subst σ.paths) ((T'.substPath P₀.path).subst σ.paths)
       rw [Ty.substPath_subst, Ty.substPath_subst, ← PathCo.path_subst]
       exact h
+  | .seal (p := p₀) (C := C) (U := U) h => .seal (hσ.clsAt p₀ C U h)
 theorem EqCo.HasType.subst (hσ : CoSubst.Typed Γ₁ σ Γ₂) : EqCo.HasType Γ₁ φ S T → EqCo.HasType Γ₂ (φ.subst σ) (S.subst σ.paths) (T.subst σ.paths)
   | .refl => .refl
   | .symm h => .symm (EqCo.HasType.subst hσ h)
@@ -394,6 +453,11 @@ theorem Defs.HasType.subst (hσ : CoSubst.Typed Γ₁ σ Γ₂) : Defs.HasType �
       show Defs.HasType Γ₂ (p₀.subst σ.paths) (.fld (ds₀.subst σ) a (.nest ((Tel'.subst (PathSubst.one p₀).lift).subst σ.paths.lift) (ds'.subst σ))) (.cons (Tel₀.subst σ.paths.lift) (.fld a (.mu (Tel'.subst σ.paths.lift.lift))))
       rw [Telescope.subst_one_lift_subst]
       exact h
+  | .cls (p := p₀) (ds := ds₀) (C := C) (U := U) (TelB := TelB) hds hC hU => by
+      have hC' : C ∉ (ds₀.subst σ).labels := by rw [Defs.labels_subst]; exact hC
+      have hU' : U.subst σ.paths = (Ty.mu (TelB.subst σ.paths.lift.lift)).substPath (p₀.subst σ.paths) := by
+        rw [hU, Ty.substPath_subst]; rfl
+      exact .cls (Defs.HasType.subst hσ hds) hC' hU'
 end
 
 /-! ## Continuations -/

@@ -47,6 +47,11 @@ def Ctx.blockAt : Ctx s → BVar s .var → Option (Block s)
 def TyDefs.get : TyDefs s → Label → Option (Ty s)          -- W A, the newest
   | .nil, _ => none
   | .cons W A' U, A => if A = A' then some U else W.get A
+  | .cls W C U, A => if A = C then some U else W.get A                  -- v1: a class entry is read (plan D-3)
+def TyDefs.getCls : TyDefs s → Label → Option (Ty s)       -- the class at C, the newest entry at C
+  | .nil, _ => none
+  | .cons W A _, C => if C = A then none else W.getCls C                -- a newer plain entry hides an older class
+  | .cls W C' U, C => if C = C' then some U else W.getCls C
 def Kids.get : Kids s → Label → Option (Block s)            -- C a, the newest
   | .nil, _ => none
   | .cons C a' B, a => if a = a' then some B else C.get a
@@ -58,6 +63,10 @@ def Block.def : Block s → Label → Option (Ty s)            -- (node W C).def
   | .node W _, A => W.get A
   | .fwd _, _ => none
   | .clo, _ => none
+def Block.cls : Block s → Label → Option (Ty s)            -- (node W C).cls C = W.getCls C, fwd and clo hold no class
+  | .node W _, C => W.getCls C
+  | .fwd _, _ => none
+  | .clo, _ => none
 def Block.walk : Block s → List Label → Option (Block s)   -- plan-10-pdot.md:402-403
   | B, [] => some B
   | B, a :: bs => (B.child a).bind (Block.walk · bs)
@@ -66,10 +75,12 @@ def Defs.tyDefs : Defs s → TyDefs s
   | .nil => .nil
   | .typ ds A U => .cons ds.tyDefs A U
   | .fld ds _ _ => ds.tyDefs
+  | .cls ds C U => .cls ds.tyDefs C U
 def Defs.kids : Defs s → Kids s
   | .nil => .nil
   | .typ ds _ _ => ds.kids
   | .fld ds a rhs => .cons ds.kids a rhs.child
+  | .cls ds _ _ => ds.kids
 def Rhs.child : Rhs s → Block s
   | .path P => .fwd P.path                                  -- a path field forwards
   | .fn _ => .clo                                           -- a function field is a closure
@@ -80,6 +91,7 @@ def Ctx.nodeAt (Γ : Ctx s) : Path s → Option (Block s)     -- follows no forw
   | .var x => Γ.blockAt x
   | .sel p a => (Γ.nodeAt p).bind (·.child a)
 def Ctx.defAt (Γ : Ctx s) (p : Path s) (A : Label) : Option (Ty s) := (Γ.nodeAt p).bind (·.def A)
+def Ctx.clsAt (Γ : Ctx s) (p : Path s) (C : Label) : Option (Ty s) := (Γ.nodeAt p).bind (·.cls C)
 
 /-! ## Walking along a field list -/
 
@@ -115,6 +127,42 @@ theorem Ctx.defAt_ext (Γ : Ctx s) (x : BVar s .var) (bs : List Label) (A : Labe
   show ((Γ.blockAt x).bind (·.walk bs)).bind (·.def A) = _
   cases Γ.blockAt x <;> rfl
 
+/-- `clsAt` over a field list, as `Ctx.defAt_ext`. -/
+theorem Ctx.clsAt_ext (Γ : Ctx s) (x : BVar s .var) (bs : List Label) (C : Label) :
+    Γ.clsAt ((Path.var x).nomExt bs) C = (Γ.blockAt x).bind (fun B => (B.walk bs).bind (·.cls C)) := by
+  show (Γ.nodeAt ((Path.var x).nomExt bs)).bind (·.cls C) = _
+  rw [Ctx.nodeAt_ext]
+  show ((Γ.blockAt x).bind (·.walk bs)).bind (·.cls C) = _
+  cases Γ.blockAt x <;> rfl
+
+/-! ## A class entry is a type definition -/
+
+theorem TyDefs.get_of_getCls {W : TyDefs s} {C : Label} {U : Ty s} : W.getCls C = some U → W.get C = some U := by
+  induction W with
+  | nil => intro h; nomatch h
+  | cons W A U' ih =>
+      show (if C = A then none else W.getCls C) = some U → (if C = A then some U' else W.get C) = some U
+      by_cases h : C = A
+      · rw [if_pos h]; intro e; nomatch e
+      · rw [if_neg h, if_neg h]; exact ih
+  | cls W C' U' ih =>
+      show (if C = C' then some U' else W.getCls C) = some U → (if C = C' then some U' else W.get C) = some U
+      by_cases h : C = C'
+      · rw [if_pos h, if_pos h]; exact id
+      · rw [if_neg h, if_neg h]; exact ih
+
+theorem Block.def_of_cls {B : Block s} {C : Label} {U : Ty s} : B.cls C = some U → B.def C = some U := by
+  cases B with
+  | node W _ => exact TyDefs.get_of_getCls
+  | fwd _ => intro h; nomatch h
+  | clo => intro h; nomatch h
+
+theorem Ctx.defAt_of_clsAt {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} : Γ.clsAt p C = some U → Γ.defAt p C = some U := by
+  show (Γ.nodeAt p).bind (·.cls C) = some U → (Γ.nodeAt p).bind (·.def C) = some U
+  cases Γ.nodeAt p with
+  | none => intro h; nomatch h
+  | some B => exact Block.def_of_cls
+
 /-! ## Reading a block commutes with renaming and path substitution -/
 
 theorem TyDefs.get_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂) (A : Label),
@@ -124,6 +172,12 @@ theorem TyDefs.get_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂) (A : L
       show (if A = A' then some (U.rename ρ) else (W.rename ρ).get A) =
         (if A = A' then some U else W.get A).map (Ty.rename · ρ)
       by_cases h : A = A'
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.get_rename W ρ A]
+  | .cls W C U, ρ, A => by
+      show (if A = C then some (U.rename ρ) else (W.rename ρ).get A) =
+        (if A = C then some U else W.get A).map (Ty.rename · ρ)
+      by_cases h : A = C
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_rename W ρ A]
 
@@ -136,6 +190,44 @@ theorem TyDefs.get_subst : ∀ (W : TyDefs s₁) (σ : PathSubst s₁ s₂) (A :
       by_cases h : A = A'
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_subst W σ A]
+  | .cls W C U, σ, A => by
+      show (if A = C then some (U.subst σ) else (W.subst σ).get A) =
+        (if A = C then some U else W.get A).map (Ty.subst · σ)
+      by_cases h : A = C
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.get_subst W σ A]
+
+theorem TyDefs.getCls_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂) (C : Label),
+    (W.rename ρ).getCls C = (W.getCls C).map (Ty.rename · ρ)
+  | .nil, _, _ => rfl
+  | .cons W A U, ρ, C => by
+      show (if C = A then none else (W.rename ρ).getCls C) =
+        (if C = A then none else W.getCls C).map (Ty.rename · ρ)
+      by_cases h : C = A
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.getCls_rename W ρ C]
+  | .cls W C' U, ρ, C => by
+      show (if C = C' then some (U.rename ρ) else (W.rename ρ).getCls C) =
+        (if C = C' then some U else W.getCls C).map (Ty.rename · ρ)
+      by_cases h : C = C'
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.getCls_rename W ρ C]
+
+theorem TyDefs.getCls_subst : ∀ (W : TyDefs s₁) (σ : PathSubst s₁ s₂) (C : Label),
+    (W.subst σ).getCls C = (W.getCls C).map (Ty.subst · σ)
+  | .nil, _, _ => rfl
+  | .cons W A U, σ, C => by
+      show (if C = A then none else (W.subst σ).getCls C) =
+        (if C = A then none else W.getCls C).map (Ty.subst · σ)
+      by_cases h : C = A
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.getCls_subst W σ C]
+  | .cls W C' U, σ, C => by
+      show (if C = C' then some (U.subst σ) else (W.subst σ).getCls C) =
+        (if C = C' then some U else W.getCls C).map (Ty.subst · σ)
+      by_cases h : C = C'
+      · rw [if_pos h, if_pos h]; rfl
+      · rw [if_neg h, if_neg h, TyDefs.getCls_subst W σ C]
 
 theorem Kids.get_rename : ∀ (C : Kids s₁) (ρ : Rename s₁ s₂) (a : Label),
     (C.rename ρ).get a = (C.get a).map (Block.rename · ρ)
@@ -171,6 +263,13 @@ theorem Block.def_rename (B : Block s₁) (ρ : Rename s₁ s₂) (A : Label) :
   | fwd q => rfl
   | clo => rfl
 
+theorem Block.cls_rename (B : Block s₁) (ρ : Rename s₁ s₂) (C : Label) :
+    (B.rename ρ).cls C = (B.cls C).map (Ty.rename · ρ) := by
+  cases B with
+  | node W K => exact TyDefs.getCls_rename W ρ C
+  | fwd q => rfl
+  | clo => rfl
+
 theorem Block.child_subst (B : Block s₁) (σ : PathSubst s₁ s₂) (a : Label) :
     (B.subst σ).child a = (B.child a).map (Block.subst · σ) := by
   cases B with
@@ -182,6 +281,13 @@ theorem Block.def_subst (B : Block s₁) (σ : PathSubst s₁ s₂) (A : Label) 
     (B.subst σ).def A = (B.def A).map (Ty.subst · σ) := by
   cases B with
   | node W C => exact TyDefs.get_subst W σ A
+  | fwd q => rfl
+  | clo => rfl
+
+theorem Block.cls_subst (B : Block s₁) (σ : PathSubst s₁ s₂) (C : Label) :
+    (B.subst σ).cls C = (B.cls C).map (Ty.subst · σ) := by
+  cases B with
+  | node W K => exact TyDefs.getCls_subst W σ C
   | fwd q => rfl
   | clo => rfl
 
@@ -208,6 +314,15 @@ theorem Ctx.defAt_weaken (Γ : Ctx s) (b : Binding s) (p : Path s) (A : Label) :
   | none => rfl
   | some B => exact Block.def_rename B Rename.succ A
 
+theorem Ctx.clsAt_weaken (Γ : Ctx s) (b : Binding s) (p : Path s) (C : Label) :
+    (Γ.cons b).clsAt (p.rename Rename.succ) C = (Γ.clsAt p C).map (Ty.rename · Rename.succ) := by
+  show ((Γ.cons b).nodeAt (p.rename Rename.succ)).bind (·.cls C) =
+    ((Γ.nodeAt p).bind (·.cls C)).map (Ty.rename · Rename.succ)
+  rw [Ctx.nodeAt_weaken]
+  cases Γ.nodeAt p with
+  | none => rfl
+  | some B => exact Block.cls_rename B Rename.succ C
+
 /-! ## The block of a literal commutes with renaming and evidence substitution -/
 
 mutual
@@ -218,6 +333,8 @@ theorem Defs.tyDefs_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂),
       simp only [Defs.tyDefs, Defs.rename, TyDefs.rename, Defs.tyDefs_rename ds ρ]
   | .fld ds _ _, ρ => by
       simp only [Defs.tyDefs, Defs.rename, Defs.tyDefs_rename ds ρ]
+  | .cls ds C U, ρ => by
+      simp only [Defs.tyDefs, Defs.rename, TyDefs.rename, Defs.tyDefs_rename ds ρ]
 theorem Defs.kids_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂),
     ds.kids.rename ρ = (ds.rename ρ).kids
   | .nil, _ => rfl
@@ -225,6 +342,8 @@ theorem Defs.kids_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂),
       simp only [Defs.kids, Defs.rename, Defs.kids_rename ds ρ]
   | .fld ds a rhs, ρ => by
       simp only [Defs.kids, Defs.rename, Kids.rename, Defs.kids_rename ds ρ, Rhs.child_rename rhs ρ]
+  | .cls ds _ _, ρ => by
+      simp only [Defs.kids, Defs.rename, Defs.kids_rename ds ρ]
 theorem Rhs.child_rename : ∀ (rhs : Rhs s₁) (ρ : Rename s₁ s₂),
     rhs.child.rename ρ = (rhs.rename ρ).child
   | .path P, ρ => by
@@ -242,6 +361,8 @@ theorem Defs.tyDefs_subst : ∀ (ds : Defs s₁) (σ : CoSubst s₁ s₂),
       simp only [Defs.tyDefs, Defs.subst, TyDefs.subst, Defs.tyDefs_subst ds σ]
   | .fld ds _ _, σ => by
       simp only [Defs.tyDefs, Defs.subst, Defs.tyDefs_subst ds σ]
+  | .cls ds C U, σ => by
+      simp only [Defs.tyDefs, Defs.subst, TyDefs.subst, Defs.tyDefs_subst ds σ]
 theorem Defs.kids_subst : ∀ (ds : Defs s₁) (σ : CoSubst s₁ s₂),
     ds.kids.subst σ.paths = (ds.subst σ).kids
   | .nil, _ => rfl
@@ -249,6 +370,8 @@ theorem Defs.kids_subst : ∀ (ds : Defs s₁) (σ : CoSubst s₁ s₂),
       simp only [Defs.kids, Defs.subst, Defs.kids_subst ds σ]
   | .fld ds a rhs, σ => by
       simp only [Defs.kids, Defs.subst, Kids.subst, Defs.kids_subst ds σ, Rhs.child_subst rhs σ]
+  | .cls ds _ _, σ => by
+      simp only [Defs.kids, Defs.subst, Defs.kids_subst ds σ]
 theorem Rhs.child_subst : ∀ (rhs : Rhs s₁) (σ : CoSubst s₁ s₂),
     rhs.child.subst σ.paths = (rhs.subst σ).child
   | .path P, σ => by
@@ -264,5 +387,25 @@ theorem Defs.block_rename (ds : Defs s₁) (ρ : Rename s₁ s₂) : ds.block.re
 
 theorem Defs.block_subst (ds : Defs s₁) (σ : CoSubst s₁ s₂) : ds.block.subst σ.paths = (ds.subst σ).block := by
   simp only [Defs.block, Block.subst, Defs.tyDefs_subst, Defs.kids_subst]
+
+/-! ## Tests of the class entries of a block -/
+
+namespace ClsBlockTests
+
+private abbrev lA : Label := .typ 0
+private abbrev lC : Label := .typ 1
+
+/-- `node (nil[A ↦ ⊤][class C ↦ ⊤]) nil` -/
+private def B₁ : Block ([],x) := .node (.cls (.cons .nil lA .top) lC .top) .nil
+/-- `node (nil[class C ↦ ⊤][C ↦ ⊥]) nil`, a newer plain entry over a class -/
+private def B₂ : Block ([],x) := .node (.cons (.cls .nil lC .top) lC .bot) .nil
+
+example : B₁.cls lC = some .top := by decide
+example : B₁.cls lA = none := by decide
+example : B₁.def lC = some .top := by decide
+example : B₂.cls lC = none := by decide
+example : B₂.def lC = some .bot := by decide
+
+end ClsBlockTests
 
 end Nominal.FCn

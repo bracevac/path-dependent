@@ -35,6 +35,11 @@ theorem Defs.tyDefs_get_none : ∀ (ds : Defs s) (A : Label), A ∉ ds.labels �
       rw [if_neg hne]
       exact Defs.tyDefs_get_none ds A (fun hm => h (List.mem_cons_of_mem _ hm))
   | .fld ds a _, A, h => Defs.tyDefs_get_none ds A (fun hm => h (List.mem_cons_of_mem _ hm))
+  | .cls ds C U, A, h => by
+      simp only [Defs.tyDefs, TyDefs.get]
+      have hne : A ≠ C := fun e => h (e ▸ List.mem_cons_self ..)
+      rw [if_neg hne]
+      exact Defs.tyDefs_get_none ds A (fun hm => h (List.mem_cons_of_mem _ hm))
 
 theorem Defs.getFld_none : ∀ (ds : Defs s) (a : Label), a ∉ ds.labels → ds.getFld a = none
   | .nil, _, _ => rfl
@@ -44,6 +49,7 @@ theorem Defs.getFld_none : ∀ (ds : Defs s) (a : Label), a ∉ ds.labels → ds
       have hne : a' ≠ a := fun e => h (e ▸ List.mem_cons_self ..)
       rw [if_neg hne]
       exact Defs.getFld_none ds a (fun hm => h (List.mem_cons_of_mem _ hm))
+  | .cls ds _ _, a, h => Defs.getFld_none ds a (fun hm => h (List.mem_cons_of_mem _ hm))
 
 /-- `ds` is a prefix of the definitions `dsF` of a literal: what it defines, `dsF` defines alike. -/
 def Pref (ds dsF : Defs s) : Prop :=
@@ -59,6 +65,16 @@ theorem Pref.typ {ds dsF : Defs s} {A : Label} {U : Ty s} (hA : A ∉ ds.labels)
   have hne : A' ≠ A := by
     intro e; subst e
     rw [Defs.tyDefs_get_none ds A' hA] at h'; cases h'
+  simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
+  exact h'
+
+theorem Pref.cls {ds dsF : Defs s} {C : Label} {U : Ty s} (hC : C ∉ ds.labels) (h : Pref (.cls ds C U) dsF) :
+    Pref ds dsF ∧ dsF.tyDefs.get C = some U := by
+  refine ⟨⟨fun A' U' h' => ?_, fun a rhs h' => h.2 a rhs h'⟩, h.1 C U (by simp [Defs.tyDefs, TyDefs.get])⟩
+  apply h.1 A' U'
+  have hne : A' ≠ C := by
+    intro e; subst e
+    rw [Defs.tyDefs_get_none ds A' hC] at h'; cases h'
   simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
   exact h'
 
@@ -245,6 +261,16 @@ theorem litView_typed {σ : Store s} {Γ : Ctx s} :
       rw [show (Ty.mu Tel').substPath l = .mu (Tel'.subst (PathSubst.one l).lift) from rfl, Γ.res_mu]
       have hL' := hL.nest hget
       exact .obj (litView_typed hL' hds' (Pref.refl ds')) hL'.live
+  | l, dsF, hL, _, _, .cls (C := C) (U := U) (TelB := TelB) hds hC hU, hp => by
+      obtain ⟨hp', hget⟩ := hp.cls hC
+      have hdef : Γ.defAt l C = some ((Ty.mu TelB).substPath l) := by
+        show (Γ.nodeAt l).bind (·.def C) = _
+        rw [hL.node, ← hU]
+        exact hget
+      simp only [litView]
+      refine .cons (.cons (litView_typed hL hds hp') (.le ?_)) (.le ?_)
+      · exact FormT.single .bot
+      · exact FormT.single (.eqv (.defP hdef))
 
 /-- The view of a store variable at its type. -/
 theorem varView_typed {σ : Store s} {Γ : Ctx s} (hσ : Store.Typed σ Γ) (x : BVar s .var) :
@@ -430,6 +456,7 @@ theorem LeCo.HasType.form (hσ : Store.Typed σ Γ) : LeCo.HasType Γ e S T →
       exact ⟨_, .trans hH hH', FormT.append hF hG⟩
   | .top => ⟨_, .top, FormT.single .top⟩
   | .bot => ⟨_, .bot, FormT.single .bot⟩
+  | .seal h => ⟨_, .seal h, FormT.single (.eqv (.symm (.defP (Ctx.defAt_of_clsAt h))))⟩
   | .eqToLe h => ⟨_, .eqToLe h, FormT.single (.eqv (EqCo.HasType.sound hσ h))⟩
   | .pi he hf => ⟨_, .pi he hf, FormT.single (.pi he hf)⟩
   | .obj hm => by

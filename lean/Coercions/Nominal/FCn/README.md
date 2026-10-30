@@ -15,6 +15,16 @@ projection step and never copies an object.  The erasure maps FCp into the runti
 closed reading: the canonical walk `Γ.canon p`, with the one name `none` for every cyclic path,
 resolution `Γ.res T` and the normal type `Γ.norm T`.  The checker never computes them.
 
+Stage N1 of plan XII adds the class primitive of FCn.  A literal may hold a class entry
+`ds ▹ {class C = U}` (`Defs.cls`), and DF-Cls declares it with the two bounds `⊥ ⊑ w∙C` and
+`w∙C ⊑ μ(o : TelB)`, where `U` is that object type at the literal's path.  The seal `seal p C`
+(`LeCo.seal`) is LE-Seal: when the block at `p` holds the class entry `C = U`, it includes `U` in
+`p∙C`.  A block exists only at a transparent binder, so in a typed program a seal names the self of
+an enclosing literal (`Class.sealOpaque_rejected` in `Examples`).  In this first version `defAt` also
+reads a class entry, so EQ-Def at `p∙C` answers `U` (`Class.classDefP_v1`), and every new case of
+the metatheory reduces to the cases of DF-Typ and EQ-Def.  The later stage NT of the plan stops that
+reading, so that a class is opaque outside its seal.
+
 ## What is proved
 
 Over a typed store `hσ : ⊢ σ : Γ` (`Store.Typed σ Γ`):

@@ -43,6 +43,7 @@ def Defs.erase : Defs s → PDot.Runtime.Defs s
   | .nil => .nil                                           -- |[]| = []
   | .typ ds _ _ => ds.erase                                -- |ds ▹ {A = U}| = |ds|
   | .fld ds a rhs => .cons ds.erase a rhs.erase
+  | .cls ds _ _ => ds.erase                                -- |ds ▹ {class C = U}| = |ds|
 def Rhs.erase : Rhs s → PDot.Runtime.Rhs s
   | .path P => .defp P.path                                -- a = defp P.path
   | .fn v => .defv v.erase                                 -- a = defv |v|
@@ -76,6 +77,7 @@ theorem Defs.erase_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂), (ds.re
   | .typ ds _ _, ρ => by simp only [Defs.rename, Defs.erase, Defs.erase_rename ds ρ]
   | .fld ds a rhs, ρ => by
       simp only [Defs.rename, Defs.erase, PDot.Runtime.Defs.rename, Defs.erase_rename ds ρ, Rhs.erase_rename rhs ρ]
+  | .cls ds _ _, ρ => by simp only [Defs.rename, Defs.erase, Defs.erase_rename ds ρ]
 theorem Rhs.erase_rename : ∀ (rhs : Rhs s₁) (ρ : Rename s₁ s₂), (rhs.rename ρ).erase = rhs.erase.rename ρ
   | .path P, ρ => by simp only [Rhs.rename, Rhs.erase, PDot.Runtime.Rhs.rename, PathCo.path_rename]
   | .fn v, ρ => by simp only [Rhs.rename, Rhs.erase, PDot.Runtime.Rhs.rename, Value.erase_rename v ρ]
@@ -102,6 +104,7 @@ theorem Defs.erase_subst : ∀ (ds : Defs s₁) (σ : CoSubst s₁ s₂), (ds.su
   | .typ ds _ _, σ => by simp only [Defs.subst, Defs.erase, Defs.erase_subst ds σ]
   | .fld ds a rhs, σ => by
       simp only [Defs.subst, Defs.erase, PDot.Runtime.Defs.subst, Defs.erase_subst ds σ, Rhs.erase_subst rhs σ]
+  | .cls ds _ _, σ => by simp only [Defs.subst, Defs.erase, Defs.erase_subst ds σ]
 theorem Rhs.erase_subst : ∀ (rhs : Rhs s₁) (σ : CoSubst s₁ s₂), (rhs.subst σ).erase = rhs.erase.subst σ.paths
   | .path P, σ => by simp only [Rhs.subst, Rhs.erase, PDot.Runtime.Rhs.subst, PathCo.path_subst]
   | .fn v, σ => by simp only [Rhs.subst, Rhs.erase, PDot.Runtime.Rhs.subst, Value.erase_subst v σ]

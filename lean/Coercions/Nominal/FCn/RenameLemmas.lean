@@ -172,11 +172,14 @@ end
 theorem TyDefs.rename_id : ∀ (X : TyDefs s), X.rename Rename.id = X
   | .nil => rfl
   | .cons W A U => by simp only [TyDefs.rename, TyDefs.rename_id W, Ty.rename_id U]
+  | .cls W C U => by simp only [TyDefs.rename, TyDefs.rename_id W, Ty.rename_id U]
 
 theorem TyDefs.rename_rename : ∀ (X : TyDefs s₁) (ρ : Rename s₁ s₂) (ρ' : Rename s₂ s₃),
     (X.rename ρ).rename ρ' = X.rename (ρ.comp ρ')
   | .nil, _, _ => rfl
   | .cons W A U, ρ, ρ' => by
+      simp only [TyDefs.rename, TyDefs.rename_rename W ρ ρ', Ty.rename_rename U ρ ρ']
+  | .cls W C U, ρ, ρ' => by
       simp only [TyDefs.rename, TyDefs.rename_rename W ρ ρ', Ty.rename_rename U ρ ρ']
 
 theorem TyDefs.subst_ofRename : ∀ (X : TyDefs s₁) (ρ : Rename s₁ s₂),
@@ -184,11 +187,15 @@ theorem TyDefs.subst_ofRename : ∀ (X : TyDefs s₁) (ρ : Rename s₁ s₂),
   | .nil, _ => rfl
   | .cons W A U, ρ => by
       simp only [TyDefs.subst, TyDefs.rename, TyDefs.subst_ofRename W ρ, Ty.subst_ofRename U ρ]
+  | .cls W C U, ρ => by
+      simp only [TyDefs.subst, TyDefs.rename, TyDefs.subst_ofRename W ρ, Ty.subst_ofRename U ρ]
 
 theorem TyDefs.rename_subst : ∀ (X : TyDefs s₁) (ρ : Rename s₁ s₂) (σ : PathSubst s₂ s₃),
     (X.rename ρ).subst σ = X.subst (ρ.pathComp σ)
   | .nil, _, _ => rfl
   | .cons W A U, ρ, σ => by
+      simp only [TyDefs.rename, TyDefs.subst, TyDefs.rename_subst W ρ σ, Ty.rename_subst U ρ σ]
+  | .cls W C U, ρ, σ => by
       simp only [TyDefs.rename, TyDefs.subst, TyDefs.rename_subst W ρ σ, Ty.rename_subst U ρ σ]
 
 theorem TyDefs.subst_rename : ∀ (X : TyDefs s₁) (σ : PathSubst s₁ s₂) (ρ : Rename s₂ s₃),
@@ -196,11 +203,15 @@ theorem TyDefs.subst_rename : ∀ (X : TyDefs s₁) (σ : PathSubst s₁ s₂) (
   | .nil, _, _ => rfl
   | .cons W A U, σ, ρ => by
       simp only [TyDefs.subst, TyDefs.rename, TyDefs.subst_rename W σ ρ, Ty.subst_rename U σ ρ]
+  | .cls W C U, σ, ρ => by
+      simp only [TyDefs.subst, TyDefs.rename, TyDefs.subst_rename W σ ρ, Ty.subst_rename U σ ρ]
 
 theorem TyDefs.subst_subst : ∀ (X : TyDefs s₁) (σ : PathSubst s₁ s₂) (τ : PathSubst s₂ s₃),
     (X.subst σ).subst τ = X.subst (σ.comp τ)
   | .nil, _, _ => rfl
   | .cons W A U, σ, τ => by
+      simp only [TyDefs.subst, TyDefs.subst_subst W σ τ, Ty.subst_subst U σ τ]
+  | .cls W C U, σ, τ => by
       simp only [TyDefs.subst, TyDefs.subst_subst W σ τ, Ty.subst_subst U σ τ]
 
 mutual
@@ -378,6 +389,7 @@ theorem LeCo.rename_id : ∀ (X : LeCo s), X.rename Rename.id = X
   | .bound Tel i => by simp only [LeCo.rename, Rename.lift_id, Telescope.rename_id]
   | .intoBnd e => by simp only [LeCo.rename, LeCo.rename_id e]
   | .member P e i => by simp only [LeCo.rename, PathCo.rename_id P, LeCo.rename_id e]
+  | .seal p C => by simp only [LeCo.rename, Path.rename_id]
 theorem EqCo.rename_id : ∀ (X : EqCo s), X.rename Rename.id = X
   | .refl T => by simp only [EqCo.rename, Ty.rename_id]
   | .symm φ => by simp only [EqCo.rename, EqCo.rename_id φ]
@@ -416,6 +428,7 @@ theorem Defs.rename_id : ∀ (X : Defs s), X.rename Rename.id = X
   | .nil => rfl
   | .typ ds A U => by simp only [Defs.rename, Defs.rename_id ds, Ty.rename_id]
   | .fld ds a rhs => by simp only [Defs.rename, Defs.rename_id ds, Rhs.rename_id rhs]
+  | .cls ds C U => by simp only [Defs.rename, Defs.rename_id ds, Ty.rename_id]
 theorem Rhs.rename_id : ∀ (X : Rhs s), X.rename Rename.id = X
   | .path P => by simp only [Rhs.rename, PathCo.rename_id]
   | .fn v => by simp only [Rhs.rename, Value.rename_id v]
@@ -483,6 +496,7 @@ theorem LeCo.rename_rename : ∀ (X : LeCo s₁) (ρ : Rename s₁ s₂) (ρ' : 
   | .intoBnd e, ρ, ρ' => by simp only [LeCo.rename, LeCo.rename_rename e ρ ρ']
   | .member P e i, ρ, ρ' => by
       simp only [LeCo.rename, PathCo.rename_rename P ρ ρ', LeCo.rename_rename e ρ ρ']
+  | .seal p C, ρ, ρ' => by simp only [LeCo.rename, Path.rename_comp]
 theorem EqCo.rename_rename : ∀ (X : EqCo s₁) (ρ : Rename s₁ s₂) (ρ' : Rename s₂ s₃),
     (X.rename ρ).rename ρ' = X.rename (ρ.comp ρ')
   | .refl T, ρ, ρ' => by simp only [EqCo.rename, Ty.rename_rename]
@@ -539,6 +553,7 @@ theorem Defs.rename_rename : ∀ (X : Defs s₁) (ρ : Rename s₁ s₂) (ρ' : 
   | .typ ds A U, ρ, ρ' => by simp only [Defs.rename, Defs.rename_rename ds ρ ρ', Ty.rename_rename]
   | .fld ds a rhs, ρ, ρ' => by
       simp only [Defs.rename, Defs.rename_rename ds ρ ρ', Rhs.rename_rename rhs ρ ρ']
+  | .cls ds C U, ρ, ρ' => by simp only [Defs.rename, Defs.rename_rename ds ρ ρ', Ty.rename_rename]
 theorem Rhs.rename_rename : ∀ (X : Rhs s₁) (ρ : Rename s₁ s₂) (ρ' : Rename s₂ s₃),
     (X.rename ρ).rename ρ' = X.rename (ρ.comp ρ')
   | .path P, ρ, ρ' => by simp only [Rhs.rename, PathCo.rename_rename]
@@ -715,6 +730,8 @@ theorem LeCo.subst_ofRename : ∀ (X : LeCo s₁) (ρ : Rename s₁ s₂),
   | .intoBnd e, ρ => by simp only [LeCo.subst, LeCo.rename, LeCo.subst_ofRename e ρ]
   | .member P e i, ρ => by
       simp only [LeCo.subst, LeCo.rename, PathCo.subst_ofRename P ρ, LeCo.subst_ofRename e ρ]
+  | .seal p C, ρ => by
+      simp only [LeCo.subst, LeCo.rename, CoSubst.ofRename_paths, Path.subst_ofRename]
 theorem EqCo.subst_ofRename : ∀ (X : EqCo s₁) (ρ : Rename s₁ s₂),
     X.subst (CoSubst.ofRename ρ) = X.rename ρ
   | .refl T, ρ => by
@@ -784,6 +801,9 @@ theorem Defs.subst_ofRename : ∀ (X : Defs s₁) (ρ : Rename s₁ s₂),
         Ty.subst_ofRename]
   | .fld ds a rhs, ρ => by
       simp only [Defs.subst, Defs.rename, Defs.subst_ofRename ds ρ, Rhs.subst_ofRename rhs ρ]
+  | .cls ds C U, ρ => by
+      simp only [Defs.subst, Defs.rename, Defs.subst_ofRename ds ρ, CoSubst.ofRename_paths,
+        Ty.subst_ofRename]
 theorem Rhs.subst_ofRename : ∀ (X : Rhs s₁) (ρ : Rename s₁ s₂),
     X.subst (CoSubst.ofRename ρ) = X.rename ρ
   | .path P, ρ => by simp only [Rhs.subst, Rhs.rename, PathCo.subst_ofRename]
@@ -853,6 +873,8 @@ theorem LeCo.rename_subst : ∀ (X : LeCo s₁) (ρ : Rename s₁ s₂) (σ : Co
   | .intoBnd e, ρ, σ => by simp only [LeCo.rename, LeCo.subst, LeCo.rename_subst e ρ σ]
   | .member P e i, ρ, σ => by
       simp only [LeCo.rename, LeCo.subst, PathCo.rename_subst P ρ σ, LeCo.rename_subst e ρ σ]
+  | .seal p C, ρ, σ => by
+      simp only [LeCo.rename, LeCo.subst, Path.rename_subst, Rename.coComp_paths]
 theorem EqCo.rename_subst : ∀ (X : EqCo s₁) (ρ : Rename s₁ s₂) (σ : CoSubst s₂ s₃),
     (X.rename ρ).subst σ = X.subst (Rename.coComp ρ σ)
   | .refl T, ρ, σ => by
@@ -924,6 +946,9 @@ theorem Defs.rename_subst : ∀ (X : Defs s₁) (ρ : Rename s₁ s₂) (σ : Co
         Rename.coComp_paths]
   | .fld ds a rhs, ρ, σ => by
       simp only [Defs.rename, Defs.subst, Defs.rename_subst ds ρ σ, Rhs.rename_subst rhs ρ σ]
+  | .cls ds C U, ρ, σ => by
+      simp only [Defs.rename, Defs.subst, Defs.rename_subst ds ρ σ, Ty.rename_subst,
+        Rename.coComp_paths]
 theorem Rhs.rename_subst : ∀ (X : Rhs s₁) (ρ : Rename s₁ s₂) (σ : CoSubst s₂ s₃),
     (X.rename ρ).subst σ = X.subst (Rename.coComp ρ σ)
   | .path P, ρ, σ => by simp only [Rhs.rename, Rhs.subst, PathCo.rename_subst]
@@ -994,6 +1019,8 @@ theorem LeCo.subst_rename : ∀ (X : LeCo s₁) (σ : CoSubst s₁ s₂) (ρ : R
   | .intoBnd e, σ, ρ => by simp only [LeCo.subst, LeCo.rename, LeCo.subst_rename e σ ρ]
   | .member P e i, σ, ρ => by
       simp only [LeCo.subst, LeCo.rename, PathCo.subst_rename P σ ρ, LeCo.subst_rename e σ ρ]
+  | .seal p C, σ, ρ => by
+      simp only [LeCo.subst, LeCo.rename, Path.subst_rename, CoSubst.compRename_paths]
 theorem EqCo.subst_rename : ∀ (X : EqCo s₁) (σ : CoSubst s₁ s₂) (ρ : Rename s₂ s₃),
     (X.subst σ).rename ρ = X.subst (σ.compRename ρ)
   | .refl T, σ, ρ => by
@@ -1065,6 +1092,9 @@ theorem Defs.subst_rename : ∀ (X : Defs s₁) (σ : CoSubst s₁ s₂) (ρ : R
         CoSubst.compRename_paths]
   | .fld ds a rhs, σ, ρ => by
       simp only [Defs.subst, Defs.rename, Defs.subst_rename ds σ ρ, Rhs.subst_rename rhs σ ρ]
+  | .cls ds C U, σ, ρ => by
+      simp only [Defs.subst, Defs.rename, Defs.subst_rename ds σ ρ, Ty.subst_rename,
+        CoSubst.compRename_paths]
 theorem Rhs.subst_rename : ∀ (X : Rhs s₁) (σ : CoSubst s₁ s₂) (ρ : Rename s₂ s₃),
     (X.subst σ).rename ρ = X.subst (σ.compRename ρ)
   | .path P, σ, ρ => by simp only [Rhs.subst, Rhs.rename, PathCo.subst_rename]
@@ -1137,6 +1167,7 @@ theorem LeCo.subst_subst : ∀ (X : LeCo s₁) (σ : CoSubst s₁ s₂) (τ : Co
   | .intoBnd e, σ, τ => by simp only [LeCo.subst, LeCo.subst_subst e σ τ]
   | .member P e i, σ, τ => by
       simp only [LeCo.subst, PathCo.subst_subst P σ τ, LeCo.subst_subst e σ τ]
+  | .seal p C, σ, τ => by simp only [LeCo.subst, Path.subst_subst, CoSubst.comp_paths]
 theorem EqCo.subst_subst : ∀ (X : EqCo s₁) (σ : CoSubst s₁ s₂) (τ : CoSubst s₂ s₃),
     (X.subst σ).subst τ = X.subst (σ.comp τ)
   | .refl T, σ, τ => by simp only [EqCo.subst, Ty.subst_subst, CoSubst.comp_paths]
@@ -1197,6 +1228,8 @@ theorem Defs.subst_subst : ∀ (X : Defs s₁) (σ : CoSubst s₁ s₂) (τ : Co
       simp only [Defs.subst, Defs.subst_subst ds σ τ, Ty.subst_subst, CoSubst.comp_paths]
   | .fld ds a rhs, σ, τ => by
       simp only [Defs.subst, Defs.subst_subst ds σ τ, Rhs.subst_subst rhs σ τ]
+  | .cls ds C U, σ, τ => by
+      simp only [Defs.subst, Defs.subst_subst ds σ τ, Ty.subst_subst, CoSubst.comp_paths]
 theorem Rhs.subst_subst : ∀ (X : Rhs s₁) (σ : CoSubst s₁ s₂) (τ : CoSubst s₂ s₃),
     (X.subst σ).subst τ = X.subst (σ.comp τ)
   | .path P, σ, τ => by simp only [Rhs.subst, PathCo.subst_subst]
@@ -1330,12 +1363,14 @@ theorem Defs.labels_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂),
   | .nil, _ => rfl
   | .typ ds A _, ρ => congrArg (A :: ·) (Defs.labels_rename ds ρ)
   | .fld ds a _, ρ => congrArg (a :: ·) (Defs.labels_rename ds ρ)
+  | .cls ds C _, ρ => congrArg (C :: ·) (Defs.labels_rename ds ρ)
 
 theorem Defs.labels_subst : ∀ (ds : Defs s₁) (σ : CoSubst s₁ s₂),
     (ds.subst σ).labels = ds.labels
   | .nil, _ => rfl
   | .typ ds A _, σ => congrArg (A :: ·) (Defs.labels_subst ds σ)
   | .fld ds a _, σ => congrArg (a :: ·) (Defs.labels_subst ds σ)
+  | .cls ds C _, σ => congrArg (C :: ·) (Defs.labels_subst ds σ)
 
 /-! ## Telescopes: length, append, lookup -/
 

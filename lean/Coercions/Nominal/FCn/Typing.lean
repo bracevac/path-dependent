@@ -80,6 +80,8 @@ inductive LeCo.HasType : Ctx s → LeCo s → Ty s → Ty s → Prop where      
   | intoBnd : LeCo.HasType Γ e S T → LeCo.HasType Γ (.intoBnd e) S (.mu (.cons .nil (.is T.weaken)))
   -- LE-Member   binders P S e Tel i, S' T' under the self w
   | member : PathCo.HasType Γ P S → LeCo.HasType Γ e S (.mu Tel) → Tel.At i (.le S' T') → LeCo.HasType Γ (.member P e i) (S'.substPath P.path) (T'.substPath P.path)
+  -- LE-Seal     binders p C U
+  | seal : Γ.clsAt p C = some U → LeCo.HasType Γ (.seal p C) U (.sel p C)
 inductive EqCo.HasType : Ctx s → EqCo s → Ty s → Ty s → Prop where                 -- Γ ⊢ φ : S ≡ T
   -- EQ-Refl     binders T
   | refl : EqCo.HasType Γ (.refl T) T T
@@ -149,6 +151,8 @@ inductive Defs.HasType : Ctx s → Path s → Defs s → Telescope (s,x) → Pro
   | fn : Defs.HasType Γ p ds Tel → a ∉ ds.labels → v.isLam = true → Value.HasType Γ v ((Ty.pi S T).substPath p) → Defs.HasType Γ p (.fld ds a (.fn v)) (.cons Tel (.fld a (.pi S T)))
   -- DF-Nest     binders p ds a ds', w of Tel, w and v of Tel'
   | nest : Defs.HasType Γ p ds Tel → a ∉ ds.labels → Defs.HasType Γ (.sel p a) ds' (Tel'.subst (PathSubst.one p).lift) → Defs.HasType Γ p (.fld ds a (.nest (Tel'.subst (PathSubst.one p).lift) ds')) (.cons Tel (.fld a (.mu Tel')))
+  -- DF-Cls      binders p ds C U, w of Tel and TelB, o the own self of TelB
+  | cls : Defs.HasType Γ p ds Tel → C ∉ ds.labels → U = (Ty.mu TelB).substPath p → Defs.HasType Γ p (.cls ds C U) (.cons (.cons Tel (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) (.mu TelB)))
 end
 
 /-! ## Inversions
@@ -193,6 +197,7 @@ theorem Defs.HasType.labels_nodup {Γ : Ctx s} {p : Path s} {ds : Defs s} {Tel :
   | .path h ha _ _ => List.Pairwise.cons (fun _ h' e => ha (e ▸ h')) h.labels_nodup
   | .fn h ha _ _ => List.Pairwise.cons (fun _ h' e => ha (e ▸ h')) h.labels_nodup
   | .nest h ha _ => List.Pairwise.cons (fun _ h' e => ha (e ▸ h')) h.labels_nodup
+  | .cls h hC _ => List.Pairwise.cons (fun _ h' e => hC (e ▸ h')) h.labels_nodup
 
 /-! ## Z9 for FCn morphisms -/
 
