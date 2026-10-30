@@ -7,10 +7,12 @@ The four judgments of pDOT, as `Definitions.v:585-948` of the Coq formalization 
 mutual block of `Type`-valued families.
 
 * `HasTy G t T` is `G ⊢ t : T`, Coq's `ty_trm` (`:585-734`), 13 constructors.
-* `DefTy G r d D` is `G ⊢[r] d : D`, Coq's `ty_def` (`:740-781`), 4 constructors.  Coq indexes it by
+* `DefTy G r d D` is `G ⊢[r] d : D`, Coq's `ty_def` (`:740-781`), 5 constructors, the last
+  `ty_def_cls` of plan XII.  Coq indexes it by
   a variable `x` and a field list `bs`.  Here the index is the path `r = x.bs` itself.
 * `DefsTy G r ds T` is `G ⊢[r] ds :: T`, Coq's `ty_defs` (`:783-808`), 2 constructors.
-* `Sub G S T` is `G ⊢ S <: T`, Coq's `subtyp` (`:810-948`), 14 constructors.
+* `Sub G S T` is `G ⊢ S <: T`, Coq's `subtyp` (`:810-948`), 15 constructors, the last
+  `subtyp_seal` of plan XII.
 
 Each constructor carries its Coq name, and its premises come in Coq's order.  A Coq premise in a
 context extended by a fresh name, `∀ z ∉ L, G & z ~ T ⊢ J^z`, is one premise in `G.cons T`, whose
@@ -61,12 +63,14 @@ inductive DefTy : Ctx s → Path s → Def s → Dec s → Type where
   | ty_def_typ : DefTy G r (.typ A T) (.typ A T T)
   -- :751  G ⊢ val λ(z : T) t : ∀(z : U) V  ⟹  G ⊢[r] {b = defv λ(z : T) t} : {b : ∀(z : U) V}
   | ty_def_all : HasTy G (.val (.lam T t)) (.all U V) → DefTy G r (.trm b (.defv (.lam T t))) (.trm b (.all U V))
-  -- :761  (μ(z. T)).tight,  G ⊢[r.b] ds⟨r.b⟩ :: T⟨r.b⟩  ⟹  G ⊢[r] {b = defv ν(z : T) ds} : {b : μ(z. T)}
-  | ty_def_new : (Ty.mu T).tight = true →
+  -- :761  (μ(z. T)).tightC,  G ⊢[r.b] ds⟨r.b⟩ :: T⟨r.b⟩  ⟹  G ⊢[r] {b = defv ν(z : T) ds} : {b : μ(z. T)}
+  | ty_def_new : (Ty.mu T).tightC = true →
       DefsTy G (r.sel b) (ds.substPath (r.sel b)) (T.substPath (r.sel b)) →
       DefTy G r (.trm b (.defv (.new T ds))) (.trm b (.mu T))
   -- :773  G ⊢ path q : T  ⟹  G ⊢[r] {b = defp q} : {b : q.type}
   | ty_def_path : HasTy G (.path q) T → DefTy G r (.trm b (.defp q)) (.trm b (.sngl q))
+  -- plan XII  T.clsBody  ⟹  G ⊢[r] {class C = T} : {C : ⊥..T}
+  | ty_def_cls : T.clsBody = true → DefTy G r (.cls C T) (.typ C .bot T)
 /-- `G ⊢[r] ds :: T`, Coq's `ty_defs` (`Definitions.v:783`).  The last definition is on the right. -/
 inductive DefsTy : Ctx s → Path s → Defs s → Ty s → Type where
   -- :790  G ⊢[r] d : D  ⟹  G ⊢[r] [] ▹ d :: {D}
@@ -103,6 +107,8 @@ inductive Sub : Ctx s → Ty s → Ty s → Type where
   | subtyp_sel1 : HasTy G (.path p) (.rcd (.typ A S T)) → Sub G (.sel p A) T
   -- :944  G ⊢ S₂ <: S₁,  G, z : S₂ ⊢ T₁ <: T₂  ⟹  G ⊢ ∀(z : S₁) T₁ <: ∀(z : S₂) T₂
   | subtyp_all : Sub G S₂ S₁ → Sub (G.cons S₂) T₁ T₂ → Sub G (.all S₁ T₁) (.all S₂ T₂)
+  -- plan XII  G.selfCls p C = some T  ⟹  G ⊢ T <: p.C
+  | subtyp_seal : G.selfCls p C = some T → Sub G T (.sel p C)
 end
 
 end Nominal.Source

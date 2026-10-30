@@ -9,10 +9,12 @@ import Coercions.Nominal.Source.Model
 import Coercions.Nominal.Source.Examples
 import Coercions.Nominal.Source.Programs
 import Coercions.Nominal.Source.Erasure
+import Coercions.Nominal.Source.Nominal
 
 /-!
 Import root for the source of PDot: pDOT transcribed from `Definitions.v`, `Lookup.v` and
 `Reduction.v` of its Coq formalization.  `Model` and `Examples` add path models of a fixed context
 and the small and negative examples.  `Programs` types the programs E1 to E8, three of them the
-example lemmas of the Coq files.
+example lemmas of the Coq files.  `Nominal` (plan XII) adds the nominal vocabulary of the source
+and its three theorems, `Factor.sub`, `Ty.Structural.not_factor` and `class_order`.
 -/

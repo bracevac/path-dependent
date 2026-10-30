@@ -149,7 +149,7 @@ def ADefTy.erase : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {d : ADef s} 
   | _, _, _, _, _, .adpath d => .ty_def_path d
   | _, _, _, _, _, .adlam d => .ty_def_all d.erase
   | _, _, _, _, _, .adnew (ds := ds) (r := r) (b := b) h d =>
-      .ty_def_new h (ADefs.erase_substPath ds (r.sel b) ▸ d.erase)
+      .ty_def_new (Ty.tightC_of_tight _ h) (ADefs.erase_substPath ds (r.sel b) ▸ d.erase)   -- N3 makes adnew read tightC (plan XII)
 termination_by structural _ _ _ _ _ d => d
 /-- The `Nominal.Source` derivation of the erased definitions. -/
 def ADefsTy.erase : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ds : ADefs s} → {T : Ty s} →

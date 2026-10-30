@@ -9,7 +9,7 @@ The mandatory examples of plan X (`plan-10-pdot.md:972-996`) on the source and o
   `decide +kernel` proves a reduction sequence.  `Source.runFuel` runs the source, as
   `PDot.Runtime.runFuel` runs the runtime, with `Source.Reds.of_runFuel`.  `Translation.runOf` runs the
   FCn machine at `appView`, which `FCn.appViewOf` computes, with `Translation.steps_of_runOf`.
-  `Translation.finalB` decides a final state.  The runs of E5, E7 and E8 are in `Pages`.
+  `Translation.finalB` decides a final state.  The runs of E5, E7, E8 and E14 are in `Pages`.
 * E1 to E11 and E13.  The FCn checker accepts the image of each derivation of X0 at the
   translated type, by `decide +kernel` on `checkTm` or `checkPath` (`E1_checks` to `E11_checks`
   and `E13_checks`).  The kernel runs the translation of the whole derivation.  E9 to E11 are path
@@ -30,6 +30,10 @@ The mandatory examples of plan X (`plan-10-pdot.md:972-996`) on the source and o
 * N5.  The third premise of `ty_def_new` holds where `tight_bounds` fails (X0), and the image of
   its definitions is typed against the opened annotation and not against the annotation that is not
   tight (X6).  `N5_both` states the two levels together.
+* E14 (plan XII).  The FCn checker accepts the image of the class program `E14_prog` at `⊤`, its two
+  class definitions by DF-Cls and its three seals by LE-Seal (`E14_checks`).  Its run is in `Pages`.
+  After the namespace, three `example`s restate `Nominal.safety`, `Nominal.reachable_typed` and
+  `Nominal.reachable_run` with the text they had at the fork, now over pDOT-C derivations.
 
 Binders are named in comments only.  `(s,x)` adds one variable, and `.here` is the newest variable
 of a signature.
@@ -348,6 +352,9 @@ theorem E11_checks :
 /-- E13, the cyclic object. -/
 theorem E13_checks : FCn.checkTm .nil E13_cyclic_d.translate (Ty.mu e13_T).translate = true := by
   decide +kernel
+/-- E14: the FCn checker accepts the image of the class program, its three seals by LE-Seal and its two class
+definitions by DF-Cls. -/
+theorem E14_checks : FCn.checkTm .nil E14_d.translate Ty.top.translate = true := by decide +kernel
 
 /-! ## E12: one lookup at three levels -/
 
@@ -505,3 +512,31 @@ theorem N5_both :
   ⟨N5_tight, N5_image_untyped, N5_image_typed_opened⟩
 
 end Nominal.Source
+
+namespace Nominal   -- `Nominal.safety` keeps plan X's statement, now over pDOT-C derivations
+
+open Paths.FCdot (Rename)
+
+/-! ## The transport theorems restated (plan XII, P10)
+
+Each `example` is the statement of `Translation/Safety.lean` at the fork, copied verbatim, proved by
+the theorem.  pDOT-C derivations, with their class definitions and seals, are inputs of the same
+statements. -/
+
+example {t : Source.Tm []} {T : Source.Ty []} (d : Source.HasTy .nil t T)
+    {c : Source.Conf} (hc : Source.Reds ⟨[], .nil, t⟩ c) :
+    (Source.NormForm c.tm ∨ ∃ c', Source.Step c c') ∧
+    (∀ p, c.tm = .path p → Source.PathSafe c.store p) :=
+  safety d hc
+example {t : Source.Tm []} {T : Source.Ty []} (d : Source.HasTy .nil t T)
+    {c : Source.Conf} (hc : Source.Reds ⟨[], .nil, t⟩ c) :
+    ∃ (st : FCn.State c.s) (ρ : Rename [] c.s),
+      st.Typed (T.translate.rename ρ) ∧ st.erase = c.erase ∧
+      ∀ Γ, FCn.Store.Typed st.σ Γ → ¬ ∃ e, FCn.LeCo.HasType Γ e FCn.Ty.top FCn.Ty.bot :=
+  reachable_typed d hc
+example {t : Source.Tm []} {T : Source.Ty []} (d : Source.HasTy .nil t T)
+    {c : Source.Conf} (hc : Source.Reds ⟨[], .nil, t⟩ c) :
+    ∃ st : FCn.State c.s, FCn.Steps FCn.appView ⟨.nil, .nil, d.translate⟩ st ∧ st.erase = c.erase :=
+  reachable_run d hc
+
+end Nominal

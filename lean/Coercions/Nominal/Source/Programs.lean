@@ -1,10 +1,10 @@
 import Coercions.Nominal.Source.Derived
 
 /-!
-# The programs E1 to E8
+# The programs E1 to E8 and E14
 
-Eight pDOT programs, each a closed term `Tm []`, a derivation `def` of its typing in the empty
-context, and a `Nonempty` theorem.  Three of them replay the example lemmas of the Coq
+Eight pDOT programs and one pDOT-C program, each a closed term `Tm []`, a derivation `def` of
+its typing in the empty context, and a `Nonempty` theorem.  Three of them replay the example lemmas of the Coq
 formalization under their Coq names: `compiler_typecheck` (`CompilerExample.v:71`),
 `list_typing` (`ListExample.v:49`) and `typecheck` (`SingletonTypeExample.v:32`).
 
@@ -16,6 +16,8 @@ formalization under their Coq names: `compiler_typecheck` (`CompilerExample.v:71
 * `E6_typed`: gDOT's Fig. 2 in pDOT form (`design-d3.md:1048-1076`).
 * `E7_typed`: a module alias used as a prefix (`design-d3.md:1078-1090`).
 * `E8_typed`: `λ(y : x.type)` with replacement at an abstract member (`design-d3.md:1092-1108`).
+* `E14_typed`: a class and a trait, plan XII's worked example (`plan-12-nominal.md:871-897`), with
+  two class definitions by `ty_def_cls` and three seals by `subtyp_seal`.
 
 The terms are written in the de Bruijn form of the Coq files.  Coq's `this`, `super`, `ssuper`, …
 (`ExampleTactics.v:6-13`) are the bound variables `0`, `1`, `2`, …, which are `ref0`, `ref1`,
@@ -1318,5 +1320,244 @@ def E8_lets_top : HasTy e8_Go e8_tail .top := .ty_sub E8_lets (.subtyp_sel1 E8_o
 def E8_d : HasTy .nil E8_prog .top := .ty_let E8_g (.ty_let E8_lit E8_lets_top)
 
 theorem E8_typed : Nonempty (HasTy .nil E8_prog .top) := ⟨E8_d⟩
+
+/-! ## E14: a class and a trait (plan XII)
+
+The worked example of plan XII (`plan-12-nominal.md:871-897`), in the `pdc%` desugaring of
+`plan-12-nominal.md:677-686`, with `σ` the stem's self:
+
+```text
+let σ = ν(σ : Tσ) {
+  ℓself = σ,
+  u = ν(u' : {ℓself : u'.type} ∧ {A : ⊤..⊤}) {ℓself = u', A = ⊤},
+  class T = μ(this. {ℓself : this.type} ∧ {L : ⊥..⊤} ∧ {v : this.L} ∧ {get : ∀(y : ⊤) this.L}) ∧ ⊤,
+  get$T = λ(this : σ.T). λ(y : ⊤). this.v,
+  class C = μ(this. {ℓself : this.type} ∧ {w : ⊤} ∧ {L : ⊤..⊤} ∧ {v : this.L}) ∧ (σ.T ∧ ⊤),
+  v$C = λ(this : σ.C). this.w,
+  new$C = λ(w : ⊤). let ℓ = ν(i : Ti) {ℓself = i, w = w, L = ⊤, v = w, get = λ(y : ⊤). let g = σ.get$T i in g y} in ℓ }
+in let y = σ.new$C σ.u.ℓself in y
+Ti = {ℓself : i.type} ∧ {w : w.type} ∧ {L : ⊤..⊤} ∧ {v : w.type} ∧ {get : ∀(y : ⊤) i.L}
+```
+
+`Tσ` declares each definition at its typing, `{T : ⊥..Body(T)}` and `{C : ⊥..Body(C)}` for the two
+classes (`ty_def_cls`).  The three seals are `i : σ.T` in `get`, and `ℓ : σ.T` and `ℓ : σ.C` in
+`new$C`, each by `subtyp_seal` at the class reading of `σ`'s self binder (`Ctx.selfCls`).  The
+upcasts by `subtyp_sel1` read the upper bound.  The fields `w = w` and `v = w` are declared at
+`w.type` (`ty_def_path`), and `new$C` ends in `ℓ` typed by `ty_sub`.  The outer `let` cannot type
+its body at `σ.T` (`ty_let`), so the inner `let` is typed at `σ.T` and widened to `⊤`.  The program
+has type `⊤`. -/
+
+/-- The field `ℓself`. -/
+abbrev e14_lself : Label := .trm 0
+/-- The field `u`. -/
+abbrev e14_u : Label := .trm 1
+/-- The field `get$T`. -/
+abbrev e14_getT : Label := .trm 2
+/-- The field `v$C`. -/
+abbrev e14_vC : Label := .trm 3
+/-- The field `new$C`. -/
+abbrev e14_newC : Label := .trm 4
+/-- The field `v`. -/
+abbrev e14_v : Label := .trm 5
+/-- The field `get`. -/
+abbrev e14_get : Label := .trm 6
+/-- The field `w`. -/
+abbrev e14_w : Label := .trm 7
+/-- The type member `A`. -/
+abbrev e14_A : Label := .typ 0
+/-- The class `T`. -/
+abbrev e14_T : Label := .typ 1
+/-- The class `C`. -/
+abbrev e14_C : Label := .typ 2
+/-- The type member `L`. -/
+abbrev e14_L : Label := .typ 3
+
+/-- `{ℓself : this.type} ∧ {L : ⊥..⊤} ∧ {v : this.L} ∧ {get : ∀(y : ⊤) this.L}`, under `this`. -/
+abbrev e14_DeclsT {s : Sig} : Ty (s,x) :=
+  .and (.and (.and (fdec e14_lself (.sngl ref0)) (tdec e14_L .bot .top)) (fdec e14_v (.sel ref0 e14_L)))
+    (fdec e14_get (.all .top (.sel ref1 e14_L)))
+/-- `Body(T) = μ(this. DeclsT) ∧ ⊤`. -/
+abbrev e14_BodyT {s : Sig} : Ty s := .and (.mu e14_DeclsT) .top
+/-- `{ℓself : this.type} ∧ {w : ⊤} ∧ {L : ⊤..⊤} ∧ {v : this.L}`, under `this`. -/
+abbrev e14_DeclsC {s : Sig} : Ty (s,x) :=
+  .and (.and (.and (fdec e14_lself (.sngl ref0)) (fdec e14_w .top)) (tdec e14_L .top .top)) (fdec e14_v (.sel ref0 e14_L))
+/-- `Body(C) = μ(this. DeclsC) ∧ (σ.T ∧ ⊤)`, at the template's path `σ`. -/
+abbrev e14_BodyC {s : Sig} (σp : Path s) : Ty s := .and (.mu e14_DeclsC) (.and (.sel σp e14_T) .top)
+/-- `Tu = {ℓself : u'.type} ∧ {A : ⊤..⊤}`, under `u'`. -/
+abbrev e14_Tu {s : Sig} : Ty (s,x) := .and (fdec e14_lself (.sngl ref0)) (tdec e14_A .top .top)
+/-- `Tσ`, the annotation of the stem `σ`, as a template over the path `σ`: `{ℓself : σ.type} ∧
+{u : μ(u'. Tu)} ∧ {T : ⊥..Body(T)} ∧ {get$T : ∀(this : σ.T) ∀(y : ⊤) this.L} ∧ {C : ⊥..Body(C)} ∧
+{v$C : ∀(this : σ.C) this.L} ∧ {new$C : ∀(w : ⊤) σ.C}`. -/
+abbrev e14_TσAt {s : Sig} (σp : Path s) : Ty s :=
+  .and (.and (.and (.and (.and (.and (fdec e14_lself (.sngl σp)) (fdec e14_u (.mu e14_Tu)))
+    (tdec e14_T .bot e14_BodyT))
+    (fdec e14_getT (.all (.sel σp e14_T) (.all .top (.sel ref1 e14_L)))))
+    (tdec e14_C .bot (e14_BodyC σp)))
+    (fdec e14_vC (.all (.sel σp e14_C) (.sel ref0 e14_L))))
+    (fdec e14_newC (.all .top (.sel (σp.weaken) e14_C)))
+/-- `Tσ`, under `σ`. -/
+abbrev e14_Tσ {s : Sig} : Ty (s,x) := e14_TσAt ref0
+/-- `Ti = {ℓself : i.type} ∧ {w : w.type} ∧ {L : ⊤..⊤} ∧ {v : w.type} ∧ {get : ∀(y : ⊤) i.L}`, as a
+template over the paths `w` and `i`. -/
+abbrev e14_TiAt {s : Sig} (wp ip : Path s) : Ty s :=
+  .and (.and (.and (.and (fdec e14_lself (.sngl ip)) (fdec e14_w (.sngl wp))) (tdec e14_L .top .top))
+    (fdec e14_v (.sngl wp))) (fdec e14_get (.all .top (.sel ip.weaken e14_L)))
+/-- `Ti`, under `σ`, `w`, `i`. -/
+abbrev e14_Ti {s : Sig} : Ty (((s,x),x),x) := e14_TiAt ref1 ref0
+/-- `{ℓself = i} ▹ {w = w} ▹ {L = ⊤} ▹ {v = w} ▹ {get = λ(y : ⊤). let g = σ.get$T i in g y}`, the
+instance's definitions, under `σ`, `w`, `i`. -/
+abbrev e14_dsi {s : Sig} : Defs (((s,x),x),x) :=
+  .cons (.cons (.cons (.cons (.cons .nil (.trm e14_lself (.defp ref0))) (.trm e14_w (.defp ref1)))
+    (.typ e14_L .top)) (.trm e14_v (.defp ref1)))
+    (.trm e14_get (.defv (.lam .top (.lett (.app (ref3.sel e14_getT) ref1) (.app ref0 ref1)))))
+/-- `{ℓself = u'} ▹ {A = ⊤}`, under `σ`, `u'`. -/
+abbrev e14_dsu {s : Sig} : Defs ((s,x),x) := .cons (.cons .nil (.trm e14_lself (.defp ref0))) (.typ e14_A .top)
+/-- The stem's definitions, under `σ`: `{ℓself = σ} ▹ {u = ν(u' : Tu) …} ▹ {class T = Body(T)} ▹
+{get$T = …} ▹ {class C = Body(C)} ▹ {v$C = …} ▹ {new$C = …}`. -/
+abbrev e14_dsσ {s : Sig} : Defs (s,x) :=
+  .cons (.cons (.cons (.cons (.cons (.cons (.cons .nil (.trm e14_lself (.defp ref0)))
+    (.trm e14_u (.defv (.new e14_Tu e14_dsu))))
+    (.cls e14_T e14_BodyT))
+    (.trm e14_getT (.defv (.lam (.sel ref0 e14_T) (.val (.lam .top (.path (ref1.sel e14_v))))))))
+    (.cls e14_C (e14_BodyC ref0)))
+    (.trm e14_vC (.defv (.lam (.sel ref0 e14_C) (.path (ref0.sel e14_w))))))
+    (.trm e14_newC (.defv (.lam .top (.lett (.val (.new e14_Ti e14_dsi)) (.path ref0)))))
+/-- The program E14, `let σ = ν(σ : Tσ) … in let y = σ.new$C σ.u.ℓself in y`. -/
+abbrev E14_prog : Tm [] :=
+  .lett (.val (.new e14_Tσ e14_dsσ)) (.lett (.app (ref0.sel e14_newC) ((ref0.sel e14_u).sel e14_lself)) (.path ref0))
+
+/-! ### A path at `σ.T` and at `σ.C` from the instance's declarations, in any context -/
+
+/-- From `q : Ti⟨w, q⟩` and the class reading `Body(T)` of `σ.T`, the path `q` at `σ.T`, a seal by
+`subtyp_seal`. -/
+def e14_atT {s : Sig} {G : Ctx s} {σp wp q : Path s}
+    (hq : HasTy G (.path q) (e14_TiAt wp q))
+    (hs : G.selfCls σp e14_T = some e14_BodyT) : HasTy G (.path q) (.sel σp e14_T) :=
+  have hL : HasTy G (.path q) (tdec e14_L .top .top) := .ty_sub hq (Sub.andProj _ 2)
+  have hdecls : HasTy G (.path q) (e14_DeclsT.substPath q) :=
+    .ty_and_intro (.ty_and_intro (.ty_and_intro (.ty_sub hq (Sub.andProj _ 4))
+      (.ty_sub hL (.subtyp_typ .subtyp_bot .subtyp_refl)))
+      (.ty_sub hq (.subtyp_trans (Sub.andProj _ 1) (.subtyp_fld (.subtyp_trans .subtyp_top (.subtyp_sel2 hL))))))
+      (.ty_sub hq (Sub.andProj _ 0))
+  .ty_sub (.ty_and_intro (.ty_rec_intro hdecls) (.ty_sub hq .subtyp_top)) (.subtyp_seal hs)
+
+/-- From `q : Ti⟨w, q⟩`, `q : σ.T` and the class reading `Body(C)` of `σ.C`, the path `q` at `σ.C`,
+a seal by `subtyp_seal`. -/
+def e14_atC {s : Sig} {G : Ctx s} {σp wp q : Path s}
+    (hq : HasTy G (.path q) (e14_TiAt wp q)) (hT : HasTy G (.path q) (.sel σp e14_T))
+    (hs : G.selfCls σp e14_C = some (e14_BodyC σp)) : HasTy G (.path q) (.sel σp e14_C) :=
+  have hL : HasTy G (.path q) (tdec e14_L .top .top) := .ty_sub hq (Sub.andProj _ 2)
+  have hdecls : HasTy G (.path q) (e14_DeclsC.substPath q) :=
+    .ty_and_intro (.ty_and_intro (.ty_and_intro (.ty_sub hq (Sub.andProj _ 4))
+      (.ty_sub hq (.subtyp_trans (Sub.andProj _ 3) (.subtyp_fld .subtyp_top))))
+      hL)
+      (.ty_sub hq (.subtyp_trans (Sub.andProj _ 1) (.subtyp_fld (.subtyp_trans .subtyp_top (.subtyp_sel2 hL)))))
+  .ty_sub (.ty_and_intro (.ty_rec_intro hdecls) (.ty_and_intro hT (.ty_sub hq .subtyp_top))) (.subtyp_seal hs)
+
+/-! ### The stem's definitions, in `[σ :ˢ Tσ]` -/
+
+/-- `[σ :ˢ Tσ]`, the self binder of the stem. -/
+abbrev e14_Gσ : Ctx ([],x) := Ctx.nil.consSelf e14_Tσ
+
+-- G, this : σ.T, y : ⊤ ⊢ this.v : this.L                 ty_new_elim, ty_rec_elim, upcast by subtyp_sel1
+def E14_getT_body : HasTy ((e14_Gσ.cons (.sel ref0 e14_T)).cons .top) (.path (ref1.sel e14_v)) (.sel ref1 e14_L) :=
+  have hσ : HasTy ((e14_Gσ.cons (.sel ref0 e14_T)).cons .top) (.path ref2) (e14_TσAt ref2) := .ty_var rfl
+  have hthis : HasTy ((e14_Gσ.cons (.sel ref0 e14_T)).cons .top) (.path ref1) e14_BodyT :=
+    .ty_sub (.ty_var rfl) (.subtyp_sel1 (.ty_sub hσ (Sub.andProj _ 4)))
+  .ty_new_elim (.ty_sub (.ty_rec_elim (T := e14_DeclsT) (.ty_sub hthis .subtyp_and11)) (Sub.andProj _ 1))
+
+-- G, this : σ.C ⊢ this.w : this.L                        ty_new_elim, ty_rec_elim, upcast by subtyp_sel1
+def E14_vC_body : HasTy (e14_Gσ.cons (.sel ref0 e14_C)) (.path (ref0.sel e14_w)) (.sel ref0 e14_L) :=
+  have hσ : HasTy (e14_Gσ.cons (.sel ref0 e14_C)) (.path ref1) (e14_TσAt ref1) := .ty_var rfl
+  have hthis : HasTy (e14_Gσ.cons (.sel ref0 e14_C)) (.path ref0) (e14_BodyC ref1) :=
+    .ty_sub (.ty_var rfl) (.subtyp_sel1 (.ty_sub hσ (Sub.andProj _ 2)))
+  have hd : HasTy (e14_Gσ.cons (.sel ref0 e14_C)) (.path ref0) (e14_DeclsC.substPath ref0) :=
+    .ty_rec_elim (.ty_sub hthis .subtyp_and11)
+  .ty_sub (.ty_new_elim (.ty_sub hd (Sub.andProj _ 2))) (.subtyp_sel2 (.ty_sub hd (Sub.andProj _ 1)))
+
+/-- `[σ :ˢ Tσ, w : ⊤]`. -/
+abbrev e14_Gw : Ctx (([],x),x) := e14_Gσ.cons .top
+/-- `[σ :ˢ Tσ, w : ⊤, i :ˢ Ti]`. -/
+abbrev e14_Gi : Ctx ((([],x),x),x) := e14_Gw.consSelf e14_Ti
+/-- `[σ :ˢ Tσ, w : ⊤, i :ˢ Ti, y : ⊤]`. -/
+abbrev e14_Gy : Ctx (((([],x),x),x),x) := e14_Gi.cons .top
+
+-- Gy ⊢ i : σ.T, the first seal                          subtyp_seal at σ's class reading
+def E14_i_T : HasTy e14_Gy (.path ref1) (.sel ref3 e14_T) :=
+  e14_atT (wp := ref2) (.ty_var rfl) (by decide)
+
+-- Gy ⊢ let g = σ.get$T i in g y : i.L                    ty_let, ty_all_elim twice
+def E14_get_body : HasTy e14_Gy (.lett (.app (ref3.sel e14_getT) ref1) (.app ref0 ref1)) (.sel ref1 e14_L) :=
+  .ty_let (T := .all .top (.sel ref2 e14_L))
+    (.ty_all_elim (T := .all .top (.sel ref1 e14_L))
+      (.ty_new_elim (.ty_sub (.ty_var (T := e14_TσAt ref3) rfl) (Sub.andProj _ 3))) E14_i_T)
+    (.ty_all_elim (S := .top) (T := .sel ref3 e14_L) (.ty_var rfl) (.ty_var rfl))
+
+-- Gi ⊢ the instance's definitions : Ti                  ty_def_path, ty_def_typ, ty_def_all
+def E14_dsi : DefsTy e14_Gi ref0 e14_dsi e14_Ti :=
+  .ty_defs_cons (.ty_defs_cons (.ty_defs_cons (.ty_defs_cons
+    (.ty_defs_one (.ty_def_path (.ty_var rfl)))
+    (.ty_def_path (.ty_var rfl)) rfl)
+    .ty_def_typ rfl)
+    (.ty_def_path (.ty_var rfl)) rfl)
+    (.ty_def_all (.ty_all_intro E14_get_body)) rfl
+
+-- Gw, ℓ : μ(Ti) ⊢ ℓ : σ.C, the second and third seals   subtyp_seal at σ.T, then at σ.C
+def E14_ell_C : HasTy (e14_Gw.cons (.mu e14_Ti)) (.path ref0) (.sel ref2 e14_C) :=
+  have hq : HasTy (e14_Gw.cons (.mu e14_Ti)) (.path ref0) (e14_TiAt ref1 ref0) :=
+    .ty_rec_elim (T := e14_Ti.rename Rename.succ.lift) (.ty_var rfl)
+  e14_atC hq (e14_atT hq (by decide)) (by decide)
+
+-- Gw ⊢ let ℓ = ν(i : Ti) … in ℓ : σ.C                     ty_let, ty_new_intro
+def E14_newC_body : HasTy e14_Gw (.lett (.val (.new e14_Ti e14_dsi)) (.path ref0)) (.sel ref1 e14_C) :=
+  .ty_let (.ty_new_intro E14_dsi) E14_ell_C
+
+-- Gσ ⊢ the definitions of σ.u : Tu⟨σ.u⟩                  ty_def_path, ty_def_typ
+def E14_u_lit : DefsTy e14_Gσ (ref0.sel e14_u) (e14_dsu.substPath (ref0.sel e14_u)) (e14_Tu.substPath (ref0.sel e14_u)) :=
+  .ty_defs_cons (.ty_defs_one (.ty_def_path (.ty_new_elim (.ty_sub (.ty_var rfl) (Sub.andProj e14_Tσ 5)))))
+    .ty_def_typ rfl
+
+-- Gσ ⊢ the stem's definitions : Tσ                     ty_def_cls at T and C, ty_def_new at u
+def E14_dsσ : DefsTy e14_Gσ ref0 e14_dsσ e14_Tσ :=
+  .ty_defs_cons (.ty_defs_cons (.ty_defs_cons (.ty_defs_cons (.ty_defs_cons (.ty_defs_cons
+    (.ty_defs_one (.ty_def_path (.ty_var rfl)))
+    (.ty_def_new rfl E14_u_lit) rfl)
+    (.ty_def_cls rfl) rfl)
+    (.ty_def_all (.ty_all_intro (.ty_all_intro E14_getT_body))) rfl)
+    (.ty_def_cls rfl) rfl)
+    (.ty_def_all (.ty_all_intro E14_vC_body)) rfl)
+    (.ty_def_all (.ty_all_intro E14_newC_body)) rfl
+
+-- ⊢ ν(σ : Tσ) … : μ(σ. Tσ)                               ty_new_intro
+def E14_lit : HasTy .nil (.val (.new e14_Tσ e14_dsσ)) (.mu e14_Tσ) := .ty_new_intro E14_dsσ
+
+/-! ### The program -/
+
+/-- `[σ : μ(σ. Tσ)]`, the let-bound stem. -/
+abbrev e14_Gm : Ctx ([],x) := Ctx.nil.cons (.mu e14_Tσ)
+
+-- Gm ⊢ σ : Tσ⟨σ⟩                                         ty_var, ty_rec_elim
+def E14_σ : HasTy e14_Gm (.path ref0) (e14_TσAt ref0) := .ty_rec_elim (T := e14_Tσ) (.ty_var rfl)
+
+-- Gm ⊢ σ.new$C σ.u.ℓself : σ.C                            ty_all_elim
+def E14_new : HasTy e14_Gm (.app (ref0.sel e14_newC) ((ref0.sel e14_u).sel e14_lself)) (.sel ref0 e14_C) :=
+  .ty_all_elim (T := .sel ref1 e14_C) (.ty_new_elim (.ty_sub E14_σ (Sub.andProj _ 0)))
+    (.ty_sub (.ty_new_elim (.ty_sub (.ty_rec_elim (T := e14_Tu) (.ty_new_elim (.ty_sub E14_σ (Sub.andProj _ 5))))
+      .subtyp_and11)) .subtyp_top)
+
+-- Gm, y : σ.C ⊢ y : σ.T                                    upcast by subtyp_sel1 to Body(C), then subtyp_and12
+def E14_up : HasTy (e14_Gm.cons (.sel ref0 e14_C)) (.path ref0) (.sel ref1 e14_T) :=
+  .ty_sub (.ty_var rfl) (.subtyp_trans (.subtyp_sel1 (.ty_sub (.ty_rec_elim (T := e14_Tσ) (.ty_var rfl)) (Sub.andProj _ 2)))
+    (.subtyp_trans .subtyp_and12 .subtyp_and11))
+
+-- ⊢ let σ = … in let y = σ.new$C σ.u.ℓself in y : ⊤        ty_let twice, ty_sub by subtyp_top
+def E14_d : HasTy .nil E14_prog .top :=
+  .ty_let E14_lit (.ty_sub (.ty_let (U := .sel ref0 e14_T) E14_new E14_up) .subtyp_top)
+
+/-- E14 is typed at `⊤`, with two class definitions by `ty_def_cls` and three seals by
+`subtyp_seal`. -/
+theorem E14_typed : Nonempty (HasTy .nil E14_prog .top) := ⟨E14_d⟩
+example : e14_Gy.selfCls ref3 e14_T = some e14_BodyT := by decide         -- the seal's reading under σ's self
+example : e14_Gm.selfCls ref0 e14_C = none := by decide                   -- a let-bound σ has no class reading
 
 end Nominal.Source

@@ -1,7 +1,7 @@
 import Coercions.Nominal.Translation.Examples
 
 /-!
-# The runs of E5, E7 and E8 at both levels (plan X, stage X7, group g2)
+# The runs of E5, E7, E8 and E14 at both levels (plan X, stage X7, group g2, and plan XII)
 
 One page per program that runs, in `namespace Nominal.Pages`.  Each page runs the program on the
 source (`Source.runFuel`) and its image on the FCn machine (`Translation.runOf`), and the kernel
@@ -15,6 +15,9 @@ steps that keep the erasure.
   module alias `core.m.f`.
 * `E8`: `E8_prog` runs in nine source steps and sixteen machine steps to `path o`, through `g`, `h`
   and `k`.
+* `E14`: `E14_prog`, plan XII's class program, runs in four source steps and nine machine steps to
+  `path ℓ`, the instance of `C`.  Its end is the runtime's own run of the erased program
+  (`e14Final`).  The image the machine runs holds the two class definitions and the three seals.
 
 On each page `both` states the two runs, their common erasure, that the source ends in a normal
 form and that the machine ends in a final state.  `counts` makes the step counts exact: one source
@@ -152,5 +155,44 @@ theorem safe : (Source.NormForm fin.tm ∨ ∃ c', Source.Step fin c') ∧
   Nominal.safety E8_d (Source.Reds.of_runFuel 4 9 _)
 
 end E8
+
+/-! ## E14: a class and a trait (plan XII) -/
+
+namespace E14
+
+/-- The configuration that starts E14. -/
+abbrev start : Source.Conf := ⟨[], .nil, E14_prog⟩
+/-- The state that starts E14's image. -/
+abbrev init : (s : Sig) × FCn.State s := ⟨[], ⟨.nil, .nil, E14_d.translate⟩⟩
+/-- The end of the source run. -/
+abbrev fin : Source.Conf := Source.runFuel 4 4 start
+/-- The runtime's own run of the erased program, the configuration both runs reach. -/
+abbrev e14Final : PDot.Runtime.Conf := PDot.Runtime.runFuel 4 4 start.erase
+theorem final_tm : e14Final.tm = .path (.var .here) := by decide +kernel      -- path ℓ, the instance
+theorem src_erase : fin.erase = e14Final := by decide +kernel
+theorem fcp_erase : (runOf 9 init).2.erase = e14Final := by decide +kernel
+theorem fcp_final : finalB (runOf 9 init).2 = true := by decide +kernel
+/-- The counts are exact: three source steps end at another erasure, and eight machine steps at a
+state that is not final. -/
+theorem counts : (Source.runFuel 4 3 start).erase ≠ e14Final ∧ finalB (runOf 8 init).2 = false := by
+  decide +kernel
+
+/-- Both runs end in `e14Final`, the source at a normal form, the machine at a final state. -/
+theorem both :
+    Source.Reds start fin ∧ fin.erase = e14Final ∧ Source.NormForm fin.tm ∧
+    FCn.Steps FCn.appView init.2 (runOf 9 init).2 ∧ (runOf 9 init).2.erase = e14Final ∧
+    (runOf 9 init).2.Final := by
+  refine ⟨Source.Reds.of_runFuel 4 4 _, src_erase, ?_, steps_of_runOf 9 init, fcp_erase,
+    final_of_finalB fcp_final⟩
+  have hn := (final_of_finalB fcp_final).erase_normForm
+  rw [fcp_erase, ← src_erase] at hn
+  exact (Source.erase_normForm _).1 hn
+
+/-- `Nominal.safety` at the end of the source run. -/
+theorem safe : (Source.NormForm fin.tm ∨ ∃ c', Source.Step fin c') ∧
+    (∀ p, fin.tm = .path p → Source.PathSafe fin.store p) :=
+  Nominal.safety E14_d (Source.Reds.of_runFuel 4 4 _)
+
+end E14
 
 end Nominal.Pages

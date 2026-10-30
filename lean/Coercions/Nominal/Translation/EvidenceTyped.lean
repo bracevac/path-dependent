@@ -18,7 +18,8 @@ are refuted by their equation.  In `Sub`, `subtyp_and11` and `subtyp_and12` are 
 templates or `LE-Bound`.  `subtyp_and2` is `LE-Pair`.  `subtyp_fld` and `subtyp_typ` are `LE-Obj`
 over `MO-Fld`, `MO-Le` and `SD-Some`.  The replacement rules are `LE-Eq` over `EQ-Lift` with
 `Repl.translate_hole`.  `subtyp_sel2` and `subtyp_sel1` are `LE-Member` at indices 0 and 1.
-`subtyp_all` is `LE-Pi` with `Ctx.Rel.var`.
+`subtyp_all` is `LE-Pi` with `Ctx.Rel.var`.  `subtyp_seal` (plan XII) is `LE-Seal` at
+`Ctx.Rel.selfCls`, since `⟦p.C⟧ = p∙C`.
 
 Identity templates copy a telescope whose every `is` proposition is a weakened type,
 `Translation.ClosedIs`.  Every `tel⁺ T` is one (`Ty.telP_closedIs`).
@@ -311,6 +312,7 @@ theorem Sub.translate_typed : ∀ {G : Ctx s} {S T : Ty s} (d : Sub G S T) {Δ :
       show FCn.LeCo.HasType Δ (.member (d.pathImage.getD _) _ 1) _ _
       rw [hd]; exact hm
   | _, _, _, .subtyp_all e₁ e₂, _, h => .pi (Sub.translate_typed e₁ h) (Sub.translate_typed e₂ (.var h))
+  | _, _, _, .subtyp_seal hs, _, h => .seal (h.selfCls hs)    -- LE-Seal at Ctx.Rel.selfCls
 end
 -- end of the block
 
@@ -326,7 +328,7 @@ theorem HasTy.translatePath_typed {G : Ctx s} {Δ : FCn.Ctx s} {p : Path s} {T :
 
 /-- E9: the image of `x.a.b : ⊤`, singleton creation and propagation, is typed. -/
 theorem E9_image_typed : FCn.PathCo.HasType e9_G.translate E9_xab_S.translatePath FCn.Ty.top :=
-  (HasTy.translatePath_typed E9_xab_S e9_G.rel_translate).1
+  (HasTy.translatePath_typed E9_xab_S (e9_G.rel_translate rfl)).1
 
 /-- E9: the image of `ty_sngl` is a forward `alias` whose first premise is the image of the derivation
 that types the new path `x.a.b`. -/
@@ -339,12 +341,12 @@ theorem E9_image_alias :
 theorem E10_image_typed :
     FCn.PathCo.HasType e10_G.translate E10_pq.translatePath (e10_ty e10_p e10_q).translate ∧
     FCn.PathCo.HasType e10_G.translate E10_qp.translatePath (e10_ty e10_q e10_p).translate :=
-  ⟨(HasTy.translatePath_typed E10_pq e10_G.rel_translate).1, (HasTy.translatePath_typed E10_qp e10_G.rel_translate).1⟩
+  ⟨(HasTy.translatePath_typed E10_pq (e10_G.rel_translate rfl)).1, (HasTy.translatePath_typed E10_qp (e10_G.rel_translate rfl)).1⟩
 
 /-- E11: the image of Fld-I is typed by `PA-FldI`, which compares paths syntactically. -/
 theorem E11_image_typed (T : Ty []) :
     FCn.PathCo.HasType (e11_G T).translate (E11_d T).translatePath (Ty.rcd (.trm e11_a T.weaken.weaken)).translate :=
-  (HasTy.translatePath_typed (E11_d T) (e11_G T).rel_translate).1
+  (HasTy.translatePath_typed (E11_d T) ((e11_G T).rel_translate rfl)).1
 
 /-- Decision 13: the image of `subtyp_sngl_pq` does not read its second premise. -/
 theorem Sub.translate_sngl_pq_irrel {G : Ctx s} {p q : Path s} {U T T' : Ty s} (d₁ : HasTy G (.path p) (.sngl q))

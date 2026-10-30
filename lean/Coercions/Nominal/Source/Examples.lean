@@ -408,6 +408,9 @@ def M₃ : Model n3_G where
   sel2 _ _ _ _ h r hr := (h.2 r hr).elim
   sel1 _ _ _ _ _ _ hr := hr.elim
   all _ _ _ _ _ h := h.elim
+  sealCls p C _ h _ _ := by
+    rw [Ctx.selfCls_none_of_classFree (G := n3_G) (by decide) p C] at h
+    cases h                                                     -- M₃: n3_G declares no class
 
 /-- `x.zz` has no type in `G₃`. -/
 theorem n3_xzz_untyped : ¬ Nonempty (HasTy n3_G (.path n3_xzz) T) :=
@@ -520,6 +523,7 @@ def M₄ (A : Label) : Model (n4_G A) where
     cases sem₄_range (.sel p A) _ r hr
     exact h.2
   all _ _ _ _ _ h := h.elim
+  sealCls _ _ T _ r hr := sem₄_range T _ r hr                  -- M₄: every set is within {x}, and p.A is {x}
 
 /-- `x : x.type` has no derivation in `[x : {A : ⊤..⊤}]`, at every label `A`. -/
 theorem N4_no_refl_sngl : ¬ Nonempty (HasTy (Ctx.nil.cons (.rcd (.typ A .top .top))) (.path (.var .here)) (.sngl (.var .here))) :=

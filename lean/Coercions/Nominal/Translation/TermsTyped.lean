@@ -5,7 +5,7 @@ import Coercions.Nominal.Translation.DefsTyped
 
 In related contexts `G ≈ Δ`, the image of a typing `G ⊢ t : T` is an FCn term of type `⟦T⟧`, and the
 image of a definition list typed against an annotation opened at `r` is typed against `tel` of the
-un-opened annotation, when that annotation is tight.  `HasTy.translate_typed`,
+un-opened annotation, when that annotation is tight in the sense of `Ty.tightC` (plan XII).  `HasTy.translate_typed`,
 `DefTy.translate_typed` and `DefsTy.translate_typed` are one mutual theorem, structural over
 `HasTy`, `DefTy` and `DefsTy`, one case per source rule, with `ty_sub` split by its term.  The context
 `Δ` is bound after the derivation, since the rules with a premise under a binder pass a new context
@@ -16,20 +16,27 @@ The cases.  The path rules are `TM-Path` over `translatePath_typed`.  `ty_all_in
 `Ctx.Rel.var`.  `ty_all_elim` is `TM-App` with `Ty.translate_substPath`.  `ty_let` is `TM-Let` with
 `Ty.translate_weaken`.  `ty_new_intro` is `VA-Obj`: the self binder is transparent at the image's own
 block, related by `Ctx.Rel.self` with `rfl`, and the definitions are typed at
-`T₀ = T.rename Rename.succ.lift`, which opens to `T` at `.here` and is tight by
-`DefsTy.tight_at_self` and `Ty.tight_rename`.  `ty_sub` at a term that is not a path is `TM-Cast`.
-`ty_def_typ` is `DF-Typ`: a tight `{A : S₀..U₀}` has `S₀ = U₀`, the one bound `W = ⟦S₀⟧`.
+`T₀ = T.rename Rename.succ.lift`, which opens to `T` at `.here` and is `tightC` by
+`DefsTy.tightC_at_self` and `Ty.tightC_rename`.  Rel-Self's premise `ClsAgree` is
+`DefsTy.clsAgree_self`.  `ty_sub` at a term that is not a path is `TM-Cast`.  `ty_def_typ` is
+`DF-Typ`: a `tightC` `{A : S₀..U₀}` whose bounds open to the same type has `S₀ = U₀`
+(`Dec.tightC_typ_eq`), the one bound `W = ⟦S₀⟧`.
 `ty_def_all` is `DF-Fun` with `HasTy.translate_lam_of_eq` and `Translation.toValue_typed`.
 `ty_def_new` is `DF-Nest` with the recursive call at the nested annotation itself, tight by the
 rule's first premise, and `Ty.tel_subst_lift`.  `ty_def_path` is `DF-Path`.  `ty_defs_one` and
 `ty_defs_cons` read `Ty.substPath_eq_rcd` and `Ty.substPath_eq_and` and the label lemmas.
+`ty_def_cls` (plan XII) is `DF-Cls`: the un-opened declaration is `{C : ⊥..U₀}`, since an opened
+`⊥` was `⊥` (`Ty.substPath_eq_bot`), so its bounds are the same before and after opening, `U₀` is a
+class body, and `⟦U₀⟧` is an object type `μ(w. TelB)` (`Ty.translate_of_clsBody`).  The telescope
+`Tel ++ tel {C : ⊥..U₀}` is `Tel ▹ ⊥ ⊑ w∙C ▹ w∙C ⊑ μ(w. TelB)`, the shape of DF-Cls.
 
 The examples type the images of X0's E3, E8 and E13.  `N5_image_untyped` shows why
-`DefsTy.translate_typed` keeps its premise `T₀.tight = true` (F3, the stage's risk): at X0's N5
+`DefsTy.translate_typed` keeps its premise `T₀.tightC = true` (F3, the stage's risk, and plan
+XII's risk R2): at X0's N5
 witnesses (`Source/Examples.lean:538-551`) the third premise of `ty_def_new` types definitions against
 an annotation opened at `z.b`, and the image of those definitions is not typed against `tel` of the
 un-opened annotation, whose two bounds of `A` differ.  `N5_image_typed_opened` types the same image
-against a tight annotation that opens to the same type.
+against a `tightC` annotation that opens to the same type.
 -/
 
 namespace Nominal.Source
@@ -52,8 +59,9 @@ theorem HasTy.translate_typed : ∀ {G : Ctx s} {t : Tm s} {T : Ty s} (d : HasTy
       exact ha
   | _, _, _, .ty_new_intro (T := T) dds, Δ, h => by
       refine .val (.obj ?_)
-      have hd := DefsTy.translate_typed dds (Ctx.Rel.self (b := .transparent (FCn.Ty.mu T.tel) dds.translate.block) h rfl)
-        (T.rename Rename.succ.lift) (Ty.rename_succ_lift_substPath_here T) (Ty.tight_rename T _ (DefsTy.tight_at_self dds))
+      have hd := DefsTy.translate_typed dds
+        (Ctx.Rel.self (b := .transparent (FCn.Ty.mu T.tel) dds.translate.block) h rfl (DefsTy.clsAgree_self dds Δ))
+        (T.rename Rename.succ.lift) (Ty.rename_succ_lift_substPath_here T) (Ty.tightC_rename T _ (DefsTy.tightC_at_self dds))
       have e : (T.rename (Rename.succ (k := .var)).lift).tel = T.tel.rename (Rename.succ (k := .var)).lift :=
         Ty.telAt_rename T ((Rename.succ (k := .var)).lift) .here
       rw [e] at hd
@@ -74,15 +82,15 @@ theorem HasTy.translate_typed : ∀ {G : Ctx s} {t : Tm s} {T : Ty s} (d : HasTy
   | _, .app _ _, _, .ty_sub d e, _, h => .cast (HasTy.translate_typed d h) (Sub.translate_typed e h)
   | _, .lett _ _, _, .ty_sub d e, _, h => .cast (HasTy.translate_typed d h) (Sub.translate_typed e h)
 /-- The one-definition step (D9): for an annotation declaration `D₀` with `D₀⟨r⟩ = D` and
-`D₀.tight = true`, the image of one definition extends typed definitions at `Tel` to
+`D₀.tightC = true`, the image of one definition extends typed definitions at `Tel` to
 `Tel ++ tel D₀`, when its label is new. -/
 theorem DefTy.translate_typed : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : Dec s} (dd : DefTy G r d D) {Δ : FCn.Ctx s},
-    Ctx.Rel G Δ → ∀ (D₀ : Dec (s,x)), D₀.substPath r = D → D₀.tight = true →
+    Ctx.Rel G Δ → ∀ (D₀ : Dec (s,x)), D₀.substPath r = D → D₀.tightC = true →
     ∀ {ds : FCn.Defs s} {Tel : FCn.Telescope (s,x)}, FCn.Defs.HasType Δ r ds Tel → d.label ∉ ds.labels →
       FCn.Defs.HasType Δ r (dd.translate ds) (Tel ++ D₀.telAt .here)
   | _, r, _, _, .ty_def_typ (A := A) (T := T), Δ, h, D₀, hD, ht, ds, Tel, hds, hl => by
       obtain ⟨S₀, U₀, rfl, h₁, h₂⟩ := Dec.substPath_eq_typ hD
-      have e : S₀ = U₀ := of_decide_eq_true ht
+      have e : S₀ = U₀ := Dec.tightC_typ_eq ht (h₁.trans h₂.symm)
       subst e
       exact .typ hds hl (by rw [← h₁, Ty.translate_substPath])
   | _, r, _, _, .ty_def_all (b := b) dl, Δ, h, D₀, hD, _, ds, Tel, hds, hl => by
@@ -109,10 +117,26 @@ theorem DefTy.translate_typed : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : De
       obtain ⟨q₀, rfl, h₂⟩ := Ty.substPath_eq_sngl h₁
       have hq := HasTy.translatePath_typed dq h
       exact .path hds hl hq.1 (by rw [hq.2, h₂])
+  -- ty_def_cls  hb : T.clsBody, the declaration {C : ⊥..T}  ↦  DF-Cls
+  | _, r, _, _, .ty_def_cls (C := C) (T := T) hb, Δ, h, D₀, hD, _, ds, Tel, hds, hl => by
+      obtain ⟨S₀, U₀, rfl, h₁, h₂⟩ := Dec.substPath_eq_typ hD
+      cases Ty.substPath_eq_bot h₁
+      have hU : U₀.clsBody = true := by
+        rw [← Ty.clsBody_subst U₀ (PathSubst.one r)]
+        show (U₀.subst (PathSubst.one r)).clsBody = true
+        rw [show U₀.subst (PathSubst.one r) = T from h₂]
+        exact hb
+      obtain ⟨TelB, hTB⟩ := Ty.translate_of_clsBody hU
+      have e : (Dec.typ C .bot U₀).telAt .here =
+          .cons (.cons .nil (.le .bot (.sel (.var .here) C))) (.le (.sel (.var .here) C) (.mu TelB)) := by
+        simp only [Dec.telAt, Ty.translate, hTB]
+      show FCn.Defs.HasType Δ r (.cls ds C T.translate) (Tel ++ (Dec.typ C .bot U₀).telAt .here)
+      rw [e]
+      exact .cls hds hl (by rw [← h₂, Ty.translate_substPath, hTB])
 /-- TR.8's `DefsTy.translate_typed`: in related contexts the image of a definition list typed against
-`T = T₀⟨r⟩` is typed against `tel T₀`, when `T₀` is tight. -/
+`T = T₀⟨r⟩` is typed against `tel T₀`, when `T₀` is `tightC`. -/
 theorem DefsTy.translate_typed : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T) {Δ : FCn.Ctx s},
-    Ctx.Rel G Δ → ∀ (T₀ : Ty (s,x)), T₀.substPath r = T → T₀.tight = true →
+    Ctx.Rel G Δ → ∀ (T₀ : Ty (s,x)), T₀.substPath r = T → T₀.tightC = true →
       FCn.Defs.HasType Δ r d.translate T₀.tel
   | _, r, _, _, .ty_defs_one dd, Δ, h, T₀, hT, ht => by
       obtain ⟨D₀, rfl, hD⟩ := Ty.substPath_eq_rcd hT
@@ -122,7 +146,7 @@ theorem DefsTy.translate_typed : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T :
   | _, r, _, _, .ty_defs_cons (d := d) dds dd hnot, Δ, h, T₀, hT, ht => by
       obtain ⟨T₀', U₀, rfl, h₁, h₂⟩ := Ty.substPath_eq_and hT
       obtain ⟨D₀, rfl, hD⟩ := Ty.substPath_eq_rcd h₂
-      have ht' : T₀'.tight = true ∧ D₀.tight = true := by simpa [Ty.tight] using ht
+      have ht' : T₀'.tightC = true ∧ D₀.tightC = true := by simpa [Ty.tightC] using ht
       have hds := DefsTy.translate_typed dds h T₀' h₁ ht'.1
       have hl : d.label ∉ dds.translate.labels := by
         rw [DefsTy.translate_labels]; exact Defs.not_mem_labels_of_hasnt hnot

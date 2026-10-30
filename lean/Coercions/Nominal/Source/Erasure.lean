@@ -46,6 +46,7 @@ open Paths.FCdot (Sig BVar Kind Label Rename Path PathSubst)
 def Def.rhs? : Def s → Option (Rhs s)
   | .typ _ _ => none
   | .trm _ r => some r
+  | .cls _ _ => none
 
 mutual
 /-- `erase t`.  Types are dropped. -/
@@ -66,6 +67,8 @@ def Defs.addr (r : Path s) : Defs s → PDot.Runtime.Defs s
   | .cons ds (.typ A _) => (Defs.addr r ds).drop A
   -- addr r (ds ▹ {a = rhs}) = addr r ds ▹ (a = rhs erased at r.a)
   | .cons ds (.trm a rhs) => .cons (Defs.addr r ds) a (rhs.eraseField (r.sel a))
+  -- addr r (ds ▹ {class C = T}) = (addr r ds).drop C
+  | .cons ds (.cls C _) => (Defs.addr r ds).drop C
 /-- The erasure of a field's right side, at the field's path `p`. -/
 def Rhs.eraseField : Rhs s → Path s → PDot.Runtime.Rhs s
   -- defp q ↦ defp q
@@ -113,6 +116,8 @@ theorem Defs.addr_subst : ∀ (r : Path s₁) (ds : Defs s₁) (σ : PathSubst s
       simp only [Defs.addr, Defs.subst, Def.subst, PDot.Runtime.Defs.subst, Defs.addr_subst r ds σ,
         Rhs.eraseField_subst rhs (r.sel a) σ]
       rfl
+  | r, .cons ds (.cls C T), σ => by
+      simp only [Defs.addr, Defs.subst, Def.subst, PDot.Runtime.Defs.drop_subst, Defs.addr_subst r ds σ]
 theorem Rhs.eraseField_subst : ∀ (r : Rhs s₁) (p : Path s₁) (σ : PathSubst s₁ s₂),
     (r.eraseField p).subst σ = (r.subst σ).eraseField (p.subst σ)
   | .defp q, _, _ => rfl
@@ -204,6 +209,13 @@ theorem Defs.addr_get : ∀ (r : Path s) (ds : Defs s) (a : Label),
         rw [if_pos rfl, if_pos rfl]
         rfl
       · rw [if_neg h, if_neg h, Defs.addr_get r ds a]
+  | r, .cons ds (.cls C T), a => by
+      simp only [Defs.addr, Defs.get, Def.label]
+      by_cases h : C = a
+      · subst h
+        rw [if_pos rfl, PDot.Runtime.Defs.get_drop_self]
+        rfl
+      · rw [if_neg h, PDot.Runtime.Defs.get_drop_ne _ h, Defs.addr_get r ds a]
 
 theorem Defs.addr_get_some {r : Path s} {ds : Defs s} {a : Label} {rhs : Rhs s}
     (h : ds.get a = some (.trm a rhs)) : (Defs.addr r ds).get a = some (rhs.eraseField (r.sel a)) := by
@@ -228,6 +240,7 @@ theorem Defs.addr_get_inv {r : Path s} {ds : Defs s} {a : Label} {k : PDot.Runti
           subst hl
           simp only [Option.bind_some, Def.rhs?, Option.map_some, Option.some.injEq] at h
           exact ⟨rhs, rfl, h⟩
+      | cls C T => cases h
 
 /-- The plan's `addr r (ds ▹ {A = T}) = addr r ds`, when no definition of `ds` is at `A`. -/
 theorem Defs.addr_typ_of_hasnt {r : Path s} {ds : Defs s} {A : Label} {T : Ty s}
@@ -238,6 +251,24 @@ theorem Defs.addr_typ_of_hasnt {r : Path s} {ds : Defs s} {A : Label} {T : Ty s}
   rw [Defs.hasnt] at h
   rw [h]
   rfl
+
+/-- The plan's `addr r (ds ▹ {class C = T}) = addr r ds`, when no definition of `ds` is at `C`.  A
+class definition erases as a type definition does. -/
+theorem Defs.addr_cls_of_hasnt {r : Path s} {ds : Defs s} {C : Label} {T : Ty s}
+    (h : ds.hasnt C) : Defs.addr r (ds.cons (.cls C T)) = Defs.addr r ds := by
+  simp only [Defs.addr]
+  apply PDot.Runtime.Defs.drop_of_get_none
+  rw [Defs.addr_get]
+  rw [Defs.hasnt] at h
+  rw [h]
+  rfl
+
+namespace AddrClsTests
+
+/-- `addr z ([] ▹ {class C = ⊤}) = []`: a class definition leaves no field. -/
+example : Defs.addr (.var .here) ((Defs.nil : Defs ([],x)).cons (.cls (.typ 0) .top)) = .nil := by rfl
+
+end AddrClsTests
 
 /-! ## Lookup, forward and back (plan R.3) -/
 

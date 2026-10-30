@@ -30,6 +30,9 @@ proposition (`plan-10-pdot.md:777-778`).
 
 The second premise of the replacement rules is not visited (decision D13).  The paths of the images
 are the last part: every image's path is the path its derivation types.
+
+Plan XII adds one rule.  The image of `subtyp_seal` at `G.selfCls p C = some T` is the seal
+`seal p C` of FCn, typed by LE-Seal.
 -/
 
 namespace Nominal.Source
@@ -150,6 +153,7 @@ def Sub.translate : {G : Ctx s} → {S T : Ty s} → Sub G S T → FCn.LeCo s
   | _, _, _, .subtyp_sel1 (p := p) (A := A) (S := S) (T := T) d =>
       .member (d.pathImage.getD (Translation.ofPath p)) (.refl (Ty.rcd (.typ A S T)).translate) 1
   | _, _, _, .subtyp_all e₁ e₂ => .pi e₁.translate e₂.translate              -- e₁ : S₂ <: S₁, z of e₂ : T₁ <: T₂
+  | _, _, _, .subtyp_seal (p := p) (C := C) _ => .seal p C                  -- G.selfCls p C = some T  ↦  seal p C (LE-Seal)
 end
 
 /-- `⟦d⟧` at a path term.  The fallback is never read (`HasTy.pathImage_path`). -/

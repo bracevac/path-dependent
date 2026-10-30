@@ -54,6 +54,7 @@ inductive Val : Sig → Type where
 inductive Def : Sig → Type where
   | typ : Label → Ty s → Def s           -- {A = T}
   | trm : Label → Rhs s → Def s          -- {a = r}
+  | cls : Label → Ty s → Def s           -- {class C = T}, plan XII
 inductive Defs : Sig → Type where
   | nil : Defs s
   | cons : Defs s → Def s → Defs s
@@ -101,6 +102,7 @@ def _root_.Paths.FCdot.Path.nomExt : Path s → List Label → Path s
 def Def.label : Def s → Label
   | .typ A _ => A                                -- {A = T}.label = A
   | .trm a _ => a                                -- {a = r}.label = a
+  | .cls C _ => C                                -- {class C = T}.label = C
 
 /-- The newest definition at a label, `get_def` (`Definitions.v:203-207`). -/
 def Defs.get : Defs s → Label → Option (Def s)

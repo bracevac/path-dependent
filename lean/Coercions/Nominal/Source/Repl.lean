@@ -18,6 +18,9 @@ that the relation rewrites one occurrence and refuses two at once.
 `tight_bounds` (`Definitions.v:564-575`) is the Boolean function `Ty.tight`.  Every path substitution
 keeps it (`Ty.tight_subst`).  `tight_premise_independent` shows that it does not follow from the
 opened annotation: an annotation that is not tight opens to a tight type.
+
+`Ty.tightC` (plan XII) is `Ty.tight` except that a declaration `{C : ⊥..U}` with `U` a class body
+passes, so that a self type declaring a class is tight in this sense (`Ty.tightC_of_tight`).
 -/
 
 namespace Nominal.Source
@@ -63,6 +66,24 @@ def Ty.tight : Ty s → Bool
 def Dec.tight : Dec s → Bool
   | .typ _ T U => decide (T = U)                 -- {A : T..U}.tight = (T == U)
   | .trm _ T => T.tight                          -- {a : T}.tight = T.tight
+end
+
+mutual
+/-- `T.tightC` (plan XII): `T.tight`, except that a declaration `{C : ⊥..U}` with `U` a class body
+also passes.  A class definition `{class C = U}` is declared at `{C : ⊥..U}` (`ty_def_cls`). -/
+def Ty.tightC : Ty s → Bool
+  | .top => true                                 -- ⊤.tightC = true
+  | .bot => true                                 -- ⊥.tightC = true
+  | .rcd D => D.tightC                           -- {D}.tightC = D.tightC
+  | .and T U => T.tightC && U.tightC             -- (T ∧ U).tightC = T.tightC && U.tightC
+  | .sel _ _ => true                             -- (p.A).tightC = true
+  | .mu T => T.tightC                            -- (μ(z. T)).tightC = T.tightC
+  | .all _ _ => true                             -- (∀(z : S) T).tightC = true
+  | .sngl _ => true                              -- (p.type).tightC = true
+/-- `D.tightC`: equal bounds, or the bounds `⊥..U` of a class body `U`. -/
+def Dec.tightC : Dec s → Bool
+  | .typ _ T U => decide (T = U) || (decide (T = .bot) && U.clsBody)   -- {A : T..U}.tightC: equal bounds, or ⊥..a class body
+  | .trm _ T => T.tightC                         -- {a : T}.tightC = T.tightC
 end
 
 /-! ## The hole of a replacement
@@ -556,6 +577,53 @@ end
 theorem Ty.tight_substPath (T : Ty (s,x)) (p : Path s) : T.tight = true → (T.substPath p).tight = true :=
   Ty.tight_subst T (PathSubst.one p)
 
+mutual
+/-- Every path substitution keeps `tightC`. -/
+theorem Ty.tightC_subst : ∀ (T : Ty s₁) (σ : PathSubst s₁ s₂), T.tightC = true → (T.subst σ).tightC = true
+  | .top, _, _ => rfl
+  | .bot, _, _ => rfl
+  | .rcd D, σ, h => Dec.tightC_subst D σ h
+  | .and T U, σ, h => by
+      simp only [Ty.tightC, Bool.and_eq_true] at h
+      simp only [Ty.subst, Ty.tightC, Bool.and_eq_true]
+      exact ⟨Ty.tightC_subst T σ h.1, Ty.tightC_subst U σ h.2⟩
+  | .sel _ _, _, _ => rfl
+  | .mu T, σ, h => Ty.tightC_subst T σ.lift h
+  | .all _ _, _, _ => rfl
+  | .sngl _, _, _ => rfl
+/-- Every path substitution keeps `tightC` of a declaration. -/
+theorem Dec.tightC_subst : ∀ (D : Dec s₁) (σ : PathSubst s₁ s₂), D.tightC = true → (D.subst σ).tightC = true
+  | .typ _ T U, σ, h => by
+      simp only [Dec.tightC, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+      simp only [Dec.subst, Dec.tightC, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, Ty.clsBody_subst]
+      rcases h with h | ⟨h₁, h₂⟩
+      · exact .inl (h ▸ rfl)
+      · exact .inr ⟨(Ty.subst_eq_bot_iff T σ).mpr h₁, h₂⟩
+  | .trm _ T, σ, h => Ty.tightC_subst T σ h
+end
+
+theorem Ty.tightC_substPath (T : Ty (s,x)) (p : Path s) : T.tightC = true → (T.substPath p).tightC = true :=
+  Ty.tightC_subst T (PathSubst.one p)
+
+mutual
+/-- A tight type is tight in the sense of `tightC`. -/
+theorem Ty.tightC_of_tight : ∀ (T : Ty s), T.tight = true → T.tightC = true
+  | .top, _ => rfl
+  | .bot, _ => rfl
+  | .rcd D, h => Dec.tightC_of_tight D h
+  | .and T U, h => by
+      simp only [Ty.tight, Ty.tightC, Bool.and_eq_true] at h ⊢
+      exact ⟨Ty.tightC_of_tight T h.1, Ty.tightC_of_tight U h.2⟩
+  | .sel _ _, _ => rfl
+  | .mu T, h => Ty.tightC_of_tight T h
+  | .all _ _, _ => rfl
+  | .sngl _, _ => rfl
+/-- A tight declaration is tight in the sense of `tightC`. -/
+theorem Dec.tightC_of_tight : ∀ (D : Dec s), D.tight = true → D.tightC = true
+  | .typ _ T U, h => by simp only [Dec.tight] at h; simp only [Dec.tightC, h, Bool.true_or]
+  | .trm _ T, h => Ty.tightC_of_tight T h
+end
+
 /-! ## Tight bounds do not follow from the opened annotation
 
 `ty_def_new` asks for `tight_bounds` of the annotation and, as its third premise, types the
@@ -582,5 +650,12 @@ abbrev tightEx_r : Path ([],x) := .sel (.var .here) tightEx_b
 theorem tight_premise_independent :
     ∃ (T : Ty (([],x),x)) (r : Path ([],x)), (Ty.mu T).tight = false ∧ (T.substPath r).tight = true :=
   ⟨tightEx_T, tightEx_r, by decide, by decide⟩
+
+namespace TightCTests
+example : (Ty.rcd (Dec.typ (.typ 7) .bot (Ty.top : Ty [])) ).tightC = true := by decide
+example : (Ty.rcd (Dec.typ (.typ 7) .bot (Ty.top : Ty [])) ).tight = false := by decide
+example : (Ty.rcd (Dec.typ (.typ 7) .bot (Ty.bot : Ty [])) ).tightC = true := by decide
+example : (Ty.rcd (Dec.typ (.typ 7) .bot (.all .top .top : Ty [])) ).tightC = false := by decide
+end TightCTests
 
 end Nominal.Source

@@ -17,7 +17,7 @@ and the claim in `PDot`.
   path of `⟦d⟧` is `p`.
 - `Sub.translate_typed`: for `d : Sub G S T` and `G ≈ Δ`, `Δ ⊢ ⟦d⟧ : ⟦S⟧ ≤ ⟦T⟧`.
 - `DefsTy.translate_typed`: for `d : DefsTy G r ds T`, `G ≈ Δ` and an annotation `T₀` with
-  `T₀⟨r⟩ = T` and `T₀.tight = true`, the image is typed against `tel T₀` at `r`.  The tightness
+  `T₀⟨r⟩ = T` and `T₀.tightC = true`, the image is typed against `tel T₀` at `r`.  The tightness
   premise is needed: without it the image of N5's definitions is untyped (`N5_image_untyped`).
 - `HasTy.translate_erase`: the image erases to the source's erasure of the term.
 - `PDot.safety`: let `d : HasTy .nil t T` and `Reds ⟨[], .nil, t⟩ c`.  Then the term of `c` is a
@@ -27,6 +27,21 @@ and the claim in `PDot`.
   `⊤ ≤ ⊥`.
 - `PDot.reachable_run`: under the same hypotheses, the machine runs the image of `d` to a state with
   the erasure of `c`.
+
+Plan XII translates the two class forms of pDOT-C by two equations.  A class definition becomes a
+class entry, `⟦ds ▹ {class C = T}⟧ = ⟦ds⟧ ▹ {class C = ⟦T⟧}` (DF-Cls, `DefTy.translate` at
+`ty_def_cls`, `Terms.lean`), and a seal becomes a seal, `⟦subtyp_seal h⟧ = seal p C` (LE-Seal,
+`Sub.translate`, `Evidence.lean`).  Rel-Self gains the premise `Ctx.ClsAgree Δ T b`: each class
+that the self type `T` declares at a field path `bs` of its self is the class of `Δ, z : b` at the
+same path, translated (`Rel.lean:34-48`).  So the class reading of a related source context is the
+class entry of the target (`Ctx.Rel.selfCls`), which types LE-Seal.  `Ctx.rel_translate` relates a
+source context to its translation only when it is class-free, `G.clsFree = true`, since an opaque
+self binder has no class entry.  `DefsTy.translate_typed` and `DefTy.translate_typed` read
+`T₀.tightC = true` and `D₀.tightC = true` for `.tight`, which also pass a class declaration
+`{C : ⊥..U}`.  `DefsTy.clsAgree_self` gives `ClsAgree` at the literal's own self binder in
+`ty_new_intro`.  `E14_checks` (`Examples.lean`) checks the image of the class program E14 in the
+kernel, its two class definitions by DF-Cls and its three seals by LE-Seal, and `Pages.E14` runs it
+on both machines to one runtime configuration.
 
 The transport carries the invariant `Simulated c`, a typed FCp state over the signature of `c` with
 the erasure of `c`.  It holds at the start by `translate_typed` and `translate_erase`.  A source

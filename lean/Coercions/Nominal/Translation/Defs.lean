@@ -17,6 +17,13 @@ annotation, which is syntax, and an annotation opened at `r` keeps its head cons
 `T₀⟨r⟩ = T ∧ U` gives `T₀ = T₀' ∧ U₀`, and so on for a record, a type or a field declaration, a
 function type, a recursive type and a singleton.  `Translation.nil_append` and `Ty.tight_rename` are
 the two small laws the typedness of definitions reads.
+
+Plan XII adds four lemmas for the class definition and for `Ty.tightC` (risk R2).
+`Ty.substPath_eq_bot` reads `⊥` off an opened `⊥`.  `Ty.translate_of_clsBody` shows that a class
+body translates to an object type `μ(w. TelB)`, the shape DF-Cls asks for.  `Dec.tightC_typ_eq`
+gives equal bounds of a `tightC` type declaration whose opened bounds are equal: the other
+disjunct, `⊥..U₀` with `U₀` a class body, would give `U₀⟨r⟩ = ⊥`, so `U₀ = ⊥`, and `⊥` is no class
+body.  `Ty.tightC_rename` is `Ty.tight_rename` for `tightC`.
 -/
 
 namespace Nominal.Source
@@ -99,6 +106,37 @@ theorem Ty.substPath_eq_sngl {T₀ : Ty (s,x)} {r : Path s} {q : Path s} (h : T�
     ∃ q₀, T₀ = .sngl q₀ ∧ q₀.substPath r = q := by
   cases T₀ <;> try (simp [Ty.substPath, Ty.subst] at h)
   next q' => exact ⟨q', rfl, h⟩
+
+/-- An opened `⊥` was `⊥` before opening. -/
+theorem Ty.substPath_eq_bot {T₀ : Ty (s,x)} {r : Path s} (h : T₀.substPath r = .bot) : T₀ = .bot :=
+  (Ty.subst_eq_bot_iff T₀ _).mp h
+
+/-- A class body (`⊤`, a record, an intersection or a `μ`) translates to an object type `μ(w. TelB)`. -/
+theorem Ty.translate_of_clsBody : ∀ {T : Ty s}, T.clsBody = true → ∃ TelB, T.translate = .mu TelB
+  | .top, _ => ⟨.nil, rfl⟩                                    -- ⟦⊤⟧ = μ(w. [])
+  | .rcd D, _ => ⟨D.telP, rfl⟩                                -- ⟦{D}⟧ = μ(w. tel⁺ {D})
+  | .and T U, _ => ⟨T.telP ++ U.telP, rfl⟩                    -- ⟦T ∧ U⟧ = μ(w. tel⁺ T ++ tel⁺ U)
+  | .mu T, _ => ⟨T.telAt .here, rfl⟩                          -- ⟦μ(z. T)⟧ = μ(w. tel T)
+  | .bot, h => nomatch h
+  | .sel _ _, h => nomatch h
+  | .all _ _, h => nomatch h
+  | .sngl _, h => nomatch h
+
+/-- A `tightC` type declaration `{A : S₀..U₀}` whose bounds are equal after opening at `r` has
+equal bounds: the class disjunct `S₀ = ⊥` would make `U₀` the class body `⊥`. -/
+theorem Dec.tightC_typ_eq {A : Label} {S₀ U₀ : Ty (s,x)} {r : Path s} (ht : (Dec.typ A S₀ U₀).tightC = true)
+    (h : S₀.substPath r = U₀.substPath r) : S₀ = U₀ := by
+  simp only [Dec.tightC, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at ht
+  rcases ht with e | ⟨e, hb⟩
+  · exact e
+  · subst e
+    have hU : U₀ = .bot := Ty.substPath_eq_bot h.symm
+    subst hU
+    cases hb
+
+/-- A renaming keeps a `tightC` type `tightC`. -/
+theorem Ty.tightC_rename (T : Ty s₁) (ρ : Rename s₁ s₂) (h : T.tightC = true) : (T.rename ρ).tightC = true := by
+  rw [Ty.rename_eq_subst]; exact Ty.tightC_subst T _ h
 
 /-- The empty telescope is a left unit of `++`. -/
 theorem _root_.Nominal.Translation.nil_append : ∀ (Tel : FCn.Telescope s), (FCn.Telescope.nil ++ Tel) = Tel

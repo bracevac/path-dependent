@@ -15,7 +15,8 @@ A path image erases to its path by `HasTy.translatePath_path`.  A cast erases to
 `Translation.toValue_erase` carries the erasure through the casts that end the image of a lambda.  A
 type definition erases to nothing in FCn and to `drop A` in the source, equal when no earlier
 definition has the label `A` (`Defs.addr_typ_of_hasnt`, `Source/Erasure.lean:233`), which
-`ty_defs_cons` gives.  A nested literal erases to `nest` of its definitions at `r.b` on both sides
+`ty_defs_cons` gives.  A class definition (plan XII) erases to nothing in FCn and to `drop C` in the
+source, equal in the same way (`Defs.addr_cls_of_hasnt`).  A nested literal erases to `nest` of its definitions at `r.b` on both sides
 (`Defs.addr_subst`, `Source/Erasure.lean:107`).
 
 The examples.  `E3_image_erase` reads the theorem at E3.  `E3_image_erase_kernel` and
@@ -121,6 +122,12 @@ theorem DefTy.translate_erase : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : De
   | _, r, _, _, .ty_def_path (b := b) dq, ds', hn, ds, he => by
       show FCn.Defs.erase (.fld ds b (.path dq.translatePath)) = _
       simp only [FCn.Defs.erase, FCn.Rhs.erase, Defs.addr, Rhs.eraseField, he, HasTy.translatePath_path]
+  -- ty_def_cls: both sides drop the class, C new by ty_defs_cons
+  | _, r, _, _, .ty_def_cls (C := C) (T := T) _, ds', hn, ds, he => by
+      show FCn.Defs.erase (.cls ds C T.translate) = _
+      have hn' : ds'.hasnt C := hn
+      rw [Defs.addr_cls_of_hasnt (r := r) (T := T) hn']
+      exact he
 /-- The image of a definition list erases to the source's addressed definitions at `r`. -/
 theorem DefsTy.translate_erase : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T),
     d.translate.erase = Defs.addr r ds

@@ -30,6 +30,25 @@ Boolean `Ty.tight`.  `HasTy`, `DefTy`, `DefsTy` and `Sub` are `ty_trm`, `ty_def`
 judgments and adds derived rules for the examples.  A definition typing has no subsumption, so a
 path field is declared at its singleton and nothing else (`DefTy.path_decl`).
 
+pDOT-C, the source of plan XII (`plan-12-nominal.md:463-499`), adds one definition and two rules to
+these judgments, so `DefTy` has 5 constructors and `Sub` 15.  `Def.cls C T` is a class definition
+`{class C = T}` (`Syntax.lean:57`).  `DefTy.ty_def_cls` declares it at `{C : ⊥..T}` when
+`T.clsBody`, that is when `T` is `⊤`, a record, an intersection or a `μ` (`Typing.lean:73`,
+`Binding.lean:442`).  `Sub.subtyp_seal` gives `T <: p.C` when `G.selfCls p C = some T`
+(`Typing.lean:111`).  `Ctx.selfCls` is the class reading of a self binder: `p` is a self variable
+followed by fields of nested objects, and the self type at `p` declares `{C : ⊥..T}` with `T` a
+class body (`Binding.lean:497-503`).  A let-bound path has no class reading, so a value is sealed at
+`p.C` only inside the literal that defines `C`.  `ty_def_new` reads `Ty.tightC` in place of
+`Ty.tight`, which also passes `{C : ⊥..U}` with `U` a class body (`Repl.lean:74`).  In a class-free
+context every typing of a class-free term is plain, it uses neither new rule
+(`HasTy.plain_of_clsFree`, `Derived.lean:322`), so plan X's pDOT is the class-free restriction of
+pDOT-C, and a class-free context has no class reading (`Ctx.selfCls_none_of_classFree`,
+`Binding.lean:693`).  `Nominal.lean` defines the nominal vocabulary, `IsView`, `Up`, `Factor` and
+`ClassReach`, and proves its three theorems: `Factor.sub` (a factorization through `p.C` is a
+subtyping), `Ty.Structural.not_factor` (no structural type factors through a class type) and
+`class_order` (between class types, a factorization is the class order).  `Programs.lean` types the
+class program E14 of plan XII, with two class definitions and three seals.
+
 Lookup and reduction (`Lookup.lean`, `Reduction.lean`) are `Prop`-valued, as in Coq.  `LStep` is
 `lookup_step`, and `lookup_sel_v` reads the newest definition at a label (`Defs.get`).  `Red` is
 `red` on configurations `⟨s, γ, t⟩`, indexed by the renaming of the step's signature, the identity
@@ -59,7 +78,8 @@ The last column names the changes of form of plan S.6 that apply to the row, by 
   `p = p_sel (avar_f x) bs` of `ty_def_new` is the index itself.
 - **shift**: under the binder of `rbnd` and `rall2` both paths are weakened, `p↑ ↦ q↑`.
 - **get**: `defs_has ds {a := t}` is `ds.get a = some {a = r}`, the newest definition at `a`.
-- **tight**: `tight_bounds T : Prop` is `T.tight = true` with `T.tight : Bool`.
+- **tight**: `tight_bounds T : Prop` is `T.tight = true` with `T.tight : Bool`.  plan XII weakens `ty_def_new`'s premise to `T.tightC =
+  true`, which also passes `{A : ⊥..U}` with `U` a class body.
 - **conf**: `red` on `sta * trm` with a fresh name is `Red` on configurations with the store
   renaming `ρ`, and `red_let_tgt` renames the continuation by `ρ.lift`.
 - **total**: `binds x v γ` is the total `γ.get x`.
@@ -81,7 +101,7 @@ The last column names the changes of form of plan S.6 that apply to the row, by 
 | `ty_sub` | `Definitions.v:730` | `HasTy.ty_sub` | Type |
 | `ty_def_typ` | `Definitions.v:742` | `DefTy.ty_def_typ` | Type, path index |
 | `ty_def_all` | `Definitions.v:751` | `DefTy.ty_def_all` | Type, path index |
-| `ty_def_new` | `Definitions.v:761` | `DefTy.ty_def_new` | Type, path index, tight, dB |
+| `ty_def_new` | `Definitions.v:761` | `DefTy.ty_def_new` | Type, path index, `tightC` (plan XII), dB |
 | `ty_def_path` | `Definitions.v:773` | `DefTy.ty_def_path` | Type, path index |
 | `ty_defs_one` | `Definitions.v:790` | `DefsTy.ty_defs_one` | Type, path index |
 | `ty_defs_cons` | `Definitions.v:802` | `DefsTy.ty_defs_cons` | Type, path index |
@@ -121,9 +141,12 @@ The last column names the changes of form of plan S.6 that apply to the row, by 
 | `nf_val` | `Reduction.v:46` | `NormForm.nf_val` | none |
 | `er_red` | `Safety.v:469` | `ExtRed.er_red` | conf |
 | `er_lookup` | `Safety.v:472` | `ExtRed.er_lookup` | conf |
+| none (pDOT-C) | plan XII | `Def.cls` | addition: a class definition `{class C = T}` |
+| none (pDOT-C) | plan XII | `DefTy.ty_def_cls` | addition: Type, path index, premise `T.clsBody` |
+| none (pDOT-C) | plan XII | `Sub.subtyp_seal` | addition: Type, premise `G.selfCls p C = some T` |
 
-That is 33 typing rows, 11 replacement rows, 3 lookup rows, 4 reduction rows, 2 normal-form rows and
-2 extended-reduction rows.
+That is 33 typing rows, 11 replacement rows, 3 lookup rows, 4 reduction rows, 2 normal-form rows,
+2 extended-reduction rows, and 3 rows that pDOT-C adds, which Coq's pDOT has not.
 
 Two notes on plan S.6.
 
@@ -171,10 +194,11 @@ reached configuration in FCp instead.
 | module | content |
 |---|---|
 | `Syntax.lean` | types, declarations, terms, values, definitions, contexts, stores, configurations, `Path.ext`, `Defs.get` |
-| `Binding.lean` | renaming, path substitution, weakening and opening for every family, their laws, `Ctx.lookup`, `Store.get` |
-| `Repl.lean` | replacement, its hole, `Repl.swap`, `Repl.subst`, the decision `Ty.isRepl`, `Ty.tight` |
+| `Binding.lean` | renaming, path substitution, weakening and opening for every family, their laws, `Ctx.lookup`, `Store.get`, the class reading `Ctx.selfCls` with `Ty.clsBody`, `Ty.findCls`, `Ty.findNest`, and the class-free predicates `clsFree` with `Ctx.selfCls_none_of_classFree` |
+| `Repl.lean` | replacement, its hole, `Repl.swap`, `Repl.subst`, the decision `Ty.isRepl`, `Ty.tight`, `Ty.tightC` of plan XII |
 | `Typing.lean` | the four typing judgments in one mutual block |
-| `Derived.lean` | inversion lemmas and derived rules |
+| `Derived.lean` | inversion lemmas and derived rules, `DefTy.tightC`, and the class-free restriction `HasTy.plain_of_clsFree` |
+| `Nominal.lean` | the nominal vocabulary `IsView`, `Up`, `Factor`, `ClassReach`, and `Factor.sub`, `not_factor`, `class_order` |
 | `Lookup.lean` | lookup, its closure, `CyclicPath`, `PathSafe`, determinism, E12 |
 | `Reduction.lean` | reduction, normal forms, extended reduction, divergence, determinism |
 | `Model.lean` | path models of a fixed context and their soundness |

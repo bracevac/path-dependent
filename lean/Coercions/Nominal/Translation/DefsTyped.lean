@@ -17,6 +17,13 @@ them to type the value under the casts of a typed term.  `Translation.defs_typ_i
 
 `HasTy.translate_lam_of_eq` says the image of a derivation at a lambda is a lambda under casts, so
 the fallback of `ty_def_all`'s image is never read.
+
+Plan XII adds `DefsTy.clsAgree`: every class that the type of typed definitions declares at a field
+path, read by `Ty.clsAt`, is the class of the image's block at that path, translated.  It reads the
+class entries of the image (`DefsTy.getCls_translate`) and its nested blocks
+(`DefsTy.kids_translate`).  The distinct labels of `ty_defs_cons` make the newest-first reads of
+source and target agree.  `DefsTy.clsAgree_self` is the premise `ClsAgree` of Rel-Self at the
+transparent self that VA-Obj binds, which `ty_new_intro` of `HasTy.translate_typed` reads.
 -/
 
 namespace Nominal.Source
@@ -30,6 +37,7 @@ theorem DefTy.translate_labels : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : D
   | _, _, _, _, .ty_def_all _, _ => rfl
   | _, _, _, _, .ty_def_new _ _, _ => rfl
   | _, _, _, _, .ty_def_path _, _ => rfl
+  | _, _, _, _, .ty_def_cls _, _ => rfl
 
 /-- The image of a definition list has the labels of the source list. -/
 theorem DefsTy.translate_labels : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T),
@@ -110,5 +118,192 @@ theorem _root_.Nominal.Translation.defs_typ_inv_of_eq : ∀ {Γ : FCn.Ctx s} {p 
   | _, _, _, _, .path _ _ _ _, _, _, _, e => nomatch e
   | _, _, _, _, .fn _ _ _ _, _, _, _, e => nomatch e
   | _, _, _, _, .nest _ _ _, _, _, _, e => nomatch e
+
+/-! ## `DefsTy.clsAgree`: the classes of a self type are the classes of its image (plan XII) -/
+
+/-- A type definition's declaration `{A : T..T}` declares no class. -/
+theorem Ty.findCls_tdef (A C : Label) (T : Ty s) : (Ty.rcd (.typ A T T)).findCls C = none := by
+  simp only [Ty.findCls]
+  split
+  · next h => obtain ⟨rfl, -, hb⟩ := h; cases hb
+  · rfl
+
+/-- The declaration of one typed definition declares a class only at the definition's label, and
+only for `ty_def_cls`. -/
+theorem DefTy.findCls_label : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : Dec s}, DefTy G r d D → ∀ {C : Label} {U : Ty s},
+    (Ty.rcd D).findCls C = some U → d.label = C
+  | _, _, _, _, .ty_def_typ (A := A) (T := T), C, U, h => by rw [Ty.findCls_tdef] at h; cases h
+  | _, _, _, _, .ty_def_all _, _, _, h => nomatch h
+  | _, _, _, _, .ty_def_new _ _, _, _, h => nomatch h
+  | _, _, _, _, .ty_def_path _, _, _, h => nomatch h
+  | _, _, _, _, .ty_def_cls (C := C') _, C, U, h => by
+      simp only [Ty.findCls] at h
+      split at h
+      · next hc => exact hc.2.1.symm
+      · cases h
+
+/-- A class that the type of typed definitions declares is at one of the definitions' labels. -/
+theorem DefsTy.findCls_mem : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s}, DefsTy G r ds T → ∀ {C : Label} {U : Ty s},
+    T.findCls C = some U → C ∈ ds.labels
+  | _, _, _, _, .ty_defs_one dd, C, U, h => DefTy.findCls_label dd h ▸ List.mem_cons_self ..
+  | _, _, _, _, .ty_defs_cons (D := D) dds dd _, C, U, h => by
+      simp only [Ty.findCls] at h
+      cases h₁ : (Ty.rcd D).findCls C with
+      | some V => exact DefTy.findCls_label dd h₁ ▸ List.mem_cons_self ..
+      | none =>
+          rw [h₁] at h
+          exact List.mem_cons_of_mem _ (DefsTy.findCls_mem dds h)
+
+/-- One definition at a label other than `C` keeps the class at `C` of the definitions before it. -/
+theorem DefTy.getCls_translate : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : Dec s} (dd : DefTy G r d D) (ds : FCn.Defs s) (C : Label),
+    d.label ≠ C → (dd.translate ds).tyDefs.getCls C = ds.tyDefs.getCls C
+  | _, _, _, _, .ty_def_typ (A := A), ds, C, hl => by
+      show (FCn.TyDefs.cons _ A _).getCls C = _
+      simp only [FCn.TyDefs.getCls]
+      rw [if_neg (fun e => hl e.symm)]
+  | _, _, _, _, .ty_def_all _, _, _, _ => rfl
+  | _, _, _, _, .ty_def_new _ _, _, _, _ => rfl
+  | _, _, _, _, .ty_def_path _, _, _, _ => rfl
+  | _, _, _, _, .ty_def_cls (C := C') _, ds, C, hl => by
+      show (FCn.TyDefs.cls _ C' _).getCls C = _
+      simp only [FCn.TyDefs.getCls]
+      rw [if_neg (fun e => hl e.symm)]
+
+/-- A class `C` that the type of typed definitions declares with body `U` is the class entry of the
+image at `C`, with body `⟦U⟧`. -/
+theorem DefsTy.getCls_translate : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T) (C : Label) (U : Ty s),
+    T.findCls C = some U → d.translate.tyDefs.getCls C = some U.translate
+  | _, _, _, _, .ty_defs_one dd, C, U, h => by
+      -- only a class definition declares a class
+      cases dd with
+      | ty_def_typ => rw [Ty.findCls_tdef] at h; cases h
+      | ty_def_all _ => cases h
+      | ty_def_new _ _ => cases h
+      | ty_def_path _ => cases h
+      | ty_def_cls _ =>
+          simp only [Ty.findCls] at h
+          split at h
+          · next hc =>
+              cases h
+              obtain ⟨-, rfl, -⟩ := hc
+              show (FCn.TyDefs.cls _ C _).getCls C = _
+              simp [FCn.TyDefs.getCls]
+          · cases h
+  | _, _, _, _, .ty_defs_cons (d := d) (D := D) dds dd hn, C, U, h => by
+      simp only [Ty.findCls] at h
+      cases h₁ : (Ty.rcd D).findCls C with
+      | some V =>
+          cases dd with
+          | ty_def_typ => rw [Ty.findCls_tdef] at h₁; cases h₁
+          | ty_def_all _ => cases h₁
+          | ty_def_new _ _ => cases h₁
+          | ty_def_path _ => cases h₁
+          | ty_def_cls _ =>
+              rw [h₁] at h
+              cases h
+              simp only [Ty.findCls] at h₁
+              split at h₁
+              · next hc =>
+                  cases h₁
+                  obtain ⟨-, rfl, -⟩ := hc
+                  show (FCn.TyDefs.cls _ C _).getCls C = _
+                  simp [FCn.TyDefs.getCls]
+              · cases h₁
+      | none =>
+          rw [h₁] at h
+          have hm := DefsTy.findCls_mem dds h
+          have hl : d.label ≠ C := fun e => Defs.not_mem_labels_of_hasnt hn (e ▸ hm)
+          show (dd.translate dds.translate).tyDefs.getCls C = _
+          rw [DefTy.getCls_translate dd _ C hl]
+          exact DefsTy.getCls_translate dds C U h
+
+/-- The declaration of one typed definition declares a nested object only at its label, and then
+its image's child at that label is the block of the image of the nested definitions. -/
+theorem DefTy.findNest_translate : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : Dec s} (dd : DefTy G r d D) (ds : FCn.Defs s) {b : Label} {U : Ty (s,x)},
+    (Ty.rcd D).findNest b = some U → d.label = b ∧
+      ∃ (dsn : Defs (s,x)) (dn : DefsTy G (r.sel b) (dsn.substPath (r.sel b)) (U.substPath (r.sel b))),
+        (dd.translate ds).kids.get b = some dn.translate.block
+  | _, _, _, _, .ty_def_typ, _, _, _, h => nomatch h
+  | _, _, _, _, .ty_def_all (b := b') _, _, b, U, h => by
+      simp only [Ty.findNest] at h; split at h <;> cases h
+  | _, _, _, _, .ty_def_new (b := b') (ds := dsn) _ dn, ds, b, U, h => by
+      simp only [Ty.findNest, Ty.muBody] at h
+      split at h
+      · next e =>
+          cases h; subst e
+          refine ⟨rfl, dsn, dn, ?_⟩
+          show FCn.Kids.get (.cons _ b _) b = _
+          simp only [FCn.Kids.get]; rfl
+      · cases h
+  | _, _, _, _, .ty_def_path (b := b') _, _, b, U, h => by
+      simp only [Ty.findNest] at h; split at h <;> cases h
+  | _, _, _, _, .ty_def_cls _, _, _, _, h => nomatch h
+
+/-- One definition at a label other than `b` keeps the child at `b` of the definitions before it. -/
+theorem DefTy.kids_translate_ne : ∀ {G : Ctx s} {r : Path s} {d : Def s} {D : Dec s} (dd : DefTy G r d D) (ds : FCn.Defs s) (b : Label),
+    d.label ≠ b → (dd.translate ds).kids.get b = ds.kids.get b
+  | _, _, _, _, .ty_def_typ, _, _, _ => rfl
+  | _, _, _, _, .ty_def_all (b := b') _, ds, b, hl => by
+      show FCn.Kids.get (.cons _ b' _) b = _; simp only [FCn.Kids.get]; rw [if_neg (fun e => hl e.symm)]
+  | _, _, _, _, .ty_def_new (b := b') _ _, ds, b, hl => by
+      show FCn.Kids.get (.cons _ b' _) b = _; simp only [FCn.Kids.get]; rw [if_neg (fun e => hl e.symm)]
+  | _, _, _, _, .ty_def_path (b := b') _, ds, b, hl => by
+      show FCn.Kids.get (.cons _ b' _) b = _; simp only [FCn.Kids.get]; rw [if_neg (fun e => hl e.symm)]
+  | _, _, _, _, .ty_def_cls _, _, _, _ => rfl
+
+/-- A nested object that the type of typed definitions declares is at one of the definitions' labels. -/
+theorem DefsTy.findNest_mem : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s}, DefsTy G r ds T → ∀ {b : Label} {U : Ty (s,x)},
+    T.findNest b = some U → b ∈ ds.labels
+  | _, _, _, _, .ty_defs_one dd, b, U, h => (DefTy.findNest_translate dd .nil h).1 ▸ List.mem_cons_self ..
+  | _, _, _, _, .ty_defs_cons (D := D) dds dd _, b, U, h => by
+      simp only [Ty.findNest] at h
+      cases h₁ : (Ty.rcd D).findNest b with
+      | some V => exact (DefTy.findNest_translate dd .nil h₁).1 ▸ List.mem_cons_self ..
+      | none =>
+          rw [h₁] at h
+          exact List.mem_cons_of_mem _ (DefsTy.findNest_mem dds h)
+
+/-- A nested object that the type of typed definitions declares at `b` with body `U` is the child
+of the image at `b`, the block of the image of typed nested definitions. -/
+theorem DefsTy.kids_translate : ∀ {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T) (b : Label) (U : Ty (s,x)),
+    T.findNest b = some U → ∃ (dsn : Defs (s,x)) (dn : DefsTy G (r.sel b) (dsn.substPath (r.sel b)) (U.substPath (r.sel b))),
+      d.translate.kids.get b = some dn.translate.block
+  | _, _, _, _, .ty_defs_one dd, b, U, h => (DefTy.findNest_translate dd .nil h).2
+  | _, _, _, _, .ty_defs_cons (d := d) (D := D) dds dd hn, b, U, h => by
+      simp only [Ty.findNest] at h
+      cases h₁ : (Ty.rcd D).findNest b with
+      | some V =>
+          rw [h₁] at h; cases h
+          exact (DefTy.findNest_translate dd dds.translate h₁).2
+      | none =>
+          rw [h₁] at h
+          have hm := DefsTy.findNest_mem dds h
+          have hl : d.label ≠ b := fun e => Defs.not_mem_labels_of_hasnt hn (e ▸ hm)
+          obtain ⟨dsn, dn, e⟩ := DefsTy.kids_translate dds b U h
+          exact ⟨dsn, dn, (DefTy.kids_translate_ne dd dds.translate b hl).trans e⟩
+
+/-- `DefsTy.clsAgree`: every class the type of typed definitions declares at a field path is the
+class of the image's block at that path, translated. -/
+theorem DefsTy.clsAgree : ∀ (bs : List Label) {G : Ctx s} {r : Path s} {ds : Defs s} {T : Ty s} (d : DefsTy G r ds T)
+    (C : Label) (U : Ty s), T.clsAt r bs C = some U → (d.translate.block.walk bs).bind (·.cls C) = some U.translate
+  | [], _, _, _, _, d, C, U, h => DefsTy.getCls_translate d C U h
+  | b :: bs, _, r, _, T, d, C, U, h => by
+      simp only [Ty.clsAt] at h
+      cases h₁ : T.findNest b with
+      | none => rw [h₁] at h; cases h
+      | some V =>
+          rw [h₁, Option.bind_some] at h
+          obtain ⟨dsn, dn, e⟩ := DefsTy.kids_translate d b V h₁
+          show ((d.translate.kids.get b).bind (FCn.Block.walk · bs)).bind (·.cls C) = _
+          rw [e, Option.bind_some]
+          exact DefsTy.clsAgree bs dn C U h
+
+/-- The premise `ClsAgree` of Rel-Self at `ty_new_intro`, for the transparent self that VA-Obj binds
+at the image's block. -/
+theorem DefsTy.clsAgree_self {G : Ctx s} {T : Ty (s,x)} {ds : Defs (s,x)} (d : DefsTy (G.consSelf T) (.var .here) ds T) (Δ : FCn.Ctx s) :
+    Ctx.ClsAgree Δ T (.transparent (FCn.Ty.mu T.tel) d.translate.block) := by
+  intro bs C U h
+  rw [FCn.Ctx.clsAt_ext]
+  exact DefsTy.clsAgree bs d C U h
 
 end Nominal.Source

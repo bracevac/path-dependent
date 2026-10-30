@@ -171,6 +171,7 @@ def ppDefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : Def s) : String 
   match d with
   | .typ A T => "type " ++ ppLabel Λ A ++ " = " ++ ppTyWith Λ nv T
   | .trm a r => ppLabel Λ a ++ " = " ++ ppRhsWith Λ nv r
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
 termination_by structural d
 /-- The definitions of a literal, first definition first. -/
 def ppDefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : Defs s) : List String :=

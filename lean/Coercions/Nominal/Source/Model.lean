@@ -72,6 +72,8 @@ structure Model (G : Ctx s) where
   sel1 : ∀ p A S T, sem (.rcd (.typ A S T)) p → ∀ r, sem (.sel p A) r → sem T r
   -- subtyp_all    ∀(z : S₁) T₁ ⊆ ∀(z : S₂) T₂, with no premise read
   all : ∀ S₁ T₁ S₂ T₂ r, sem (.all S₁ T₁) r → sem (.all S₂ T₂) r
+  -- subtyp_seal   G.selfCls p C = some T  ⟹  T ⊆ p.C
+  sealCls : ∀ p C T, G.selfCls p C = some T → ∀ r, sem T r → sem (.sel p C) r
 
 /-! ## Soundness -/
 
@@ -132,6 +134,7 @@ theorem Model.sound_sub_at {G : Ctx s} (M : Model G) :
   | _, _, .subtyp_sel2 h₁, p, h => M.sel2 _ _ _ _ (Model.sound_of_eq M h₁ _ rfl) p h
   | _, _, .subtyp_sel1 h₁, p, h => M.sel1 _ _ _ _ (Model.sound_of_eq M h₁ _ rfl) p h
   | _, _, .subtyp_all _ _, p, h => M.all _ _ _ _ p h
+  | _, _, .subtyp_seal h₁, p, h => M.sealCls _ _ _ h₁ p h
 end
 
 /-- A path typing in `G` is membership in the model. -/

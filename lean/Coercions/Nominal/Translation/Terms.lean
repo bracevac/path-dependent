@@ -21,6 +21,9 @@ fallback that no derivation reaches (`HasTy.translate_lam_of_eq`).  At `ty_def_n
 literal's telescope is `tel` of its own annotation, the `T` of `.new T ds`.  The plan writes the outer
 annotation's `tel` opened under the binder (`plan-10-pdot.md:790`), equal by `Ty.tel_subst_lift`.
 
+Plan XII adds `ty_def_cls`: a class definition `{class C = T}` appends the class definition
+`{class C = ⟦T⟧}` of FCn, typed by DF-Cls.
+
 `E3_translate_isVal` runs the translation of E3's whole derivation in the kernel.
 -/
 
@@ -54,6 +57,7 @@ def DefTy.translate : {G : Ctx s} → {r : Path s} → {d : Def s} → {D : Dec 
       .fld ds b (.fn ((Translation.toValue dl.translate).getD (.lam T.translate (.path (.var .here)))))
   | _, _, _, _, .ty_def_new (b := b) (T := T) _ dds, ds => .fld ds b (.nest T.tel dds.translate)   -- T over (s,v) ↦ ds ▹ {b = nest (v : tel T) ⟦dds⟧} (D8)
   | _, _, _, _, .ty_def_path (b := b) dq, ds => .fld ds b (.path dq.translatePath)                 -- dq : q : T ↦ ds ▹ {b = path ⟦dq⟧}
+  | _, _, _, _, .ty_def_cls (C := C) (T := T) _, ds => .cls ds C T.translate    -- {class C = T} ↦ ds ▹ {class C = ⟦T⟧} (DF-Cls)
 /-- The image of a definition list typing, the oldest definition first. -/
 def DefsTy.translate : {G : Ctx s} → {r : Path s} → {ds : Defs s} → {T : Ty s} → DefsTy G r ds T → FCn.Defs s
   | _, _, _, _, .ty_defs_one d => d.translate .nil                            -- [] ▹ d ↦ [] ▹ ⟦d⟧

@@ -75,6 +75,7 @@ def Val.rename : Val s₁ → Rename s₁ s₂ → Val s₂
 def Def.rename : Def s₁ → Rename s₁ s₂ → Def s₂
   | .typ A T, ρ => .typ A (T.rename ρ)
   | .trm a r, ρ => .trm a (r.rename ρ)
+  | .cls C T, ρ => .cls C (T.rename ρ)
 def Defs.rename : Defs s₁ → Rename s₁ s₂ → Defs s₂
   | .nil, _ => .nil
   | .cons ds d, ρ => .cons (ds.rename ρ) (d.rename ρ)
@@ -95,6 +96,7 @@ def Val.subst : Val s₁ → PathSubst s₁ s₂ → Val s₂
 def Def.subst : Def s₁ → PathSubst s₁ s₂ → Def s₂
   | .typ A T, σ => .typ A (T.subst σ)
   | .trm a r, σ => .trm a (r.subst σ)
+  | .cls C T, σ => .cls C (T.subst σ)
 def Defs.subst : Defs s₁ → PathSubst s₁ s₂ → Defs s₂
   | .nil, _ => .nil
   | .cons ds d, σ => .cons (ds.subst σ) (d.subst σ)
@@ -234,6 +236,7 @@ theorem Val.rename_id : ∀ (v : Val s), v.rename Rename.id = v
 theorem Def.rename_id : ∀ (d : Def s), d.rename Rename.id = d
   | .typ A T => by simp only [Def.rename, Ty.rename_id T]
   | .trm a r => by simp only [Def.rename, Rhs.rename_id r]
+  | .cls C T => by simp only [Def.rename, Ty.rename_id T]
 theorem Defs.rename_id : ∀ (ds : Defs s), ds.rename Rename.id = ds
   | .nil => rfl
   | .cons ds d => by simp only [Defs.rename, Defs.rename_id ds, Def.rename_id d]
@@ -263,6 +266,7 @@ theorem Def.rename_rename : ∀ (d : Def s₁) (ρ : Rename s₁ s₂) (ρ' : Re
     (d.rename ρ).rename ρ' = d.rename (ρ.comp ρ')
   | .typ A T, ρ, ρ' => by simp only [Def.rename, Ty.rename_rename T ρ ρ']
   | .trm a r, ρ, ρ' => by simp only [Def.rename, Rhs.rename_rename r ρ ρ']
+  | .cls C T, ρ, ρ' => by simp only [Def.rename, Ty.rename_rename T ρ ρ']
 theorem Defs.rename_rename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂) (ρ' : Rename s₂ s₃),
     (ds.rename ρ).rename ρ' = ds.rename (ρ.comp ρ')
   | .nil, _, _ => rfl
@@ -295,6 +299,7 @@ theorem Def.subst_ofRename : ∀ (d : Def s₁) (ρ : Rename s₁ s₂),
     d.subst (PathSubst.ofRename ρ) = d.rename ρ
   | .typ A T, ρ => by simp only [Def.subst, Def.rename, Ty.subst_ofRename T ρ]
   | .trm a r, ρ => by simp only [Def.subst, Def.rename, Rhs.subst_ofRename r ρ]
+  | .cls C T, ρ => by simp only [Def.subst, Def.rename, Ty.subst_ofRename T ρ]
 theorem Defs.subst_ofRename : ∀ (ds : Defs s₁) (ρ : Rename s₁ s₂),
     ds.subst (PathSubst.ofRename ρ) = ds.rename ρ
   | .nil, _ => rfl
@@ -327,6 +332,7 @@ theorem Def.subst_subst : ∀ (d : Def s₁) (σ : PathSubst s₁ s₂) (τ : Pa
     (d.subst σ).subst τ = d.subst (σ.comp τ)
   | .typ A T, σ, τ => by simp only [Def.subst, Ty.subst_subst T σ τ]
   | .trm a r, σ, τ => by simp only [Def.subst, Rhs.subst_subst r σ τ]
+  | .cls C T, σ, τ => by simp only [Def.subst, Ty.subst_subst T σ τ]
 theorem Defs.subst_subst : ∀ (ds : Defs s₁) (σ : PathSubst s₁ s₂) (τ : PathSubst s₂ s₃),
     (ds.subst σ).subst τ = ds.subst (σ.comp τ)
   | .nil, _, _ => rfl
@@ -414,5 +420,309 @@ theorem Ctx.lookup_cons_here (G : Ctx s) (T : Ty s) : (G.cons T).lookup .here = 
 theorem Defs.get_shadow (ds : Defs s) (a : Label) (r₁ r₂ : Rhs s) :
     ((ds.cons (.trm a r₁)).cons (.trm a r₂)).get a = some (.trm a r₂) :=
   if_pos rfl
+
+
+/-! ## The class reading of a self binder (plan XII)
+
+A self binder `z :ˢ T` declares a class `C` when its type holds a declaration `{C : ⊥..U}` whose `U`
+is a class body, at the top or inside a nested object `{b : μ(o. V)}`.  `G.selfCls p C = some U`
+reads that body at the path `p`, and `subtyp_seal` reads it.  `Ctx.selfCls_ext` is the plan's
+equation.  A context is class-free when no self type declares a class, and then `selfCls` is `none`
+everywhere (`Ctx.selfCls_none_of_classFree`), which is plan X's pDOT as a restriction of pDOT-C. -/
+
+/-- Whether a variable is bound by a self binder `z :ˢ T` of the context. -/
+def Ctx.isSelf : Ctx s → BVar s .var → Bool
+  | .cons _ _, .here => false                                 -- (G, z : T): a plain binder
+  | .consSelf _ _, .here => true                              -- (G, z :ˢ T): a self binder
+  | .cons G _, .there y => G.isSelf y                         -- (G, z : T), y older than z
+  | .consSelf G _, .there y => G.isSelf y                     -- (G, z :ˢ T), y older than z
+
+/-- `T.clsBody`: `T` is a class body, a type whose translation is an object type.  True at `⊤`, a
+record, `∧` and `μ`, false at `⊥`, `p.A`, `∀` and `p.type`. -/
+def Ty.clsBody : Ty s → Bool
+  | .top => true                                 -- ⊤
+  | .rcd _ => true                               -- {D}
+  | .and _ _ => true                             -- T ∧ U
+  | .mu _ => true                                -- μ(z. T)
+  | .bot => false                                -- ⊥
+  | .sel _ _ => false                            -- p.A
+  | .all _ _ => false                            -- ∀(z : S) T
+  | .sngl _ => false                             -- p.type
+
+/-- `T.muBody`: `some U` at `μ(z. U)`, `none` at the seven other formers. -/
+def Ty.muBody : Ty s → Option (Ty (s,x))
+  | .mu U => some U                              -- μ(z. U)
+  | .top => none
+  | .bot => none
+  | .rcd _ => none
+  | .and _ _ => none
+  | .sel _ _ => none
+  | .all _ _ => none
+  | .sngl _ => none
+
+/-- `T.findCls C`: the body `U` of a declaration `{C : ⊥..U}` of `T` with `U` a class body, the
+rightmost one in an intersection. -/
+def Ty.findCls : Ty s → Label → Option (Ty s)
+  | .and T U, C => (U.findCls C).orElse (fun _ => T.findCls C)       -- (T ∧ U).findCls C
+  | .rcd (.typ C' L U), C => if L = .bot ∧ C = C' ∧ U.clsBody = true then some U else none  -- {C' : L..U}
+  | .rcd (.trm _ _), _ => none                                        -- {a : T}
+  | .top, _ => none
+  | .bot, _ => none
+  | .sel _ _, _ => none
+  | .mu _, _ => none
+  | .all _ _, _ => none
+  | .sngl _, _ => none
+
+/-- `T.findNest b`: the body `U` of a field `{b : μ(o. U)}` of `T`, the rightmost one in an
+intersection.  `U` mentions the nested self `o`. -/
+def Ty.findNest : Ty s → Label → Option (Ty (s,x))
+  | .and T U, b => (U.findNest b).orElse (fun _ => T.findNest b)     -- (T ∧ U).findNest b
+  | .rcd (.trm b' T), b => if b = b' then T.muBody else none          -- {b' : T}
+  | .rcd (.typ _ _ _), _ => none                                      -- {A : S..U}
+  | .top, _ => none
+  | .bot, _ => none
+  | .sel _ _, _ => none
+  | .mu _, _ => none
+  | .all _ _, _ => none
+  | .sngl _, _ => none
+
+/-- `T.clsAt r bs C`: the class body of `C` in the object at the fields `bs` of the self type `T`,
+which is read at the path `r`.  Each nested self is opened at `r.b`. -/
+def Ty.clsAt : Ty s → Path s → List Label → Label → Option (Ty s)
+  | T, _, [], C => T.findCls C                                        -- T.clsAt r [] C = T.findCls C
+  | T, r, b :: bs, C =>                                               -- T.clsAt r (b :: bs) C
+      (T.findNest b).bind (fun U => (U.substPath (r.sel b)).clsAt (r.sel b) bs C)
+
+/-- `G.selfAt p`: the self type of the object at `p`, when `p` is a self variable `z :ˢ T` followed by
+fields at nested objects.  Structural on the path, as `FCn.Ctx.nodeAt`. -/
+def Ctx.selfAt (G : Ctx s) : Path s → Option (Ty s)
+  | .var x => if G.isSelf x then some (G.lookup x) else none          -- G.selfAt x
+  | .sel p b => (G.selfAt p).bind (fun T => (T.findNest b).map (·.substPath (p.sel b)))  -- G.selfAt p.b
+
+/-- `G.selfCls p C`: the class body of `C` declared by the self type of the object at `p`. -/
+def Ctx.selfCls (G : Ctx s) (p : Path s) (C : Label) : Option (Ty s) := (G.selfAt p).bind (·.findCls C)
+
+/-- `G.selfCls (p.nomExt bs) C` reads the self type at `p` and then the fields `bs`. -/
+theorem Ctx.selfCls_ext_gen (G : Ctx s) (bs : List Label) : ∀ (p : Path s) (C : Label),
+    G.selfCls (p.nomExt bs) C = (G.selfAt p).bind (fun T => T.clsAt p bs C) := by
+  induction bs with
+  | nil => intro p C; rfl
+  | cons b bs ih =>
+      intro p C
+      show G.selfCls ((p.sel b).nomExt bs) C = _
+      rw [ih (p.sel b) C]
+      show ((G.selfAt p).bind (fun T => (T.findNest b).map (·.substPath (p.sel b)))).bind _ = _
+      cases G.selfAt p with
+      | none => rfl
+      | some T =>
+          show ((T.findNest b).map _).bind _ = (T.findNest b).bind _
+          cases T.findNest b <;> rfl
+
+/-- The plan's equation: `G.selfCls ((var x).ext bs) C = if G.isSelf x then (G.lookup x).clsAt (var x)
+bs C else none`. -/
+theorem Ctx.selfCls_ext (G : Ctx s) (x : BVar s .var) (bs : List Label) (C : Label) :
+    G.selfCls ((Path.var x).nomExt bs) C = if G.isSelf x then (G.lookup x).clsAt (.var x) bs C else none := by
+  rw [Ctx.selfCls_ext_gen]
+  show (if G.isSelf x then some (G.lookup x) else none).bind _ = _
+  cases G.isSelf x <;> rfl
+
+mutual
+/-- `T.clsFree`: no declaration `{C : ⊥..U}` with `U` a class body in `T`, at the top or in a nested
+object `{b : μ(o. U)}`. -/
+def Ty.clsFree : Ty s → Bool
+  | .and T U => T.clsFree && U.clsFree           -- T ∧ U
+  | .rcd D => D.clsFree                          -- {D}
+  | .top => true
+  | .bot => true
+  | .sel _ _ => true
+  | .mu _ => true
+  | .all _ _ => true
+  | .sngl _ => true
+/-- `D.clsFree`: `D` declares no class and no nested object of `D` does. -/
+def Dec.clsFree : Dec s → Bool
+  | .typ _ L U => !(decide (L = .bot) && U.clsBody)   -- {A : L..U}
+  | .trm _ (.mu U) => U.clsFree                       -- {b : μ(o. U)}
+  | .trm _ .top => true
+  | .trm _ .bot => true
+  | .trm _ (.rcd _) => true
+  | .trm _ (.and _ _) => true
+  | .trm _ (.sel _ _) => true
+  | .trm _ (.all _ _) => true
+  | .trm _ (.sngl _) => true
+end
+
+/-- `G.clsFree`: no self type of the context declares a class. -/
+def Ctx.clsFree : Ctx s → Bool
+  | .nil => true                                 -- []
+  | .cons G _ => G.clsFree                       -- G, z : T
+  | .consSelf G T => G.clsFree && T.clsFree      -- G, z :ˢ T
+
+/-- A substitution keeps the head former, so it keeps `clsBody`. -/
+theorem Ty.clsBody_subst : ∀ (T : Ty s₁) (σ : PathSubst s₁ s₂), (T.subst σ).clsBody = T.clsBody
+  | .top, _ => rfl
+  | .bot, _ => rfl
+  | .rcd _, _ => rfl
+  | .and _ _, _ => rfl
+  | .sel _ _, _ => rfl
+  | .mu _, _ => rfl
+  | .all _ _, _ => rfl
+  | .sngl _, _ => rfl
+
+/-- `T.subst σ = ⊥` exactly when `T = ⊥`. -/
+theorem Ty.subst_eq_bot_iff : ∀ (T : Ty s₁) (σ : PathSubst s₁ s₂), T.subst σ = .bot ↔ T = .bot
+  | .top, _ => by simp [Ty.subst]
+  | .bot, _ => by simp [Ty.subst]
+  | .rcd _, _ => by simp [Ty.subst]
+  | .and _ _, _ => by simp [Ty.subst]
+  | .sel _ _, _ => by simp [Ty.subst]
+  | .mu _, _ => by simp [Ty.subst]
+  | .all _ _, _ => by simp [Ty.subst]
+  | .sngl _, _ => by simp [Ty.subst]
+
+mutual
+/-- A substitution keeps `clsFree`. -/
+theorem Ty.clsFree_subst : ∀ (T : Ty s₁) (σ : PathSubst s₁ s₂), (T.subst σ).clsFree = T.clsFree
+  | .and T U, σ => by simp only [Ty.subst, Ty.clsFree, Ty.clsFree_subst T σ, Ty.clsFree_subst U σ]
+  | .rcd D, σ => Dec.clsFree_subst D σ
+  | .top, _ => rfl
+  | .bot, _ => rfl
+  | .sel _ _, _ => rfl
+  | .mu _, _ => rfl
+  | .all _ _, _ => rfl
+  | .sngl _, _ => rfl
+/-- A substitution keeps `clsFree` of a declaration. -/
+theorem Dec.clsFree_subst : ∀ (D : Dec s₁) (σ : PathSubst s₁ s₂), (D.subst σ).clsFree = D.clsFree
+  | .typ _ L U, σ => by
+      simp only [Dec.subst, Dec.clsFree, Ty.clsBody_subst]
+      congr 2
+      exact decide_eq_decide.mpr (Ty.subst_eq_bot_iff L σ)
+  | .trm _ (.mu U), σ => Ty.clsFree_subst U σ.lift
+  | .trm _ .top, _ => rfl
+  | .trm _ .bot, _ => rfl
+  | .trm _ (.rcd _), _ => rfl
+  | .trm _ (.and _ _), _ => rfl
+  | .trm _ (.sel _ _), _ => rfl
+  | .trm _ (.all _ _), _ => rfl
+  | .trm _ (.sngl _), _ => rfl
+end
+
+/-- A class-free type declares no class. -/
+theorem Ty.findCls_none_of_clsFree : ∀ {T : Ty s} (C : Label), T.clsFree = true → T.findCls C = none
+  | .and T U, C, h => by
+      simp only [Ty.clsFree, Bool.and_eq_true] at h
+      simp only [Ty.findCls, Ty.findCls_none_of_clsFree C h.2, Ty.findCls_none_of_clsFree C h.1]; rfl
+  | .rcd (.typ C' L U), C, h => by
+      simp only [Ty.clsFree, Dec.clsFree, Bool.not_eq_true', Bool.and_eq_false_iff, decide_eq_false_iff_not] at h
+      simp only [Ty.findCls]
+      split
+      · next hc => rcases h with h | h
+                   · exact absurd hc.1 h
+                   · rw [hc.2.2] at h; cases h
+      · rfl
+  | .rcd (.trm _ _), _, _ => rfl
+  | .top, _, _ => rfl
+  | .bot, _, _ => rfl
+  | .sel _ _, _, _ => rfl
+  | .mu _, _, _ => rfl
+  | .all _ _, _, _ => rfl
+  | .sngl _, _, _ => rfl
+
+/-- A nested object of a class-free type is class-free. -/
+theorem Ty.findNest_clsFree : ∀ {T : Ty s} {b : Label} {U : Ty (s,x)}, T.clsFree = true → T.findNest b = some U → U.clsFree = true
+  | .and T₁ T₂, b, U, h, e => by
+      simp only [Ty.clsFree, Bool.and_eq_true] at h
+      simp only [Ty.findNest] at e
+      cases h₂ : T₂.findNest b with
+      | some V => rw [h₂] at e; cases e; exact Ty.findNest_clsFree h.2 h₂
+      | none => rw [h₂] at e; exact Ty.findNest_clsFree h.1 e
+  | .rcd (.trm b' (.mu V)), b, U, h, e => by
+      simp only [Ty.findNest, Ty.muBody] at e
+      split at e
+      · cases e; exact h
+      · cases e
+  | .rcd (.trm b' .top), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' .bot), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' (.rcd _)), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' (.and _ _)), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' (.sel _ _)), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' (.all _ _)), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.trm b' (.sngl _)), b, U, _, e => by simp only [Ty.findNest, Ty.muBody] at e; split at e <;> cases e
+  | .rcd (.typ _ _ _), _, _, _, e => nomatch e
+  | .top, _, _, _, e => nomatch e
+  | .bot, _, _, _, e => nomatch e
+  | .sel _ _, _, _, _, e => nomatch e
+  | .mu _, _, _, _, e => nomatch e
+  | .all _ _, _, _, _, e => nomatch e
+  | .sngl _, _, _, _, e => nomatch e
+
+/-- In a class-free context, the type of a self variable is class-free. -/
+theorem Ctx.clsFree_lookup : ∀ {G : Ctx s} {x : BVar s .var}, G.clsFree = true → G.isSelf x = true → (G.lookup x).clsFree = true
+  | .consSelf _ T, .here, h, _ => by simp only [Ctx.clsFree, Bool.and_eq_true] at h; exact h.2
+  | .cons _ _, .here, _, hs => nomatch hs
+  | .cons G _, .there y, h, hs => by
+      show (Ty.weaken _).clsFree = true
+      rw [Ty.weaken, ← Ty.subst_ofRename, Ty.clsFree_subst]; exact Ctx.clsFree_lookup (G := G) h hs
+  | .consSelf G _, .there y, h, hs => by
+      simp only [Ctx.clsFree, Bool.and_eq_true] at h
+      show (Ty.weaken _).clsFree = true
+      rw [Ty.weaken, ← Ty.subst_ofRename, Ty.clsFree_subst]; exact Ctx.clsFree_lookup (G := G) h.1 hs
+
+/-- In a class-free context, every self type `G.selfAt p` is class-free. -/
+theorem Ctx.selfAt_clsFree {G : Ctx s} (hG : G.clsFree = true) : ∀ {p : Path s} {T : Ty s}, G.selfAt p = some T → T.clsFree = true
+  | .var x, T, e => by
+      simp only [Ctx.selfAt] at e
+      split at e
+      · next hs => cases e; exact Ctx.clsFree_lookup hG hs
+      · cases e
+  | .sel p b, T, e => by
+      simp only [Ctx.selfAt] at e
+      cases h₁ : G.selfAt p with
+      | none => rw [h₁] at e; cases e
+      | some V =>
+          rw [h₁, Option.bind_some] at e
+          cases h₂ : V.findNest b with
+          | none => rw [h₂] at e; cases e
+          | some U =>
+              rw [h₂] at e; cases e
+              show (U.subst _).clsFree = true
+              rw [Ty.clsFree_subst]
+              exact Ty.findNest_clsFree (Ctx.selfAt_clsFree hG h₁) h₂
+
+/-- The class-free restriction (plan P7): no self binder of a class-free context declares a class,
+so `subtyp_seal` has no instance there. -/
+theorem Ctx.selfCls_none_of_classFree {G : Ctx s} (hG : G.clsFree = true) (p : Path s) (C : Label) : G.selfCls p C = none := by
+  unfold Ctx.selfCls
+  cases h : G.selfAt p with
+  | none => rfl
+  | some T => exact Ty.findCls_none_of_clsFree C (Ctx.selfAt_clsFree hG h)
+
+/-- A class-free self type declares no class at any fields `bs`. -/
+theorem Ty.clsAt_none_of_clsFree : ∀ (bs : List Label) {T : Ty s} (r : Path s) (C : Label), T.clsFree = true → T.clsAt r bs C = none
+  | [], T, _, C, h => Ty.findCls_none_of_clsFree C h
+  | b :: bs, T, r, C, h => by
+      simp only [Ty.clsAt]
+      cases h₂ : T.findNest b with
+      | none => rfl
+      | some U =>
+          show (U.substPath (r.sel b)).clsAt (r.sel b) bs C = none
+          apply Ty.clsAt_none_of_clsFree bs
+          rw [Ty.substPath, Ty.clsFree_subst]; exact Ty.findNest_clsFree h h₂
+
+namespace ClsReadTests
+abbrev tC : Label := .typ 7
+abbrev tA : Label := .typ 8
+abbrev tb : Label := .trm 9
+/-- `{A : ⊤..⊤} ∧ {C : ⊥..⊤}` over `([], z)`. -/
+abbrev tSelf : Ty ([],x) := .and (.rcd (.typ tA .top .top)) (.rcd (.typ tC .bot .top))
+example : (Ctx.nil.consSelf tSelf).selfCls (.var .here) tC = some .top := by decide
+example : (Ctx.nil.consSelf tSelf).selfCls (.var .here) tA = none := by decide
+example : (Ctx.nil.cons (.mu tSelf)).selfCls (.var .here) tC = none := by decide
+example : (Ctx.nil.consSelf tSelf).clsFree = false := by decide
+/-- `{b : μ(o. {C : ⊥..⊤})}` over `([], z)`: a class in a nested object. -/
+abbrev tNest : Ty ([],x) := .rcd (.trm tb (.mu (.rcd (.typ tC .bot .top))))
+example : (Ctx.nil.consSelf tNest).selfCls ((Path.var .here).sel tb) tC = some .top := by decide
+example : (Ctx.nil.consSelf tNest).selfCls (.var .here) tC = none := by decide
+example : (Ctx.nil.cons (.rcd (.typ tA .top .top))).clsFree = true := rfl
+end ClsReadTests
 
 end Nominal.Source
