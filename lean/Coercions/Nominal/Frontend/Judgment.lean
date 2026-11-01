@@ -1,5 +1,6 @@
 import Coercions.Nominal.Frontend.Ann
 import Coercions.Nominal.Frontend.Decide
+import Coercions.Nominal.Frontend.Sub
 
 /-!
 # The annotated judgment
@@ -22,6 +23,24 @@ rules follow `PDot/Source/Typing.lean`.
 - `ATm.size` counts the constructors of `ATm`, `ADef` and `ADefs`.  It is the
   index of the typer, and substitution keeps it (`ATm.size_subst`).
 
+Plan XII N3 g1 adds the class definition.  `ATm.subst` substitutes in the tag
+of a `let`, `ADef.subst`, `ADef.erase_subst`, `ADef.size` and
+`ADef.size_subst` gain their `.cls` arms, `adnew` reads `tightC`, and the rule
+`adcls` types `{class C = T}` at `{C : ⊥..T}` when `T.clsBody`.  The two erase
+to `ty_def_new` and `ty_def_cls`, which replaces N2's placeholder line.
+
+Plan XII N3 g4 (P8) adds the certificates of D-17 as predicates over the
+annotated judgment, not as fields of its constructors, so `AHasTy` keeps its
+indices.  `AHasTy.NomAt K tg st d` asks `NomPath` at every `apath` and `NomSub`
+at every `asub`, `AHasTy.SealsAt tg st d` asks every seal at a tagged variable
+and every `asub` seal-free, and `d.Nom K` and `d.SealsTagged` are the two at the
+empty tags.  `CHasTy`, `CDefsTy` and `CDefTy` carry a derivation with both, and
+the smart constructors build them rule by rule.
+
+Plan XII N3 g5 adds the antitone lemmas: `NomSub`, `NomPath` and `NomAt` at
+more class labels give them at fewer (`AHasTy.NomAt.mono`), so the certificate
+of a run at `K ++ ks` is one at `K` (`AHasTy.Nom.of_append`).
+
 Nothing here is metatheory.  Every recursive definition is structural, so it
 reduces in the kernel and `decide +kernel` runs it.
 -/
@@ -41,7 +60,7 @@ def ATm.subst : {s₁ s₂ : Sig} → ATm s₁ → PathSubst s₁ s₂ → ATm s
   | _, _, .app p q, σ => .app (p.subst σ) (q.subst σ)
   | _, _, .lam S t, σ => .lam (S.subst σ) (t.subst σ.lift)
   | _, _, .new T ds, σ => .new (T.subst σ.lift) (ds.subst σ.lift)
-  | _, _, .«let» g W t u, σ => .«let» g (W.map (·.subst σ)) (t.subst σ) (u.subst σ.lift)
+  | _, _, .«let» g W t u, σ => .«let» (g.subst σ) (W.map (·.subst σ)) (t.subst σ) (u.subst σ.lift)
 termination_by structural _ _ t => t
 /-- Substitution of paths in an annotated definition. -/
 def ADef.subst : {s₁ s₂ : Sig} → ADef s₁ → PathSubst s₁ s₂ → ADef s₂
@@ -49,6 +68,7 @@ def ADef.subst : {s₁ s₂ : Sig} → ADef s₁ → PathSubst s₁ s₂ → ADe
   | _, _, .path a p, σ => .path a (p.subst σ)
   | _, _, .lam a S t, σ => .lam a (S.subst σ) (t.subst σ.lift)
   | _, _, .new a T ds, σ => .new a (T.subst σ.lift) (ds.subst σ.lift)
+  | _, _, .cls C T, σ => .cls C (T.subst σ)
 termination_by structural _ _ d => d
 /-- Substitution of paths in annotated definitions. -/
 def ADefs.subst : {s₁ s₂ : Sig} → ADefs s₁ → PathSubst s₁ s₂ → ADefs s₂
@@ -85,6 +105,7 @@ theorem ADef.erase_subst : ∀ {s₁ s₂ : Sig} (d : ADef s₁) (σ : PathSubst
       simp only [ADef.subst, ADef.erase, Def.subst, Rhs.subst, Val.subst, ATm.erase_subst t σ.lift]
   | _, _, .new a T ds, σ => by
       simp only [ADef.subst, ADef.erase, Def.subst, Rhs.subst, Val.subst, ADefs.erase_subst ds σ.lift]
+  | _, _, .cls C T, σ => by simp only [ADef.subst, ADef.erase, Def.subst]
 /-- Erasure of definitions commutes with substitution. -/
 theorem ADefs.erase_subst : ∀ {s₁ s₂ : Sig} (ds : ADefs s₁) (σ : PathSubst s₁ s₂),
     (ds.subst σ).erase = ds.erase.subst σ
@@ -120,9 +141,10 @@ inductive ADefTy : Ctx s → Path s → ADef s → Dec s → Type where
   | adtyp : ADefTy Γ r (.typ A T) (.typ A T T)
   | adpath : HasTy Γ (.path q) T → ADefTy Γ r (.path b q) (.trm b (.sngl q))
   | adlam : AHasTy Γ (.lam S t) (.all U V) → ADefTy Γ r (.lam b S t) (.trm b (.all U V))
-  | adnew : (Ty.mu T).tight = true →
+  | adnew : (Ty.mu T).tightC = true →
       ADefsTy Γ (r.sel b) (ds.substPath (r.sel b)) (T.substPath (r.sel b)) →
       ADefTy Γ r (.new b T ds) (.trm b (.mu T))
+  | adcls : T.clsBody = true → ADefTy Γ r (.cls C T) (.typ C .bot T)
 /-- The annotated judgment of definitions at the receiver `r`. -/
 inductive ADefsTy : Ctx s → Path s → ADefs s → Ty s → Type where
   | adone : ADefTy Γ r d D → ADefsTy Γ r (.cons .nil d) (.rcd D)
@@ -149,7 +171,8 @@ def ADefTy.erase : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {d : ADef s} 
   | _, _, _, _, _, .adpath d => .ty_def_path d
   | _, _, _, _, _, .adlam d => .ty_def_all d.erase
   | _, _, _, _, _, .adnew (ds := ds) (r := r) (b := b) h d =>
-      .ty_def_new (Ty.tightC_of_tight _ h) (ADefs.erase_substPath ds (r.sel b) ▸ d.erase)   -- N3 makes adnew read tightC (plan XII)
+      .ty_def_new h (ADefs.erase_substPath ds (r.sel b) ▸ d.erase)
+  | _, _, _, _, _, .adcls h => .ty_def_cls h
 termination_by structural _ _ _ _ _ d => d
 /-- The `Nominal.Source` derivation of the erased definitions. -/
 def ADefsTy.erase : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ds : ADefs s} → {T : Ty s} →
@@ -158,6 +181,188 @@ def ADefsTy.erase : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ds : ADefs 
   | _, _, _, _, _, .adcons d₁ d₂ h => .ty_defs_cons d₁.erase d₂.erase h
 termination_by structural _ _ _ _ _ d => d
 end
+
+/-! ## The certificates (plan XII D-17)
+
+The predicates over the annotated judgment, structural over the mutual family,
+one clause per constructor, the tags extended at each binder by `push`.  A
+lambda's binder is untagged.  A `let`'s bound term is typed at the self tag
+`g.self`, which only `anew` reads, and its body under `push g.self`.  A
+literal's definitions are typed under `push st`.  The certified structures
+`CHasTy`, `CDefsTy`, `CDefTy` carry a derivation with both predicates. -/
+
+section Certificates
+
+open NominalFrontend.Core (SubAns)
+open Nominal.Source (IsView)
+
+mutual
+/-- `NomAt K tg st d`: `NomPath` at every `apath` and `NomSub` at every `asub` of `d`, under the tags `tg`, with
+`st` the self tag of a literal (plan XII D-17).  The tags are extended at each binder by `push`. -/
+def AHasTy.NomAt (K : List Label) : {s : Sig} → Tags s → Option (Path s × Label) → {Γ : Ctx s} → {a : ATm s} →
+    {T : Ty s} → AHasTy Γ a T → Prop
+  | _, tg, _, _, _, _, .apath (Γ := Γ) (p := p) (T := T) _ => NomPath K tg Γ p T
+  | _, _, _, _, _, _, .aapp _ => True
+  | _, tg, _, _, _, _, .alam d => AHasTy.NomAt K (tg.push none) none d
+  | _, tg, st, _, _, _, .anew d => ADefsTy.NomAt K (tg.push st) d
+  | _, tg, _, _, _, _, .aletN (g := g) d₁ d₂ => AHasTy.NomAt K tg g.self d₁ ∧ AHasTy.NomAt K (tg.push g.self) none d₂
+  | _, tg, _, _, _, _, .aletS (g := g) d₁ d₂ => AHasTy.NomAt K tg g.self d₁ ∧ AHasTy.NomAt K (tg.push g.self) none d₂
+  | _, tg, st, _, _, _, .asub (Γ := Γ) (T := T) (U := U) d _ => NomSub K Γ T U ∧ AHasTy.NomAt K tg st d
+termination_by structural _ _ _ _ _ _ d => d
+/-- `NomAt` of a definition's derivation: the class definition and the type and path definitions ask nothing. -/
+def ADefTy.NomAt (K : List Label) : {s : Sig} → Tags s → {Γ : Ctx s} → {r : Path s} → {d : ADef s} → {D : Dec s} →
+    ADefTy Γ r d D → Prop
+  | _, _, _, _, _, _, .adtyp => True
+  | _, _, _, _, _, _, .adpath _ => True
+  | _, tg, _, _, _, _, .adlam d => AHasTy.NomAt K tg none d
+  | _, tg, _, _, _, _, .adnew _ d => ADefsTy.NomAt K tg d
+  | _, _, _, _, _, _, .adcls _ => True
+termination_by structural _ _ _ _ _ _ d => d
+/-- `NomAt` of the definitions' derivation, definition by definition. -/
+def ADefsTy.NomAt (K : List Label) : {s : Sig} → Tags s → {Γ : Ctx s} → {r : Path s} → {ds : ADefs s} → {T : Ty s} →
+    ADefsTy Γ r ds T → Prop
+  | _, tg, _, _, _, _, .adone d => ADefTy.NomAt K tg d
+  | _, tg, _, _, _, _, .adcons d₁ d₂ _ => ADefsTy.NomAt K tg d₁ ∧ ADefTy.NomAt K tg d₂
+termination_by structural _ _ _ _ _ _ d => d
+end
+
+mutual
+/-- `SealsAt tg st d`: every seal of the erased derivations of `d` sits at a variable tagged in `tg`, and every
+`asub` is seal-free (plan XII D-17). -/
+def AHasTy.SealsAt : {s : Sig} → Tags s → Option (Path s × Label) → {Γ : Ctx s} → {a : ATm s} → {T : Ty s} →
+    AHasTy Γ a T → Prop
+  | _, tg, _, _, _, _, .apath d => HasTy.SealsAt tg d
+  | _, tg, _, _, _, _, .aapp d => HasTy.SealsAt tg d
+  | _, tg, _, _, _, _, .alam d => AHasTy.SealsAt (tg.push none) none d
+  | _, tg, st, _, _, _, .anew d => ADefsTy.SealsAt (tg.push st) d
+  | _, tg, _, _, _, _, .aletN (g := g) d₁ d₂ => AHasTy.SealsAt tg g.self d₁ ∧ AHasTy.SealsAt (tg.push g.self) none d₂
+  | _, tg, _, _, _, _, .aletS (g := g) d₁ d₂ => AHasTy.SealsAt tg g.self d₁ ∧ AHasTy.SealsAt (tg.push g.self) none d₂
+  | _, tg, st, _, _, _, .asub d e => AHasTy.SealsAt tg st d ∧ Sub.SealFree e
+termination_by structural _ _ _ _ _ _ d => d
+/-- `SealsAt` of a definition's derivation. -/
+def ADefTy.SealsAt : {s : Sig} → Tags s → {Γ : Ctx s} → {r : Path s} → {d : ADef s} → {D : Dec s} →
+    ADefTy Γ r d D → Prop
+  | _, _, _, _, _, _, .adtyp => True
+  | _, tg, _, _, _, _, .adpath d => HasTy.SealsAt tg d
+  | _, tg, _, _, _, _, .adlam d => AHasTy.SealsAt tg none d
+  | _, tg, _, _, _, _, .adnew _ d => ADefsTy.SealsAt tg d
+  | _, _, _, _, _, _, .adcls _ => True
+termination_by structural _ _ _ _ _ _ d => d
+/-- `SealsAt` of the definitions' derivation, definition by definition. -/
+def ADefsTy.SealsAt : {s : Sig} → Tags s → {Γ : Ctx s} → {r : Path s} → {ds : ADefs s} → {T : Ty s} →
+    ADefsTy Γ r ds T → Prop
+  | _, tg, _, _, _, _, .adone d => ADefTy.SealsAt tg d
+  | _, tg, _, _, _, _, .adcons d₁ d₂ _ => ADefsTy.SealsAt tg d₁ ∧ ADefTy.SealsAt tg d₂
+termination_by structural _ _ _ _ _ _ d => d
+end
+
+/-- `d.Nom K`: the certificate at the empty tags (plan XII Head, NOM-A). -/
+def AHasTy.Nom {s : Sig} {Γ : Ctx s} {e : ATm s} {T : Ty s} (d : AHasTy Γ e T) (K : List Label) : Prop := AHasTy.NomAt K [] none d
+/-- `d.SealsTagged`: `SealsAt` at the empty tags (plan XII Head). -/
+def AHasTy.SealsTagged {s : Sig} {Γ : Ctx s} {e : ATm s} {T : Ty s} (d : AHasTy Γ e T) : Prop := AHasTy.SealsAt [] none d
+
+/-- A path's annotated derivation carries its `SealsAt` to the erased derivation. -/
+theorem AHasTy.sealsAt_erase {tg : Tags s} {st : Option (Path s × Label)} {Γ : Ctx s} :
+    ∀ {p : Path s} {T : Ty s} (d : AHasTy Γ (.path p) T), AHasTy.SealsAt tg st d → HasTy.SealsAt tg d.erase
+  | _, _, .apath _, h => h
+  | _, _, .asub d _, h => ⟨AHasTy.sealsAt_erase d h.1, .inl h.2⟩
+
+/-- An annotated derivation with its certificates (plan XII D-17). -/
+structure CHasTy (K : List Label) (tg : Tags s) (st : Option (Path s × Label)) (Γ : Ctx s) (a : ATm s) (T : Ty s) where
+  d : AHasTy Γ a T
+  nom : AHasTy.NomAt K tg st d
+  ss : AHasTy.SealsAt tg st d
+/-- Annotated definitions with their certificates. -/
+structure CDefsTy (K : List Label) (tg : Tags s) (Γ : Ctx s) (r : Path s) (ds : ADefs s) (T : Ty s) where
+  d : ADefsTy Γ r ds T
+  nom : ADefsTy.NomAt K tg d
+  ss : ADefsTy.SealsAt tg d
+/-- An annotated definition with its certificates. -/
+structure CDefTy (K : List Label) (tg : Tags s) (Γ : Ctx s) (r : Path s) (e : ADef s) (D : Dec s) where
+  d : ADefTy Γ r e D
+  nom : ADefTy.NomAt K tg d
+  ss : ADefTy.SealsAt tg d
+
+section Smart
+variable {K : List Label} {s : Sig} {tg : Tags s} {st : Option (Path s × Label)} {Γ : Ctx s}
+/-- `asub` with the certificate of the subtyping answer. -/
+def CHasTy.asub {a : ATm s} {T U : Ty s} (c : CHasTy K tg st Γ a T) (e : SubAns K Γ T U) : CHasTy K tg st Γ a U :=
+  ⟨.asub c.d e.d, ⟨e.nom, c.nom⟩, ⟨c.ss, e.sf⟩⟩
+/-- `alam`, the body under an untagged binder. -/
+def CHasTy.alam {S : Ty s} {t : ATm (s,x)} {U : Ty (s,x)} (c : CHasTy K (tg.push none) none (Γ.cons S) t U) :
+    CHasTy K tg st Γ (.lam S t) (.all S U) := ⟨.alam c.d, c.nom, c.ss⟩
+/-- `aletN`: the bound term at the self tag `g.self`, the body under `push g.self`. -/
+def CHasTy.aletN {g : LetTag s} {t : ATm s} {u : ATm (s,x)} {T U : Ty s}
+    (c₁ : CHasTy K tg g.self Γ t T) (c₂ : CHasTy K (tg.push g.self) none (Γ.cons T) u U.weaken) :
+    CHasTy K tg st Γ (.«let» g none t u) U := ⟨.aletN c₁.d c₂.d, ⟨c₁.nom, c₂.nom⟩, ⟨c₁.ss, c₂.ss⟩⟩
+/-- `aletS`: as `aletN`, at the written type. -/
+def CHasTy.aletS {g : LetTag s} {t : ATm s} {u : ATm (s,x)} {W U : Ty s}
+    (c₁ : CHasTy K tg g.self Γ t W) (c₂ : CHasTy K (tg.push g.self) none (Γ.cons W) u U.weaken) :
+    CHasTy K tg st Γ (.«let» g (some W) t u) U := ⟨.aletS c₁.d c₂.d, ⟨c₁.nom, c₂.nom⟩, ⟨c₁.ss, c₂.ss⟩⟩
+end Smart
+
+/-- The elaborator's `let` at no tag: a tag with no self tag keeps the tags empty. -/
+def CHasTy.aletN0 {K : List Label} {s : Sig} {Γ : Ctx s} {g : LetTag s} {t : ATm s} {u : ATm (s,x)} {T U : Ty s}
+    (hg : g.self = none) (c₁ : CHasTy K [] none Γ t T) (c₂ : CHasTy K [] none (Γ.cons T) u U.weaken) :
+    CHasTy K [] none Γ (.«let» g none t u) U :=
+  ⟨.aletN c₁.d c₂.d, by simp only [AHasTy.NomAt, hg]; exact ⟨c₁.nom, c₂.nom⟩,
+    by simp only [AHasTy.SealsAt, hg]; exact ⟨c₁.ss, c₂.ss⟩⟩
+/-- The elaborator's typed `let` at no tag. -/
+def CHasTy.aletS0 {K : List Label} {s : Sig} {Γ : Ctx s} {g : LetTag s} {t : ATm s} {u : ATm (s,x)} {W U : Ty s}
+    (hg : g.self = none) (c₁ : CHasTy K [] none Γ t W) (c₂ : CHasTy K [] none (Γ.cons W) u U.weaken) :
+    CHasTy K [] none Γ (.«let» g (some W) t u) U :=
+  ⟨.aletS c₁.d c₂.d, by simp only [AHasTy.NomAt, hg]; exact ⟨c₁.nom, c₂.nom⟩,
+    by simp only [AHasTy.SealsAt, hg]; exact ⟨c₁.ss, c₂.ss⟩⟩
+/-- The elaborator's lambda at no tag. -/
+def CHasTy.alam0 {K : List Label} {s : Sig} {Γ : Ctx s} {S : Ty s} {t : ATm (s,x)} {U : Ty (s,x)}
+    (c : CHasTy K [] none (Γ.cons S) t U) : CHasTy K [] none Γ (.lam S t) (.all S U) := ⟨.alam c.d, c.nom, c.ss⟩
+
+end Certificates
+
+/-! ## The certificates are antitone in the class labels (plan XII N3, finding G-5) -/
+
+/-- `NomSub` is antitone in the class labels. -/
+theorem NomSub.mono {K K' : List Label} (hK : ∀ C, C ∈ K → C ∈ K') {s : Sig} {Γ : Ctx s} {S T : Ty s}
+    (h : NomSub K' Γ S T) : NomSub K Γ S T :=
+  fun p C hT hC => h p C hT (hK C hC)
+/-- `NomPath` is antitone in the class labels. -/
+theorem NomPath.mono {K K' : List Label} (hK : ∀ C, C ∈ K → C ∈ K') {s : Sig} {tg : Tags s} {Γ : Ctx s}
+    {q : Path s} {T : Ty s} (h : NomPath K' tg Γ q T) : NomPath K tg Γ q T :=
+  fun p C hT hC => h p C hT (hK C hC)
+mutual
+/-- `NomAt` is antitone in the class labels: a certificate at more labels is one at fewer. -/
+theorem AHasTy.NomAt.mono {K K' : List Label} (hK : ∀ C, C ∈ K → C ∈ K') : {s : Sig} → (tg : Tags s) →
+    (st : Option (Path s × Label)) → {Γ : Ctx s} → {a : ATm s} → {T : Ty s} → (d : AHasTy Γ a T) →
+    AHasTy.NomAt K' tg st d → AHasTy.NomAt K tg st d
+  | _, _, _, _, _, _, .apath _, h => NomPath.mono hK h
+  | _, _, _, _, _, _, .aapp _, h => h
+  | _, tg, _, _, _, _, .alam d, h => AHasTy.NomAt.mono hK (tg.push none) none d h
+  | _, tg, st, _, _, _, .anew d, h => ADefsTy.NomAt.mono hK (tg.push st) d h
+  | _, tg, _, _, _, _, .aletN (g := g) d₁ d₂, h =>
+      ⟨AHasTy.NomAt.mono hK tg g.self d₁ h.1, AHasTy.NomAt.mono hK (tg.push g.self) none d₂ h.2⟩
+  | _, tg, _, _, _, _, .aletS (g := g) d₁ d₂, h =>
+      ⟨AHasTy.NomAt.mono hK tg g.self d₁ h.1, AHasTy.NomAt.mono hK (tg.push g.self) none d₂ h.2⟩
+  | _, tg, st, _, _, _, .asub d _, h => ⟨NomSub.mono hK h.1, AHasTy.NomAt.mono hK tg st d h.2⟩
+/-- The same for a definition's derivation. -/
+theorem ADefTy.NomAt.mono {K K' : List Label} (hK : ∀ C, C ∈ K → C ∈ K') : {s : Sig} → (tg : Tags s) →
+    {Γ : Ctx s} → {r : Path s} → {e : ADef s} → {D : Dec s} → (d : ADefTy Γ r e D) →
+    ADefTy.NomAt K' tg d → ADefTy.NomAt K tg d
+  | _, _, _, _, _, _, .adtyp, h => h
+  | _, _, _, _, _, _, .adpath _, h => h
+  | _, tg, _, _, _, _, .adlam d, h => AHasTy.NomAt.mono hK tg none d h
+  | _, tg, _, _, _, _, .adnew _ d, h => ADefsTy.NomAt.mono hK tg d h
+  | _, _, _, _, _, _, .adcls _, h => h
+/-- The same for the definitions' derivation. -/
+theorem ADefsTy.NomAt.mono {K K' : List Label} (hK : ∀ C, C ∈ K → C ∈ K') : {s : Sig} → (tg : Tags s) →
+    {Γ : Ctx s} → {r : Path s} → {ds : ADefs s} → {T : Ty s} → (d : ADefsTy Γ r ds T) →
+    ADefsTy.NomAt K' tg d → ADefsTy.NomAt K tg d
+  | _, tg, _, _, _, _, .adone d, h => ADefTy.NomAt.mono hK tg d h
+  | _, tg, _, _, _, _, .adcons d₁ d₂ _, h => ⟨ADefsTy.NomAt.mono hK tg d₁ h.1, ADefTy.NomAt.mono hK tg d₂ h.2⟩
+end
+/-- With `compileE` running at `b.classes ++ ks`, the Head's `c.ann.Nom b.classes` follows from the stronger one. -/
+theorem AHasTy.Nom.of_append {s : Sig} {Γ : Ctx s} {e : ATm s} {T : Ty s} (d : AHasTy Γ e T) (K ks : List Label)
+    (h : d.Nom (K ++ ks)) : d.Nom K :=
+  AHasTy.NomAt.mono (fun _ hC => List.mem_append_left ks hC) [] none d h
 
 /-! ## The size, the typer's index -/
 
@@ -176,6 +381,7 @@ def ADef.size : {s : Sig} → ADef s → Nat
   | _, .path _ _ => 1
   | _, .lam _ _ t => t.size + 1
   | _, .new _ _ ds => ds.size + 1
+  | _, .cls _ _ => 1
 termination_by structural _ d => d
 /-- The number of constructors in definitions. -/
 def ADefs.size : {s : Sig} → ADefs s → Nat
@@ -198,6 +404,7 @@ theorem ADef.size_subst : ∀ {s₁ s₂ : Sig} (d : ADef s₁) (σ : PathSubst 
   | _, _, .path _ _, _ => rfl
   | _, _, .lam _ _ t, σ => by simp only [ADef.subst, ADef.size, ATm.size_subst t σ.lift]
   | _, _, .new _ _ ds, σ => by simp only [ADef.subst, ADef.size, ADefs.size_subst ds σ.lift]
+  | _, _, .cls _ _, _ => rfl
 /-- Substitution keeps the size of definitions. -/
 theorem ADefs.size_subst : ∀ {s₁ s₂ : Sig} (ds : ADefs s₁) (σ : PathSubst s₁ s₂), (ds.subst σ).size = ds.size
   | _, _, .nil, _ => rfl

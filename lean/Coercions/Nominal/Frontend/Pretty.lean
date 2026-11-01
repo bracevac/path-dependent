@@ -35,6 +35,10 @@ no binder.  A literal of the runtime and its lambdas have no types.
 This is the model's printer (`Paths/Frontend/Pretty.lean`) for the syntax of
 pDOT.  A literal is `ν(x : T) {d₁, …, dₙ}`, a type member `{A : S..U}`, and a
 `let` the resolver made for an ascription prints as the ascription.
+
+Plan XII N3 g1: an annotated or partial class definition prints as
+`class C = T`, as N2's arm of `ppDefWith` does, until N4 writes the class
+printers.
 -/
 
 namespace NominalFrontend
@@ -237,6 +241,7 @@ def ppADefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : ADef s) : Strin
       let y := nv.fresh
       ppLabel Λ a ++ " = ν(" ++ y ++ " : " ++ ppTyWith Λ (nv.cons y) T ++ ") "
         ++ braces (ppADefsList Λ (nv.cons y) ds)
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
 termination_by structural d
 /-- The annotated definitions of a literal, first definition first. -/
 def ppADefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : ADefs s) : List String :=
@@ -311,6 +316,7 @@ def ppPDefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : PDef s) : Strin
   | .new a none ds =>
       let y := nv.fresh
       ppLabel Λ a ++ " = ν(" ++ y ++ ") " ++ braces (ppPDefsList Λ (nv.cons y) ds)
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
 termination_by structural d
 /-- The definitions of a partial literal, first definition first. -/
 def ppPDefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : PDefs s) : List String :=

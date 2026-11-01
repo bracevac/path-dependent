@@ -1,4 +1,6 @@
 import Coercions.Nominal.Frontend.Decide
+import Coercions.Nominal.Frontend.Ann
+import Coercions.Nominal.Source.Nominal
 import Coercions.Nominal.Source.Examples
 import Coercions.Frontend.Fuel
 
@@ -45,13 +47,214 @@ Every answer carries its derivation, so there is no soundness theorem.  The
 frame lemmas say that a run that ends with the tank unmarked gives the same
 views with more fuel.  Every definition is structural, and the tests at the
 end run by `decide +kernel`.
+
+Plan XII (N3) gives each view its certificates (D-17).  A view of `p` at `T`
+carries `IsView Γ p T` beside its derivation, and the proof that the
+derivation has no seal.  A bound of `q.A` carries a view of `q` with the
+member among its operands.  The certificate vocabulary comes first, in
+`NominalFrontend`: the seal-free derivations, `HasTy.SealsAt` (every seal is
+the evidence of a `ty_sub` at a tagged variable), `NomSub`, `SealAt` and
+`NomPath` of the plan's Head, and one lemma per alternative of the search.
 -/
+
+namespace NominalFrontend
+
+open Paths.FCdot (Sig BVar Kind Label Rename Path PathSubst)
+open Nominal.Source (Ty Dec Tm Ctx HasTy DefTy DefsTy Sub Repl IsView Up UpStar AliasStep AliasEq
+  Factor)
+
+/-! ## Seal-free derivations and the seal sites -/
+
+/-- The term is a tagged variable: `x` with `tg.get x ≠ none`. -/
+def TaggedAt (tg : Tags s) : Tm s → Prop
+  | .path (.var x) => tg.get x ≠ none
+  | _ => False
+
+/-- The subtyping is one step of `subtyp_seal`, `G ⊢ p.C <: T` read off `G.selfCls p C = some T`. -/
+def Sub.IsSeal : Sub Γ S T → Prop
+  | .subtyp_seal _ => True
+  | _ => False
+
+mutual
+/-- No `subtyp_seal` in the derivation, at any depth.  One clause per rule, a rule with two premises
+the conjunction. -/
+def HasTy.SealFree : {s : Sig} → {G : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy G t T → Prop
+  | _, _, _, _, .ty_var _ => True
+  | _, _, _, _, .ty_all_intro d => HasTy.SealFree d
+  | _, _, _, _, .ty_all_elim d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .ty_new_intro d => DefsTy.SealFree d
+  | _, _, _, _, .ty_new_elim d => HasTy.SealFree d
+  | _, _, _, _, .ty_rcd_intro d => HasTy.SealFree d
+  | _, _, _, _, .ty_let d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .ty_sngl d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .ty_path_elim d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .ty_rec_intro d => HasTy.SealFree d
+  | _, _, _, _, .ty_rec_elim d => HasTy.SealFree d
+  | _, _, _, _, .ty_and_intro d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .ty_sub d e => HasTy.SealFree d ∧ Sub.SealFree e
+termination_by structural _ _ _ _ d => d
+/-- No `subtyp_seal` in the typing of a definition. -/
+def DefTy.SealFree : {s : Sig} → {G : Ctx s} → {r : Path s} → {d : Nominal.Source.Def s} → {D : Dec s} → DefTy G r d D → Prop
+  | _, _, _, _, _, .ty_def_typ => True
+  | _, _, _, _, _, .ty_def_all d => HasTy.SealFree d
+  | _, _, _, _, _, .ty_def_new _ d => DefsTy.SealFree d
+  | _, _, _, _, _, .ty_def_path d => HasTy.SealFree d
+  | _, _, _, _, _, .ty_def_cls _ => True
+termination_by structural _ _ _ _ _ d => d
+/-- No `subtyp_seal` in the typing of a list of definitions. -/
+def DefsTy.SealFree : {s : Sig} → {G : Ctx s} → {r : Path s} → {ds : Nominal.Source.Defs s} → {T : Ty s} → DefsTy G r ds T → Prop
+  | _, _, _, _, _, .ty_defs_one d => DefTy.SealFree d
+  | _, _, _, _, _, .ty_defs_cons d₁ d₂ _ => DefsTy.SealFree d₁ ∧ DefTy.SealFree d₂
+termination_by structural _ _ _ _ _ d => d
+/-- No `subtyp_seal` in the subtyping: `subtyp_seal` is `False`, every other rule asks its premises. -/
+def Sub.SealFree : {s : Sig} → {G : Ctx s} → {S T : Ty s} → Sub G S T → Prop
+  | _, _, _, _, .subtyp_top => True
+  | _, _, _, _, .subtyp_bot => True
+  | _, _, _, _, .subtyp_refl => True
+  | _, _, _, _, .subtyp_trans e₁ e₂ => Sub.SealFree e₁ ∧ Sub.SealFree e₂
+  | _, _, _, _, .subtyp_and11 => True
+  | _, _, _, _, .subtyp_and12 => True
+  | _, _, _, _, .subtyp_and2 e₁ e₂ => Sub.SealFree e₁ ∧ Sub.SealFree e₂
+  | _, _, _, _, .subtyp_fld e => Sub.SealFree e
+  | _, _, _, _, .subtyp_typ e₁ e₂ => Sub.SealFree e₁ ∧ Sub.SealFree e₂
+  | _, _, _, _, .subtyp_sngl_pq d₁ d₂ _ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .subtyp_sngl_qp d₁ d₂ _ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, _, .subtyp_sel2 d => HasTy.SealFree d
+  | _, _, _, _, .subtyp_sel1 d => HasTy.SealFree d
+  | _, _, _, _, .subtyp_all e₁ e₂ => Sub.SealFree e₁ ∧ Sub.SealFree e₂
+  | _, _, _, _, .subtyp_seal _ => False
+termination_by structural _ _ _ _ e => e
+end
+/-- Every seal of a derivation is the last step of a path answer at a tagged variable: a `subtyp_seal`
+is allowed only as the evidence of a `ty_sub` whose term is `x` with `tg.get x ≠ none`.  Under a binder
+and in a premise of another family the derivation is seal-free. -/
+def HasTy.SealsAt (tg : Tags s) : {G : Ctx s} → {t : Tm s} → {T : Ty s} → HasTy G t T → Prop
+  | _, _, _, .ty_var _ => True
+  | _, _, _, .ty_all_intro d => HasTy.SealFree d
+  | _, _, _, .ty_all_elim d₁ d₂ => HasTy.SealsAt tg d₁ ∧ HasTy.SealsAt tg d₂
+  | _, _, _, .ty_new_intro d => DefsTy.SealFree d
+  | _, _, _, .ty_new_elim d => HasTy.SealsAt tg d
+  | _, _, _, .ty_rcd_intro d => HasTy.SealsAt tg d
+  | _, _, _, .ty_let d₁ d₂ => HasTy.SealFree d₁ ∧ HasTy.SealFree d₂
+  | _, _, _, .ty_sngl d₁ d₂ => HasTy.SealsAt tg d₁ ∧ HasTy.SealsAt tg d₂
+  | _, _, _, .ty_path_elim d₁ d₂ => HasTy.SealsAt tg d₁ ∧ HasTy.SealsAt tg d₂
+  | _, _, _, .ty_rec_intro d => HasTy.SealsAt tg d
+  | _, _, _, .ty_rec_elim d => HasTy.SealsAt tg d
+  | _, _, _, .ty_and_intro d₁ d₂ => HasTy.SealsAt tg d₁ ∧ HasTy.SealsAt tg d₂
+  | _, t, _, .ty_sub d e => HasTy.SealsAt tg d ∧ (Sub.SealFree e ∨ (Sub.IsSeal e ∧ TaggedAt tg t))
+termination_by structural _ _ _ d => d
+
+/-- A seal-free derivation has its seals at tagged variables, for every `tg`. -/
+theorem HasTy.sealsAt_of_sealFree (tg : Tags s) : {G : Ctx s} → {t : Tm s} → {T : Ty s} → (d : HasTy G t T) →
+    HasTy.SealFree d → HasTy.SealsAt tg d
+  | _, _, _, .ty_var _, _ => trivial
+  | _, _, _, .ty_all_intro _, h => h
+  | _, _, _, .ty_all_elim d₁ d₂, h => ⟨HasTy.sealsAt_of_sealFree tg d₁ h.1, HasTy.sealsAt_of_sealFree tg d₂ h.2⟩
+  | _, _, _, .ty_new_intro _, h => h
+  | _, _, _, .ty_new_elim d, h => HasTy.sealsAt_of_sealFree tg d h
+  | _, _, _, .ty_rcd_intro d, h => HasTy.sealsAt_of_sealFree tg d h
+  | _, _, _, .ty_let _ _, h => h
+  | _, _, _, .ty_sngl d₁ d₂, h => ⟨HasTy.sealsAt_of_sealFree tg d₁ h.1, HasTy.sealsAt_of_sealFree tg d₂ h.2⟩
+  | _, _, _, .ty_path_elim d₁ d₂, h => ⟨HasTy.sealsAt_of_sealFree tg d₁ h.1, HasTy.sealsAt_of_sealFree tg d₂ h.2⟩
+  | _, _, _, .ty_rec_intro d, h => HasTy.sealsAt_of_sealFree tg d h
+  | _, _, _, .ty_rec_elim d, h => HasTy.sealsAt_of_sealFree tg d h
+  | _, _, _, .ty_and_intro d₁ d₂, h => ⟨HasTy.sealsAt_of_sealFree tg d₁ h.1, HasTy.sealsAt_of_sealFree tg d₂ h.2⟩
+  | _, _, _, .ty_sub d _, h => ⟨HasTy.sealsAt_of_sealFree tg d h.1, .inl h.2⟩
+
+/-! ## The certificates of the plan's Head -/
+
+/-- `S <: T` into a class type factors (plan XII, the Head): at `T = p.C` with `C ∈ K`, `Factor Γ S p C`. -/
+def NomSub (K : List Label) (Γ : Ctx s) (S T : Ty s) : Prop :=
+  ∀ p C, T = .sel p C → C ∈ K → Factor Γ S p C
+/-- `q` is a tagged instance `x` of `r.K₀`, and `r.K₀` factors through `p.C`. -/
+def SealAt (tags : Tags s) (Γ : Ctx s) (q p : Path s) (C : Label) : Prop :=
+  ∃ x r K₀, q = .var x ∧ tags.get x = some (r, K₀) ∧ Factor Γ (.sel r K₀) p C
+/-- `q : T` into a class type `p.C` with `C ∈ K`: a view of `q` factors through `p.C`, or `q` is a seal
+site (`SealAt`). -/
+def NomPath (K : List Label) (tags : Tags s) (Γ : Ctx s) (q : Path s) (T : Ty s) : Prop :=
+  ∀ p C, T = .sel p C → C ∈ K → (∃ U, IsView Γ q U ∧ Factor Γ U p C) ∨ SealAt tags Γ q p C
+
+/-! ## The lemmas, one per alternative of the search -/
+
+section CertLemmas
+variable {K : List Label} {s : Sig} {Γ : Ctx s}
+/-- S1 and G1, reflexivity: `T` factors through itself by `AliasEq.refl`. -/
+theorem NomSub.refl {T : Ty s} : NomSub K Γ T T := by
+  intro p C h _; subst h; exact ⟨_, .refl, .inr ⟨p, rfl, .refl⟩⟩
+/-- S3, `⊥ <: T`: `⊥` factors through every class type. -/
+theorem NomSub.bot {T : Ty s} : NomSub K Γ .bot T := fun _ _ _ _ => ⟨_, .refl, .inl rfl⟩
+/-- `S <: ⊤` (among S2, S4, S5, S6c): no selection, vacuous. -/
+theorem NomSub.top {S : Ty s} : NomSub K Γ S .top := fun _ _ h _ => nomatch h
+/-- `S <: T₁ ∧ T₂` (among S2, S4, S5, S6c): no selection, vacuous. -/
+theorem NomSub.and {S T₁ T₂ : Ty s} : NomSub K Γ S (.and T₁ T₂) := fun _ _ h _ => nomatch h
+/-- A record target (among S2, S4, S5, S6c): no selection, vacuous. -/
+theorem NomSub.rcd {S : Ty s} {D : Dec s} : NomSub K Γ S (.rcd D) := fun _ _ h _ => nomatch h
+/-- A function type target (among S2, S4, S5, S6c): no selection, vacuous. -/
+theorem NomSub.all {S S₂ : Ty s} {T₂ : Ty (s,x)} : NomSub K Γ S (.all S₂ T₂) := fun _ _ h _ => nomatch h
+/-- A `μ` target (among S2, S4, S5, S6c): no selection, vacuous. -/
+theorem NomSub.mu {S : Ty s} {T : Ty (s,x)} : NomSub K Γ S (.mu T) := fun _ _ h _ => nomatch h
+/-- S7 at a label outside `K`: nothing to prove. -/
+theorem NomSub.of_not_mem {S : Ty s} {q : Path s} {A : Label} (hA : A ∉ K) : NomSub K Γ S (.sel q A) := by
+  intro p C h hC; cases h; exact absurd hC hA
+/-- S9, one `Up` step before the sub-answer's certificate, Up-And1 and Up-And2 among them. -/
+theorem NomSub.up {S M T : Ty s} (hu : Up Γ S M) (h : NomSub K Γ M T) : NomSub K Γ S T := by
+  intro p C hT hC; obtain ⟨S', h₁, h₂⟩ := h p C hT hC; exact ⟨S', .step hu h₁, h₂⟩
+/-- An `UpStar` chain before the rest, the alias chains of avoidance. -/
+theorem NomSub.ofUpStar {S M T : Ty s} (hu : UpStar Γ S M) (h : NomSub K Γ M T) : NomSub K Γ S T := by
+  intro p C hT hC; obtain ⟨S', h₁, h₂⟩ := h p C hT hC; exact ⟨S', hu.trans h₁, h₂⟩
+/-- S8, `q.A <: T` through the upper bound `U` of a member `{A : L..U}` of a view of `q` (Up-Upper). -/
+theorem NomSub.upper {q : Path s} {A : Label} {L U T : Ty s}
+    (hv : ∃ V, IsView Γ q V ∧ .rcd (.typ A L U) ∈ V.ops) (h : NomSub K Γ U T) : NomSub K Γ (.sel q A) T := by
+  obtain ⟨V, hV, hm⟩ := hv; exact NomSub.up (.upper hV hm) h
+/-- S6a, a replacement of `l` by `m` on the left, for a view `m.type` of `l` (Up-ReplPQ). -/
+theorem NomSub.replL {l m : Path s} {V S S' T : Ty s} (hv : IsView Γ l (.sngl m)) (hu : HasTy Γ (.path m) V)
+    (ρ : Repl l m S S') (h : NomSub K Γ S' T) : NomSub K Γ S T :=
+  NomSub.up (.replPQ hv ⟨hu⟩ ⟨ρ⟩) h
+/-- S6b, a replacement on the right: the selection's path moves by one alias step (L1 by
+`Repl.into_sel`, then AS-QP and AE-Step). -/
+theorem NomSub.replR {l m : Path s} {V S T T' : Ty s} (hv : IsView Γ l (.sngl m)) (hu : HasTy Γ (.path m) V)
+    (ρ : Repl m l T' T) (h : NomSub K Γ S T') : NomSub K Γ S T := by
+  intro p C hT hC
+  subst hT
+  obtain ⟨bs, rfl, rfl⟩ := Nominal.Source.Repl.into_sel ρ
+  obtain ⟨S', h₁, h₂⟩ := h _ C rfl hC
+  have ha : AliasStep Γ (m.nomExt bs) (l.nomExt bs) := .qp hv ⟨hu⟩ ⟨.rsngl⟩
+  rcases h₂ with h₂ | ⟨q, hq, he⟩
+  · exact ⟨S', h₁, .inl h₂⟩
+  · exact ⟨S', h₁, .inr ⟨q, hq, he.trans (.step ha .refl)⟩⟩
+/-- G4, a view `U` of `q` and `U <: T`. -/
+theorem NomPath.ofSub {tg : Tags s} {q : Path s} {U T : Ty s} (hv : IsView Γ q U) (h : NomSub K Γ U T) :
+    NomPath K tg Γ q T := fun p C hT hC => .inl ⟨U, hv, h p C hT hC⟩
+/-- G1, `T` is a view of `q`. -/
+theorem NomPath.ofView {tg : Tags s} {q : Path s} {T : Ty s} (hv : IsView Γ q T) : NomPath K tg Γ q T :=
+  NomPath.ofSub hv NomSub.refl
+/-- An intersection target (among G2, G3, G5): no selection, vacuous. -/
+theorem NomPath.and {tg : Tags s} {q : Path s} {T₁ T₂ : Ty s} : NomPath K tg Γ q (.and T₁ T₂) := fun _ _ h _ => nomatch h
+/-- A record target (among G2, G3, G5): no selection, vacuous. -/
+theorem NomPath.rcd {tg : Tags s} {q : Path s} {D : Dec s} : NomPath K tg Γ q (.rcd D) := fun _ _ h _ => nomatch h
+/-- A `μ` target (among G2, G3, G5): no selection, vacuous. -/
+theorem NomPath.mu {tg : Tags s} {q : Path s} {T : Ty (s,x)} : NomPath K tg Γ q (.mu T) := fun _ _ h _ => nomatch h
+/-- G6 at a label outside `K`: nothing to prove. -/
+theorem NomPath.of_not_mem {tg : Tags s} {q r : Path s} {A : Label} (hA : A ∉ K) : NomPath K tg Γ q (.sel r A) := by
+  intro p C h hC; cases h; exact absurd hC hA
+/-- G7', the seal at a tagged variable `x` of `r.K₀`, with `r.K₀ <: q.D` certified. -/
+theorem NomPath.seal {tg : Tags s} {x : BVar s .var} {r q : Path s} {K₀ D : Label}
+    (ht : tg.get x = some (r, K₀)) (h : NomSub K Γ (.sel r K₀) (.sel q D)) : NomPath K tg Γ (.var x) (.sel q D) := by
+  intro p C hT hC; exact .inr ⟨x, r, K₀, rfl, ht, h p C hT hC⟩
+/-- V5 by IV-Upper: the upper bound of a member of a view of `q`, for a view `q.A` of `p`. -/
+theorem IsView.ofBound {p q : Path s} {A : Label} {L U : Ty s} (hp : IsView Γ p (.sel q A))
+    (hb : ∃ V, IsView Γ q V ∧ .rcd (.typ A L U) ∈ V.ops) : IsView Γ p U :=
+  match hb with
+  | ⟨_, hV, hm⟩ => .upper hp hV hm
+end CertLemmas
+
+end NominalFrontend
 
 namespace NominalFrontend.Core
 
 open Frontend.Fuel
 open Paths.FCdot (Sig BVar Kind Label Rename Path PathSubst)
-open Nominal.Source (Ty Dec Ctx HasTy Sub)
+open Nominal.Source (Ty Dec Ctx HasTy Sub IsView)
 
 /-- The cost of a path drawn with `k` paths pending. -/
 def cost (k : Nat) : Nat := k + 1
@@ -61,64 +264,85 @@ def defaultFuel : Nat := 2 ^ 15
 
 /-! ## Views and bounds -/
 
-/-- A type of the path `p`, with its derivation. -/
-abbrev View (Γ : Ctx s) (p : Path s) := (T : Ty s) × HasTy Γ (.path p) T
+/-- A typing of `p` at `T` read off the context, with its certificates: the view `IsView Γ p T`, no seal. -/
+structure Viewed (Γ : Ctx s) (p : Path s) (T : Ty s) where
+  d : HasTy Γ (.path p) T
+  iv : IsView Γ p T
+  sf : HasTy.SealFree d
+/-- A type of the path `p`, with its derivation and certificates. -/
+abbrev View (Γ : Ctx s) (p : Path s) := (T : Ty s) × Viewed Γ p T
 /-- The views of every path, one index down. -/
 abbrev Vw (Γ : Ctx s) := (q : Path s) → Fu (List (View Γ q))
 
-/-- A member `{A : lo..hi}` of `q`, with the premise of `subtyp_sel1` and `subtyp_sel2`. -/
+/-- A member `{A : lo..hi}` of `q`, with the premise of `subtyp_sel1` and `subtyp_sel2` and its certificates:
+a view of `q` with the member among its operands, no seal. -/
 structure Bound (Γ : Ctx s) (q : Path s) (A : Label) where
   lo : Ty s
   hi : Ty s
   d : HasTy Γ (.path q) (.rcd (.typ A lo hi))
+  iv : ∃ V, IsView Γ q V ∧ .rcd (.typ A lo hi) ∈ V.ops
+  sf : HasTy.SealFree d
+/-- A field `{a : ty}` among the operands of `T`, with the subtyping that reaches it. -/
+structure Field (Γ : Ctx s) (a : Label) (T : Ty s) where
+  ty : Ty s
+  e : Sub Γ T (.rcd (.trm a ty))
+  mem : .rcd (.trm a ty) ∈ T.ops
+  sf : Sub.SealFree e
+/-- A member `{A : lo..hi}` among the operands of `T`, with the subtyping that reaches it. -/
+structure Member (Γ : Ctx s) (A : Label) (T : Ty s) where
+  lo : Ty s
+  hi : Ty s
+  e : Sub Γ T (.rcd (.typ A lo hi))
+  mem : .rcd (.typ A lo hi) ∈ T.ops
+  sf : Sub.SealFree e
 
 /-- The fields `{a : U}` among the operands of `∧` of `T`, each with the subtyping that reaches it. -/
-def fieldsOf (Γ : Ctx s) (a : Label) : (T : Ty s) → List ((U : Ty s) × Sub Γ T (.rcd (.trm a U)))
-  | .rcd (.trm b U) => if h : b = a then [⟨U, by subst h; exact .subtyp_refl⟩] else []     -- the member
+def fieldsOf (Γ : Ctx s) (a : Label) : (T : Ty s) → List (Field Γ a T)
+  | .rcd (.trm b U) => if h : b = a then [by subst h; exact ⟨U, .subtyp_refl, List.mem_singleton_self _, trivial⟩] else []     -- the member
   | .and T₁ T₂ =>
-      (fieldsOf Γ a T₁).map (fun e => ⟨e.1, .subtyp_trans .subtyp_and11 e.2⟩) ++              -- left operand
-      (fieldsOf Γ a T₂).map (fun e => ⟨e.1, .subtyp_trans .subtyp_and12 e.2⟩)                 -- right operand
+      (fieldsOf Γ a T₁).map (fun e => ⟨e.ty, .subtyp_trans .subtyp_and11 e.e, List.mem_append_left _ e.mem, (by exact ⟨trivial, e.sf⟩)⟩) ++   -- left operand
+      (fieldsOf Γ a T₂).map (fun e => ⟨e.ty, .subtyp_trans .subtyp_and12 e.e, List.mem_append_right _ e.mem, (by exact ⟨trivial, e.sf⟩)⟩)     -- right operand
   | _ => []
 
 /-- The type members `{A : L..U}` among the operands of `∧` of `T`, each with its subtyping. -/
-def boundsOf (Γ : Ctx s) (A : Label) :
-    (T : Ty s) → List ((L : Ty s) × (U : Ty s) × Sub Γ T (.rcd (.typ A L U)))
-  | .rcd (.typ B L U) => if h : B = A then [⟨L, U, by subst h; exact .subtyp_refl⟩] else []
+def boundsOf (Γ : Ctx s) (A : Label) : (T : Ty s) → List (Member Γ A T)
+  | .rcd (.typ B L U) => if h : B = A then [by subst h; exact ⟨L, U, .subtyp_refl, List.mem_singleton_self _, trivial⟩] else []
   | .and T₁ T₂ =>
-      (boundsOf Γ A T₁).map (fun e => ⟨e.1, e.2.1, .subtyp_trans .subtyp_and11 e.2.2⟩) ++
-      (boundsOf Γ A T₂).map (fun e => ⟨e.1, e.2.1, .subtyp_trans .subtyp_and12 e.2.2⟩)
+      (boundsOf Γ A T₁).map (fun e => ⟨e.lo, e.hi, .subtyp_trans .subtyp_and11 e.e, List.mem_append_left _ e.mem, (by exact ⟨trivial, e.sf⟩)⟩) ++
+      (boundsOf Γ A T₂).map (fun e => ⟨e.lo, e.hi, .subtyp_trans .subtyp_and12 e.e, List.mem_append_right _ e.mem, (by exact ⟨trivial, e.sf⟩)⟩)
   | _ => []
 
 /-- The members `{A : L..U}` among the views of `q`. -/
 def boundsAt {Γ : Ctx s} (vw : Vw Γ) (q : Path s) (A : Label) : Fu (List (Bound Γ q A)) :=
   Fu.bind (vw q) fun vs =>
-    Fu.ret (vs.flatMap fun v => (boundsOf Γ A v.1).map fun e => ⟨e.1, e.2.1, .ty_sub v.2 e.2.2⟩)
+    Fu.ret (vs.flatMap fun v => (boundsOf Γ A v.1).map fun e => ⟨e.lo, e.hi, .ty_sub v.2.d e.e, ⟨v.1, v.2.iv, e.mem⟩, (by exact ⟨v.2.sf, e.sf⟩)⟩)
 
 /-! ## The rounds -/
 
 /-- The base views of `p`: V1 at a variable, V2 and V3 at a selection. -/
 def baseOf {Γ : Ctx s} (vw : Vw Γ) : (p : Path s) → Fu (List (View Γ p))
-  | .var x => Fu.ret [⟨Γ.lookup x, .ty_var rfl⟩]                                             -- V1
+  | .var x => Fu.ret [⟨Γ.lookup x, .ty_var rfl, .var rfl, trivial⟩]                               -- V1
   | .sel q a => Fu.bind (vw q) (Fu.flatMapL fun v =>
       let v2 : List (View Γ (q.sel a)) :=
-        (fieldsOf Γ a v.1).map fun e => ⟨e.1, .ty_new_elim (.ty_sub v.2 e.2)⟩                  -- V2
+        (fieldsOf Γ a v.1).map fun e => ⟨e.ty, .ty_new_elim (.ty_sub v.2.d e.e), .fld v.2.iv e.mem, (by exact ⟨v.2.sf, e.sf⟩)⟩ -- V2
       match v with
       | ⟨.sngl r, d⟩ => Fu.bind (vw (r.sel a)) fun ws =>
           Fu.ret (v2 ++ match ws with
             | [] => []
-            | w :: _ => [⟨.sngl (r.sel a), .ty_path_elim d w.2⟩])                              -- V3
+            | w :: _ => [⟨.sngl (r.sel a), .ty_path_elim d.d w.2.d, .pathElim d.iv w.2.iv, (by exact ⟨d.sf, w.2.sf⟩)⟩]) -- V3
       | _ => Fu.ret v2)
 
 /-- V4 to V7 on one view.  A view tagged `true` came by V4 and gets V6 only. -/
 def nextOf {Γ : Ctx s} (vw : Vw Γ) (p : Path s) (v : View Γ p × Bool) : Fu (List (View Γ p × Bool)) :=
   match v with
   | (⟨.sngl r, d⟩, false) => Fu.bind (vw r) fun ws =>
-      Fu.ret (ws.map fun w => (⟨w.1, .ty_sngl d w.2⟩, true))                                  -- V4
+      Fu.ret (ws.map fun w => (⟨w.1, .ty_sngl d.d w.2.d, .sngl d.iv w.2.iv, (by exact ⟨d.sf, w.2.sf⟩)⟩, true))          -- V4
   | (⟨.sel q A, d⟩, false) => Fu.bind (boundsAt vw q A) fun bs =>
-      Fu.ret (bs.map fun b => (⟨b.hi, .ty_sub d (.subtyp_sel1 b.d)⟩, false))                   -- V5
-  | (⟨.mu T, d⟩, _) => Fu.ret [(⟨T.substPath p, .ty_rec_elim d⟩, false)]                       -- V6
+      Fu.ret (bs.map fun b => (⟨b.hi, .ty_sub d.d (.subtyp_sel1 b.d), IsView.ofBound d.iv b.iv, (by exact ⟨d.sf, b.sf⟩)⟩, false)) -- V5
+  | (⟨.mu T, d⟩, _) => Fu.ret [(⟨T.substPath p, .ty_rec_elim d.d, .unfold d.iv, d.sf⟩, false)]          -- V6
   | (⟨.and T₁ T₂, d⟩, false) =>
-      Fu.ret [(⟨T₁, .ty_sub d .subtyp_and11⟩, false), (⟨T₂, .ty_sub d .subtyp_and12⟩, false)]  -- V7
+      Fu.ret [(⟨T₁, .ty_sub d.d .subtyp_and11, .and1 d.iv, (by exact ⟨d.sf, trivial⟩)⟩, false),
+        (⟨T₂, .ty_sub d.d .subtyp_and12, .and2 d.iv, (by exact ⟨d.sf, trivial⟩)⟩, false)]                            -- V7
   | _ => Fu.ret []
 
 /-- The views of a list whose types are neither in `all` nor earlier in the list. -/
@@ -157,11 +381,11 @@ def bounds (Γ : Ctx s) (q : Path s) (A : Label) : Fu (List (Bound Γ q A)) :=
 /-- The first view of `m`, the "any view" of `ty_def_path`, `ty_path_elim` and replacement. -/
 def firstView (Γ : Ctx s) (m : Path s) : Fu (Option (View Γ m)) :=
   Fu.bind (views Γ m) fun ws => Fu.ret ws.head?
-/-- A view of `p` equal to `T` (G1). -/
-def viewAt (Γ : Ctx s) (p : Path s) (T : Ty s) : Fu (Option (HasTy Γ (.path p) T)) :=
+/-- A view of `p` equal to `T` (G1), with its certificates. -/
+def viewAt (Γ : Ctx s) (p : Path s) (T : Ty s) : Fu (Option (Viewed Γ p T)) :=
   Fu.bind (views Γ p) fun vs => Fu.ret (vs.findSome? fun v => if h : v.1 = T then some (h ▸ v.2) else none)
-/-- The singleton views of a list, with their paths. -/
-def sngls {Γ : Ctx s} {p : Path s} (vs : List (View Γ p)) : List ((m : Path s) × HasTy Γ (.path p) (.sngl m)) :=
+/-- The singleton views of a list, with their paths and certificates. -/
+def sngls {Γ : Ctx s} {p : Path s} (vs : List (View Γ p)) : List ((m : Path s) × Viewed Γ p (.sngl m)) :=
   vs.filterMap fun v => match v with
     | ⟨.sngl m, d⟩ => some ⟨m, d⟩
     | _ => none
@@ -341,5 +565,9 @@ example : (tys (views lkSelG (.var .here) ⟨defaultFuel, false⟩)) = [.sel (.v
 example : (tys (views lkBotG ((Path.var .here).sel lka) ⟨defaultFuel, false⟩)) = [] := by decide +kernel
 example : (views lkBotG ((Path.var .here).sel lka) ⟨defaultFuel, false⟩).2.out = false := by decide +kernel
 example : ((bounds lkSelG (.var (.there .here)) lkA ⟨defaultFuel, false⟩).1.map (fun b => (b.lo, b.hi))) = [(.bot, .rcd (.trm lka .top))] := by decide +kernel
+/-- Seal-freedom of `ty_sub` is the conjunction of its premises'. -/
+example (d : HasTy G t T) (e : Sub G T U) : HasTy.SealFree (.ty_sub d e) = (HasTy.SealFree d ∧ Sub.SealFree e) := rfl
+/-- A seal is never seal-free. -/
+example (G : Ctx s) (p : Path s) (C : Label) (T : Ty s) (h : G.selfCls p C = some T) : Sub.SealFree (.subtyp_seal h) = False := rfl
 end Tests
 end NominalFrontend.Core

@@ -22,19 +22,28 @@ The tag is kept in `ATm`, unlike the paths front end
 (`Paths/Frontend/Ann.lean:45-57`), since the Scala mode of the typer widens a
 `let` by its origin (plan XI D-13).
 
+Plan XII N3 g1 adds the class forms.  `LetTag s` gains `inst p C`, the tag of
+a constructor's literal as an instance of `p.C` (D-8), so the tag now depends
+on the signature and has `LetTag.self` and `LetTag.subst`.  `Tags s` lists the
+tagged variables in scope.  `ADef` and `PDef` gain `{class C = T}`.
+
+Plan XII N3 g5 adds the class labels of a term, `PTm.classLabels` and
+`ATm.classLabels`, the labels of its class definitions at every depth, and the
+bridge `PTm.classLabels_of_full?` between the two, which `compile_full` reads.
+
 Nothing here is part of the metatheory.  Every recursive definition is
 structural.
 -/
 
 namespace NominalFrontend
 
-open Paths.FCdot (Sig BVar Kind Label Rename Path)
+open Paths.FCdot (Sig BVar Kind Label Rename Path PathSubst)
 open Nominal.Source (Ty Dec Tm Val Def Defs Rhs)
 
 /-! ## Where a `let` comes from -/
 
 /-- The origin of a `let`. -/
-inductive LetTag where
+inductive LetTag (s : Sig) where
   /-- A `let` the programmer wrote. -/
   | written
   /-- Inserted at the operand of an application that is not a path. -/
@@ -46,7 +55,9 @@ inductive LetTag where
   | asc
   /-- A `val` whose type scalac widens (`bind .widen`). -/
   | widen
-deriving DecidableEq, Repr
+  /-- The literal of a constructor, tagged as an instance of `p.C` (plan XII D-8). -/
+  | inst (p : Path s) (C : Label)
+deriving DecidableEq
 
 /-! ## The annotated terms -/
 
@@ -63,7 +74,7 @@ inductive ATm : Sig → Type where
   /-- `ν(z : T) ds`. -/
   | new : Ty (s,x) → ADefs (s,x) → ATm s
   /-- `let z (: W)? = t in u`, with its origin. -/
-  | «let» : LetTag → Option (Ty s) → ATm s → ATm (s,x) → ATm s
+  | «let» : LetTag s → Option (Ty s) → ATm s → ATm (s,x) → ATm s
 /-- One definition of an annotated literal. -/
 inductive ADef : Sig → Type where
   /-- `{A = T}`. -/
@@ -74,6 +85,8 @@ inductive ADef : Sig → Type where
   | lam : Label → Ty s → ATm (s,x) → ADef s
   /-- `{a = ν(z : T) ds}`. -/
   | new : Label → Ty (s,x) → ADefs (s,x) → ADef s
+  /-- `{class C = T}` (plan XII). -/
+  | cls : Label → Ty s → ADef s
 /-- The definitions of an annotated literal, a spine from `nil`. -/
 inductive ADefs : Sig → Type where
   /-- No definition. -/
@@ -103,6 +116,7 @@ def ADef.erase : {s : Sig} → ADef s → Def s
   | _, .path a p => .trm a (.defp p)
   | _, .lam a S t => .trm a (.defv (.lam S t.erase))
   | _, .new a T ds => .trm a (.defv (.new T ds.erase))
+  | _, .cls C T => .cls C T
 termination_by structural _ d => d
 /-- The pDOT definitions of annotated definitions. -/
 def ADefs.erase : {s : Sig} → ADefs s → Defs s
@@ -125,7 +139,7 @@ inductive PTm : Sig → Type where
   /-- `ν(z : T) ds` or `ν(z) ds`. -/
   | new : Option (Ty (s,x)) → PDefs (s,x) → PTm s
   /-- `let z (: W)? = t in u`, with its origin. -/
-  | «let» : LetTag → Option (Ty s) → PTm s → PTm (s,x) → PTm s
+  | «let» : LetTag s → Option (Ty s) → PTm s → PTm (s,x) → PTm s
 /-- One definition of a partial literal. -/
 inductive PDef : Sig → Type where
   /-- `{A = T}`. -/
@@ -137,6 +151,8 @@ inductive PDef : Sig → Type where
   | lam : Label → Option (Ty s) → Option (Ty s) → PTm (s,x) → PDef s
   /-- `{a = ν(z (: T)?) ds}`. -/
   | new : Label → Option (Ty (s,x)) → PDefs (s,x) → PDef s
+  /-- `{class C = T}` (plan XII). -/
+  | cls : Label → Ty s → PDef s
 /-- The definitions of a partial literal, a spine from `nil`. -/
 inductive PDefs : Sig → Type where
   /-- No definition. -/
@@ -175,6 +191,7 @@ def PDef.full? : {s : Sig} → PDef s → Option (ADef s)
   | _, .lam _ (some _) _ _ => none
   | _, .new a (some T) ds => ds.full?.map (.new a T)
   | _, .new _ none _ => none
+  | _, .cls C T => some (.cls C T)
 termination_by structural _ d => d
 /-- The `ADefs` of the definitions of a partial literal, when every one is full. -/
 def PDefs.full? : {s : Sig} → PDefs s → Option (ADefs s)
@@ -201,6 +218,7 @@ def ADef.toI : {s : Sig} → ADef s → PDef s
   | _, .path a p => .path a p
   | _, .lam a S t => .lam a none (some S) t.toI
   | _, .new a T ds => .new a (some T) ds.toI
+  | _, .cls C T => .cls C T
 termination_by structural _ d => d
 /-- Every slot written in every definition. -/
 def ADefs.toI : {s : Sig} → ADefs s → PDefs s
@@ -209,16 +227,184 @@ def ADefs.toI : {s : Sig} → ADefs s → PDefs s
 termination_by structural _ ds => ds
 end
 
+/-! ## Class labels
+
+The labels of the class definitions of a term, at every depth (plan XII N3, departure 13).  The run of
+a program appends them to the budget's (`compileE`, `compileLandedF`, `checkAtF`). -/
+
+mutual
+/-- The labels of the class definitions `{class C = T}` of a partial term, at every depth (plan XII). -/
+def PTm.classLabels : {s : Sig} → PTm s → List Label
+  | _, .path _ => []
+  | _, .app _ _ => []
+  | _, .lam _ t => t.classLabels
+  | _, .new _ ds => ds.classLabels
+  | _, .«let» _ _ t u => t.classLabels ++ u.classLabels
+termination_by structural _ t => t
+/-- The class labels of one definition of a partial literal: `[C]` at `{class C = T}`. -/
+def PDef.classLabels : {s : Sig} → PDef s → List Label
+  | _, .typ _ _ => []
+  | _, .path _ _ => []
+  | _, .lam _ _ _ t => t.classLabels
+  | _, .new _ _ ds => ds.classLabels
+  | _, .cls C _ => [C]
+termination_by structural _ d => d
+/-- The class labels of the definitions of a partial literal, in definition order. -/
+def PDefs.classLabels : {s : Sig} → PDefs s → List Label
+  | _, .nil => []
+  | _, .cons ds d => ds.classLabels ++ d.classLabels
+termination_by structural _ ds => ds
+end
+
+mutual
+/-- The labels of the class definitions of an annotated term (plan XII). -/
+def ATm.classLabels : {s : Sig} → ATm s → List Label
+  | _, .path _ => []
+  | _, .app _ _ => []
+  | _, .lam _ t => t.classLabels
+  | _, .new _ ds => ds.classLabels
+  | _, .«let» _ _ t u => t.classLabels ++ u.classLabels
+termination_by structural _ t => t
+/-- The class labels of an annotated definition: `[C]` at `{class C = T}`. -/
+def ADef.classLabels : {s : Sig} → ADef s → List Label
+  | _, .typ _ _ => []
+  | _, .path _ _ => []
+  | _, .lam _ _ t => t.classLabels
+  | _, .new _ _ ds => ds.classLabels
+  | _, .cls C _ => [C]
+termination_by structural _ d => d
+/-- The class labels of annotated definitions, in definition order. -/
+def ADefs.classLabels : {s : Sig} → ADefs s → List Label
+  | _, .nil => []
+  | _, .cons ds d => ds.classLabels ++ d.classLabels
+termination_by structural _ ds => ds
+end
+
+mutual
+/-- A partial term with no empty slot has the class labels of the term it stands for. -/
+theorem PTm.classLabels_of_full? : {s : Sig} → (p : PTm s) → {a : ATm s} → p.full? = some a →
+    p.classLabels = a.classLabels
+  | _, .path _, _, h => by simp only [PTm.full?, Option.some.injEq] at h; subst h; rfl
+  | _, .app _ _, _, h => by simp only [PTm.full?, Option.some.injEq] at h; subst h; rfl
+  | _, .lam (some _) t, _, h => by
+      simp only [PTm.full?] at h
+      cases ht : t.full? with
+      | none => rw [ht] at h; cases h
+      | some b =>
+        rw [ht] at h; simp only [Option.map_some, Option.some.injEq] at h; subst h
+        simp only [PTm.classLabels, ATm.classLabels, PTm.classLabels_of_full? t ht]
+  | _, .lam none _, _, h => by simp only [PTm.full?] at h; cases h
+  | _, .new (some _) ds, _, h => by
+      simp only [PTm.full?] at h
+      cases ht : ds.full? with
+      | none => rw [ht] at h; cases h
+      | some b =>
+        rw [ht] at h; simp only [Option.map_some, Option.some.injEq] at h; subst h
+        simp only [PTm.classLabels, ATm.classLabels, PDefs.classLabels_of_full? ds ht]
+  | _, .new none _, _, h => by simp only [PTm.full?] at h; cases h
+  | _, .«let» _ _ t u, _, h => by
+      simp only [PTm.full?] at h
+      cases ht : t.full? with
+      | none => rw [ht] at h; cases h
+      | some a₁ =>
+        cases hu : u.full? with
+        | none => rw [ht, hu] at h; cases h
+        | some a₂ =>
+          rw [ht, hu] at h; simp only [Option.some.injEq] at h; subst h
+          simp only [PTm.classLabels, ATm.classLabels, PTm.classLabels_of_full? t ht,
+            PTm.classLabels_of_full? u hu]
+termination_by structural _ p => p
+/-- The same for a definition. -/
+theorem PDef.classLabels_of_full? : {s : Sig} → (d : PDef s) → {a : ADef s} → d.full? = some a →
+    d.classLabels = a.classLabels
+  | _, .typ _ _, _, h => by simp only [PDef.full?, Option.some.injEq] at h; subst h; rfl
+  | _, .path _ _, _, h => by simp only [PDef.full?, Option.some.injEq] at h; subst h; rfl
+  | _, .lam _ none (some _) t, _, h => by
+      simp only [PDef.full?] at h
+      cases ht : t.full? with
+      | none => rw [ht] at h; cases h
+      | some b =>
+        rw [ht] at h; simp only [Option.map_some, Option.some.injEq] at h; subst h
+        simp only [PDef.classLabels, ADef.classLabels, PTm.classLabels_of_full? t ht]
+  | _, .lam _ none none _, _, h => by simp only [PDef.full?] at h; cases h
+  | _, .lam _ (some _) _ _, _, h => by simp only [PDef.full?] at h; cases h
+  | _, .new _ (some _) ds, _, h => by
+      simp only [PDef.full?] at h
+      cases ht : ds.full? with
+      | none => rw [ht] at h; cases h
+      | some b =>
+        rw [ht] at h; simp only [Option.map_some, Option.some.injEq] at h; subst h
+        simp only [PDef.classLabels, ADef.classLabels, PDefs.classLabels_of_full? ds ht]
+  | _, .new _ none _, _, h => by simp only [PDef.full?] at h; cases h
+  | _, .cls _ _, _, h => by simp only [PDef.full?, Option.some.injEq] at h; subst h; rfl
+termination_by structural _ d => d
+/-- The same for definitions. -/
+theorem PDefs.classLabels_of_full? : {s : Sig} → (ds : PDefs s) → {a : ADefs s} → ds.full? = some a →
+    ds.classLabels = a.classLabels
+  | _, .nil, _, h => by simp only [PDefs.full?, Option.some.injEq] at h; subst h; rfl
+  | _, .cons ds d, _, h => by
+      simp only [PDefs.full?] at h
+      cases hs : ds.full? with
+      | none => rw [hs] at h; cases h
+      | some a₁ =>
+        cases hd : d.full? with
+        | none => rw [hs, hd] at h; cases h
+        | some a₂ =>
+          rw [hs, hd] at h; simp only [Option.some.injEq] at h; subst h
+          simp only [PDefs.classLabels, ADefs.classLabels, PDefs.classLabels_of_full? ds hs,
+            PDef.classLabels_of_full? d hd]
+termination_by structural _ ds => ds
+end
+
 /-! ## Inserted bindings -/
 
 /-- One for a tag that resolution inserts, `arg` or `recv`, and zero for the
 others. -/
-def LetTag.counts : LetTag → Nat
+def LetTag.counts {s : Sig} : LetTag s → Nat
   | .arg => 1
   | .recv => 1
   | .written => 0
   | .asc => 0
   | .widen => 0
+  | .inst _ _ => 0
+
+/-- The tag of a `let`'s bound literal's self and of the `let`'s variable: `(p, C)` at `inst p C`. -/
+def LetTag.self {s : Sig} : LetTag s → Option (Path s × Label)
+  | .written => none
+  | .arg => none
+  | .recv => none
+  | .asc => none
+  | .widen => none
+  | .inst p C => some (p, C)
+
+/-- Substitution of paths in a tag. -/
+def LetTag.subst {s₁ s₂ : Sig} : LetTag s₁ → PathSubst s₁ s₂ → LetTag s₂
+  | .written, _ => .written
+  | .arg, _ => .arg
+  | .recv, _ => .recv
+  | .asc, _ => .asc
+  | .widen, _ => .widen
+  | .inst p C, σ => .inst (p.subst σ) C
+
+/-! ## Tags in scope -/
+
+/-- The tags in scope: `(x, r, K₀)` says that `x` is an instance of `r.K₀`, newest first (plan XII). -/
+abbrev Tags (s : Sig) := List (BVar s .var × Path s × Label)
+
+/-- The tag of `x`: the first entry at `x`. -/
+def Tags.get (tg : Tags s) (x : BVar s .var) : Option (Path s × Label) :=
+  match tg with
+  | [] => none
+  | (y, r, C) :: tg' => if y = x then some (r, C) else Tags.get tg' x
+
+/-- The tags under a new binder of kind `k`: each entry at `.there x`, with `r.weaken`. -/
+def Tags.weaken {k : Kind} (tg : Tags s) : Tags (s,,k) := tg.map fun e => (.there e.1, e.2.1.weaken, e.2.2)
+
+/-- The tags under a new variable, which is tagged by `o`. -/
+def Tags.push (tg : Tags s) (o : Option (Path s × Label)) : Tags (s,x) :=
+  match o with
+  | none => tg.weaken
+  | some (p, C) => (.here, p.weaken, C) :: tg.weaken
 
 mutual
 /-- The number of `let`s tagged `arg` or `recv`, through every subterm. -/
@@ -235,6 +421,7 @@ def PDef.inserted : {s : Sig} → PDef s → Nat
   | _, .path _ _ => 0
   | _, .lam _ _ _ t => t.inserted
   | _, .new _ _ ds => ds.inserted
+  | _, .cls _ _ => 0
 termination_by structural _ d => d
 /-- The number of inserted `let`s in definitions. -/
 def PDefs.inserted : {s : Sig} → PDefs s → Nat
@@ -297,6 +484,7 @@ def PDef.fills : {s : Sig} → PDef s → Ty s → ADef s → Bool
       decide (a = a') && declAgrees a o U && slotAgrees D S && t.fills b
   | _, .new a o ds, _, .new a' T ds' =>
       decide (a = a') && slotAgrees o T && ds.fills T ds'
+  | _, .cls C T, _, .cls C' T' => decide (C = C') && decide (T = T')
   | _, _, _, _ => false
 termination_by structural _ d => d
 /-- Definitions against the self type they were typed at, read from the right.
@@ -376,6 +564,11 @@ example :
     (PDefs.cons .nil (.lam l0 (some (.all .top .top)) none (.path (.var .here)))).fills U
       (.cons .nil (.lam l0 .top (.path (.var .here)))) = false := by
   decide
+
+/-- The class labels of a literal with a class definition and a type definition. -/
+example : (PTm.new none (.cons (.cons .nil (.cls (.typ 0) .top)) (.typ (.typ 1) .top)) : PTm []).classLabels =
+    [.typ 0] := by
+  decide +kernel
 
 end Tests
 

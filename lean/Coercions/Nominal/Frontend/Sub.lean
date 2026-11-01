@@ -71,6 +71,19 @@ Every answer carries its derivation, so there is no soundness theorem.  The
 frame lemmas say that a run whose answer leaves the tank unmarked gives the
 same answer with more fuel (`sub?_mono`, `path?_mono`).  Every definition is
 structural, and the tests at the end run by `decide +kernel`.
+
+Plan XII (N3) gives the search the class labels `K`, the seal and the
+certificates (D-5, D-8, D-17).  A path goal carries the tags `tg` in scope.
+S7 and G6 skip a label of `K` before they read its bounds.  A new alternative
+G7', tried after G5 and before G6, meets `x : q.D` at a variable `x` tagged as
+an instance of `r.K₀`: the goal `sub (r.K₀) (q.D)`, then `path x U` with `U`
+the class body `Γ.selfCls q D`, then `ty_sub` with `subtyp_seal`.  No S
+alternative seals.  A subtyping answer is a `SubAns`: the derivation,
+`NomSub K Γ S T`, and the proof that it has no seal.  A path answer is a
+`PathAns`: the derivation, `NomPath K tg Γ p T`, and the proof that every seal
+is the evidence of a `ty_sub` at a tagged variable.  Each alternative builds
+its certificates from those of its sub-answers.  At `K = []` and no tags the
+checks below keep plan XI's verdicts.
 -/
 
 namespace NominalFrontend.Core
@@ -82,10 +95,25 @@ open Nominal.FCn (PRename)
 
 /-! ## Goals and answers -/
 
-/-- A goal without its context. -/
+/-- A subtyping answer with its certificates (plan XII D-17): `NomSub` and no seal. -/
+structure SubAns (K : List Label) (Γ : Ctx s) (S T : Ty s) where
+  d : Sub Γ S T
+  nom : NomSub K Γ S T
+  sf : Sub.SealFree d
+/-- A path answer with its certificates (plan XII D-17): `NomPath` and every seal at a tagged variable. -/
+structure PathAns (K : List Label) (tg : Tags s) (Γ : Ctx s) (p : Path s) (T : Ty s) where
+  d : HasTy Γ (.path p) T
+  nom : NomPath K tg Γ p T
+  ss : HasTy.SealsAt tg d
+/-- G1's answer from a view. -/
+def PathAns.ofViewed {K : List Label} {Γ : Ctx s} {p : Path s} {T : Ty s} (tg : Tags s) (v : Viewed Γ p T) :
+    PathAns K tg Γ p T :=
+  ⟨v.d, NomPath.ofView v.iv, HasTy.sealsAt_of_sealFree tg v.d v.sf⟩
+
+/-- A goal without its context.  A path goal carries the tags of its context. -/
 inductive Q (s : Sig) where
-  | sub (S T : Ty s)                  -- answered by Sub Γ S T
-  | path (p : Path s) (T : Ty s)      -- answered by HasTy Γ (.path p) T
+  | sub (S T : Ty s)                          -- answered by SubAns K Γ S T
+  | path (p : Path s) (T : Ty s) (tg : Tags s) -- answered by PathAns K tg Γ p T
 deriving DecidableEq
 
 /-- A goal in its context.  Two goals are equal only if their contexts are. -/
@@ -96,16 +124,16 @@ structure G where
 deriving DecidableEq
 
 /-- The answer of a goal in the context `Γ`. -/
-def RQ {s : Sig} (Γ : Ctx s) : Q s → Type
-  | .sub S T => Sub Γ S T
-  | .path p T => HasTy Γ (.path p) T
+def RQ (K : List Label) {s : Sig} (Γ : Ctx s) : Q s → Type
+  | .sub S T => SubAns K Γ S T
+  | .path p T tg => PathAns K tg Γ p T
 /-- The answer of a goal. -/
-def R (g : G) : Type := RQ g.Γ g.q
+def R (K : List Label) (g : G) : Type := RQ K g.Γ g.q
 /-- The oracle for the goals in one context. -/
-abbrev Rec {s : Sig} (Γ : Ctx s) := (q : Q s) → Fu (Option (RQ Γ q))
+abbrev Rec (K : List Label) {s : Sig} (Γ : Ctx s) := (q : Q s) → Fu (Option (RQ K Γ q))
 /-- The codomains of two function types, under z : S₂. -/
-abbrev RecAll {s : Sig} (Γ : Ctx s) :=
-  (S₂ : Ty s) → (T₁ T₂ : Ty (s,x)) → Fu (Option (Sub (Γ.cons S₂) T₁ T₂))
+abbrev RecAll (K : List Label) {s : Sig} (Γ : Ctx s) :=
+  (S₂ : Ty s) → (T₁ T₂ : Ty (s,x)) → Fu (Option (SubAns K (Γ.cons S₂) T₁ T₂))
 
 /-! ## Syntax helpers -/
 
@@ -182,70 +210,77 @@ end
 /-! ## The alternatives of `sub` and `path` -/
 
 section SubAlts
-variable {s : Sig} {Γ : Ctx s}
+variable {K : List Label} {s : Sig} {Γ : Ctx s}
 
 /-- S1, `subtyp_refl`. -/
-def sRefl (S T : Ty s) : Option (Sub Γ S T) := if h : S = T then some (h ▸ .subtyp_refl) else none     -- S1
+def sRefl (S T : Ty s) : Option (SubAns K Γ S T) :=
+  if h : S = T then some (h ▸ ⟨.subtyp_refl, NomSub.refl, trivial⟩) else none                         -- S1
 /-- S2, `subtyp_top`. -/
-def sTop (S T : Ty s) : Option (Sub Γ S T) := if h : T = .top then some (h ▸ .subtyp_top) else none   -- S2
+def sTop (S T : Ty s) : Option (SubAns K Γ S T) :=
+  if h : T = .top then some (h ▸ ⟨.subtyp_top, NomSub.top, trivial⟩) else none                         -- S2
 /-- S3, `subtyp_bot`. -/
-def sBot (S T : Ty s) : Option (Sub Γ S T) := if h : S = .bot then some (h ▸ .subtyp_bot) else none   -- S3
+def sBot (S T : Ty s) : Option (SubAns K Γ S T) :=
+  if h : S = .bot then some (h ▸ ⟨.subtyp_bot, NomSub.bot, trivial⟩) else none                         -- S3
 
 /-- S4, `subtyp_and2`. -/
-def sAndR (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))                              -- S4
-  | .and T₁ T₂ => bindO (r (.sub S T₁)) fun e₁ => mapO (r (.sub S T₂)) fun e₂ => .subtyp_and2 e₁ e₂
+def sAndR (r : Rec K Γ) (S : Ty s) : (T : Ty s) → Fu (Option (SubAns K Γ S T))                          -- S4
+  | .and T₁ T₂ => bindO (r (.sub S T₁)) fun e₁ => mapO (r (.sub S T₂)) fun e₂ =>
+      ⟨.subtyp_and2 e₁.d e₂.d, NomSub.and, by exact ⟨e₁.sf, e₂.sf⟩⟩
   | _ => Fu.ret none
 
 /-- `subtyp_fld` at two labels known equal. -/
-def subFld {a b : Label} {S T : Ty s} (h : a = b) (e : Sub Γ S T) :
-    Sub Γ (.rcd (.trm a S)) (.rcd (.trm b T)) := by
+def subFld {a b : Label} {S T : Ty s} (h : a = b) (e : SubAns K Γ S T) :
+    SubAns K Γ (.rcd (.trm a S)) (.rcd (.trm b T)) := by
   cases h
-  exact .subtyp_fld e
+  exact ⟨.subtyp_fld e.d, NomSub.rcd, e.sf⟩
 /-- `subtyp_typ` at two labels known equal. -/
-def subTyp {A B : Label} {S₁ S₂ T₁ T₂ : Ty s} (h : A = B) (e₁ : Sub Γ S₂ S₁) (e₂ : Sub Γ T₁ T₂) :
-    Sub Γ (.rcd (.typ A S₁ T₁)) (.rcd (.typ B S₂ T₂)) := by
+def subTyp {A B : Label} {S₁ S₂ T₁ T₂ : Ty s} (h : A = B) (e₁ : SubAns K Γ S₂ S₁) (e₂ : SubAns K Γ T₁ T₂) :
+    SubAns K Γ (.rcd (.typ A S₁ T₁)) (.rcd (.typ B S₂ T₂)) := by
   cases h
-  exact .subtyp_typ e₁ e₂
+  exact ⟨.subtyp_typ e₁.d e₂.d, NomSub.rcd, ⟨e₁.sf, e₂.sf⟩⟩
 
 /-- S5, `subtyp_fld`, `subtyp_typ`, `subtyp_all`. -/
-def sStruct (r : Rec Γ) (rAll : RecAll Γ) : (S T : Ty s) → Fu (Option (Sub Γ S T))                  -- S5
+def sStruct (r : Rec K Γ) (rAll : RecAll K Γ) : (S T : Ty s) → Fu (Option (SubAns K Γ S T))            -- S5
   | .rcd (.trm a U₁), .rcd (.trm b U₂) =>
       if h : a = b then mapO (r (.sub U₁ U₂)) (subFld h) else Fu.ret none                              -- subtyp_fld
   | .rcd (.typ A L₁ U₁), .rcd (.typ B L₂ U₂) =>
       if h : A = B then bindO (r (.sub L₂ L₁)) fun e₁ => mapO (r (.sub U₁ U₂)) fun e₂ => subTyp h e₁ e₂ -- subtyp_typ
       else Fu.ret none
   | .all S₁ T₁, .all S₂ T₂ =>
-      bindO (r (.sub S₂ S₁)) fun e₁ => mapO (rAll S₂ T₁ T₂) fun e₂ => .subtyp_all e₁ e₂               -- subtyp_all, T's under z : S₂
+      bindO (r (.sub S₂ S₁)) fun e₁ => mapO (rAll S₂ T₁ T₂) fun e₂ =>                                  -- subtyp_all, T's under z : S₂
+        ⟨.subtyp_all e₁.d e₂.d, NomSub.all, by exact ⟨e₁.sf, e₂.sf⟩⟩
   | _, _ => Fu.ret none
 
 /-- S6a, replacement on the left, `subtyp_sngl_pq` then `subtyp_trans`. -/
-def sReplL (r : Rec Γ) (S T : Ty s) : Fu (Option (Sub Γ S T)) :=                                      -- S6a
+def sReplL (r : Rec K Γ) (S T : Ty s) : Fu (Option (SubAns K Γ S T)) :=                                -- S6a
   match leaf? S with
   | none => Fu.ret none
   | some l => Fu.firstSome (fun (sp : Path s × List Label) =>
       Fu.bind (views Γ sp.1) fun vs =>
-        Fu.firstSome (fun (w : (m : Path s) × HasTy Γ (.path sp.1) (.sngl m)) =>
+        Fu.firstSome (fun (w : (m : Path s) × Viewed Γ sp.1 (.sngl m)) =>
           match Repl.find? sp.1 w.1 S (reroot S (w.1.nomExt sp.2)) with
           | none => Fu.ret none
           | some ρ => bindO (firstView Γ w.1) fun u =>
               mapO (r (.sub (reroot S (w.1.nomExt sp.2)) T)) fun e =>
-                .subtyp_trans (.subtyp_sngl_pq w.2 u.2 ρ) e) (sngls vs)) (splits l)
+                ⟨.subtyp_trans (.subtyp_sngl_pq w.2.d u.2.d ρ) e.d, NomSub.replL w.2.iv u.2.d ρ e.nom,
+                  by exact ⟨⟨w.2.sf, u.2.sf⟩, e.sf⟩⟩) (sngls vs)) (splits l)
 
 /-- S6b, replacement on the right, `subtyp_trans` then `subtyp_sngl_qp`. -/
-def sReplR (r : Rec Γ) (S T : Ty s) : Fu (Option (Sub Γ S T)) :=                                      -- S6b
+def sReplR (r : Rec K Γ) (S T : Ty s) : Fu (Option (SubAns K Γ S T)) :=                                -- S6b
   match leaf? T with
   | none => Fu.ret none
   | some l => Fu.firstSome (fun (sp : Path s × List Label) =>
       Fu.bind (views Γ sp.1) fun vs =>
-        Fu.firstSome (fun (w : (m : Path s) × HasTy Γ (.path sp.1) (.sngl m)) =>
+        Fu.firstSome (fun (w : (m : Path s) × Viewed Γ sp.1 (.sngl m)) =>
           match Repl.find? w.1 sp.1 (reroot T (w.1.nomExt sp.2)) T with
           | none => Fu.ret none
           | some ρ => bindO (firstView Γ w.1) fun u =>
               mapO (r (.sub S (reroot T (w.1.nomExt sp.2)))) fun e =>
-                .subtyp_trans e (.subtyp_sngl_qp w.2 u.2 ρ)) (sngls vs)) (splits l)
+                ⟨.subtyp_trans e.d (.subtyp_sngl_qp w.2.d u.2.d ρ), NomSub.replR w.2.iv u.2.d ρ e.nom,
+                  by exact ⟨e.sf, ⟨w.2.sf, u.2.sf⟩⟩⟩) (sngls vs)) (splits l)
 
 /-- S6c, one occurrence in a `μ` pair, `subtyp_sngl_pq` or `subtyp_sngl_qp` then `subtyp_trans`. -/
-def sReplMu (r : Rec Γ) : (S T : Ty s) → Fu (Option (Sub Γ S T))                                     -- S6c
+def sReplMu (r : Rec K Γ) : (S T : Ty s) → Fu (Option (SubAns K Γ S T))                               -- S6c
   | .mu S', .mu T' =>
       match Ty.firstDiff? S' T' PRename.unsucc with
       | none => Fu.ret none
@@ -256,58 +291,81 @@ def sReplMu (r : Rec Γ) : (S T : Ty s) → Fu (Option (Sub Γ S T))            
             | some ρ =>
               Fu.orElse
                 (bindO (viewAt Γ pq.1 (.sngl pq.2)) fun d => bindO (firstView Γ pq.2) fun u =>      -- l₀ : r₀.type
-                  mapO (r (.sub (.mu S₁') (.mu T'))) fun e => .subtyp_trans (.subtyp_sngl_pq d u.2 ρ) e)
+                  mapO (r (.sub (.mu S₁') (.mu T'))) fun e =>
+                    ⟨.subtyp_trans (.subtyp_sngl_pq d.d u.2.d ρ) e.d, NomSub.mu, by exact ⟨⟨d.sf, u.2.sf⟩, e.sf⟩⟩)
                 (fun _ => bindO (viewAt Γ pq.2 (.sngl pq.1)) fun d => bindO (firstView Γ pq.1) fun u => -- r₀ : l₀.type
-                  mapO (r (.sub (.mu S₁') (.mu T'))) fun e => .subtyp_trans (.subtyp_sngl_qp d u.2 ρ) e))
+                  mapO (r (.sub (.mu S₁') (.mu T'))) fun e =>
+                    ⟨.subtyp_trans (.subtyp_sngl_qp d.d u.2.d ρ) e.d, NomSub.mu, by exact ⟨⟨d.sf, u.2.sf⟩, e.sf⟩⟩))
             (commonSplits l r')
   | _, _ => Fu.ret none
 
-/-- S7, a lower bound, `subtyp_trans` and `subtyp_sel2`. -/
-def sSelLo (r : Rec Γ) (S : Ty s) : (T : Ty s) → Fu (Option (Sub Γ S T))                              -- S7
-  | .sel q A => Fu.bind (bounds Γ q A) (Fu.firstSome fun b =>
+/-- S7, a lower bound, `subtyp_trans` and `subtyp_sel2`, at a label outside `K` (plan XII D-5). -/
+def sSelLo (r : Rec K Γ) (S : Ty s) : (T : Ty s) → Fu (Option (SubAns K Γ S T))                        -- S7
+  | .sel q A => if hA : A ∈ K then Fu.ret none else Fu.bind (bounds Γ q A) (Fu.firstSome fun b =>
       if b.lo = .bot then Fu.ret none
-      else mapO (r (.sub S b.lo)) fun e => .subtyp_trans e (.subtyp_sel2 b.d))
+      else mapO (r (.sub S b.lo)) fun e =>
+        ⟨.subtyp_trans e.d (.subtyp_sel2 b.d), NomSub.of_not_mem hA, by exact ⟨e.sf, b.sf⟩⟩)
   | _ => Fu.ret none
 
 /-- S8, an upper bound, `subtyp_trans` and `subtyp_sel1`. -/
-def sSelHi (r : Rec Γ) (T : Ty s) : (S : Ty s) → Fu (Option (Sub Γ S T))                              -- S8
+def sSelHi (r : Rec K Γ) (T : Ty s) : (S : Ty s) → Fu (Option (SubAns K Γ S T))                        -- S8
   | .sel q A => Fu.bind (bounds Γ q A) (Fu.firstSome fun b =>
-      mapO (r (.sub b.hi T)) fun e => .subtyp_trans (.subtyp_sel1 b.d) e)
+      mapO (r (.sub b.hi T)) fun e => ⟨.subtyp_trans (.subtyp_sel1 b.d) e.d, NomSub.upper b.iv e.nom, by exact ⟨b.sf, e.sf⟩⟩)
   | _ => Fu.ret none
 
 /-- S9, an operand on the left, `subtyp_trans` with `subtyp_and11` or `subtyp_and12`. -/
-def sAndL (r : Rec Γ) (T : Ty s) : (S : Ty s) → Fu (Option (Sub Γ S T))                               -- S9
-  | .and S₁ S₂ => Fu.orElse (mapO (r (.sub S₁ T)) fun e => .subtyp_trans .subtyp_and11 e) fun _ =>
-      mapO (r (.sub S₂ T)) fun e => .subtyp_trans .subtyp_and12 e
+def sAndL (r : Rec K Γ) (T : Ty s) : (S : Ty s) → Fu (Option (SubAns K Γ S T))                         -- S9
+  | .and S₁ S₂ => Fu.orElse (mapO (r (.sub S₁ T)) fun e => ⟨.subtyp_trans .subtyp_and11 e.d, NomSub.up .and1 e.nom, by exact ⟨trivial, e.sf⟩⟩) fun _ =>
+      mapO (r (.sub S₂ T)) fun e => ⟨.subtyp_trans .subtyp_and12 e.d, NomSub.up .and2 e.nom, by exact ⟨trivial, e.sf⟩⟩
   | _ => Fu.ret none
 
 /-- G2, `ty_and_intro`. -/
-def pAndR (r : Rec Γ) (p : Path s) : (T : Ty s) → Fu (Option (HasTy Γ (.path p) T))                   -- G2
-  | .and T₁ T₂ => bindO (r (.path p T₁)) fun d₁ => mapO (r (.path p T₂)) fun d₂ => .ty_and_intro d₁ d₂
+def pAndR (r : Rec K Γ) (tg : Tags s) (p : Path s) : (T : Ty s) → Fu (Option (PathAns K tg Γ p T))      -- G2
+  | .and T₁ T₂ => bindO (r (.path p T₁ tg)) fun d₁ => mapO (r (.path p T₂ tg)) fun d₂ =>
+      ⟨.ty_and_intro d₁.d d₂.d, NomPath.and, by exact ⟨d₁.ss, d₂.ss⟩⟩
   | _ => Fu.ret none
 /-- G3, `ty_rec_intro`. -/
-def pMu (r : Rec Γ) (p : Path s) : (T : Ty s) → Fu (Option (HasTy Γ (.path p) T))                     -- G3
-  | .mu W => mapO (r (.path p (W.substPath p))) fun d => .ty_rec_intro d
+def pMu (r : Rec K Γ) (tg : Tags s) (p : Path s) : (T : Ty s) → Fu (Option (PathAns K tg Γ p T))        -- G3
+  | .mu W => mapO (r (.path p (W.substPath p) tg)) fun d => ⟨.ty_rec_intro d.d, NomPath.mu, d.ss⟩
   | _ => Fu.ret none
 /-- G4, `ty_sub` from a view. -/
-def pSub (r : Rec Γ) (p : Path s) (T : Ty s) : Fu (Option (HasTy Γ (.path p) T)) :=                    -- G4
-  Fu.bind (views Γ p) (Fu.firstSome fun v => mapO (r (.sub v.1 T)) fun e => .ty_sub v.2 e)
+def pSub (r : Rec K Γ) (tg : Tags s) (p : Path s) (T : Ty s) : Fu (Option (PathAns K tg Γ p T)) :=       -- G4
+  Fu.bind (views Γ p) (Fu.firstSome fun v => mapO (r (.sub v.1 T)) fun e =>
+    ⟨.ty_sub v.2.d e.d, NomPath.ofSub v.2.iv e.nom, by exact ⟨HasTy.sealsAt_of_sealFree tg v.2.d v.2.sf, .inl e.sf⟩⟩)
 /-- G5, `ty_rcd_intro`. -/
-def pFld (r : Rec Γ) (p : Path s) : (T : Ty s) → Fu (Option (HasTy Γ (.path p) T))                    -- G5
-  | .rcd (.trm a U) => mapO (r (.path (p.sel a) U)) fun d => .ty_rcd_intro d
+def pFld (r : Rec K Γ) (tg : Tags s) (p : Path s) : (T : Ty s) → Fu (Option (PathAns K tg Γ p T))       -- G5
+  | .rcd (.trm a U) => mapO (r (.path (p.sel a) U tg)) fun d => ⟨.ty_rcd_intro d.d, NomPath.rcd, d.ss⟩
   | _ => Fu.ret none
-/-- G6, a lower bound, `ty_sub` and `subtyp_sel2`. -/
-def pSelLo (r : Rec Γ) (p : Path s) : (T : Ty s) → Fu (Option (HasTy Γ (.path p) T))                  -- G6
-  | .sel q A => Fu.bind (bounds Γ q A) (Fu.firstSome fun b =>
+/-- G7', the seal (plan XII D-8).  At a variable `x` tagged as an instance of `r₀.K₀` and a goal
+`q.D` whose class body `Γ.selfCls q D` is `U`: the goals `sub (r₀.K₀) (q.D)` and `path x U`, then
+`ty_sub` with `subtyp_seal`.  No tag or no class reading answers `none` with no unit drawn. -/
+def pSeal (r : Rec K Γ) (tg : Tags s) : (p : Path s) → (T : Ty s) → Fu (Option (PathAns K tg Γ p T))    -- G7'
+  | .var x, .sel q D =>
+      match htg : tg.get x with
+      | none => Fu.ret none
+      | some (r₀, K₀) =>
+          match hs : Γ.selfCls q D with
+          | none => Fu.ret none
+          | some U =>
+              bindO (r (.sub (.sel r₀ K₀) (.sel q D))) fun e =>
+                mapO (r (.path (.var x) U tg)) fun d =>
+                  ⟨.ty_sub d.d (.subtyp_seal hs), NomPath.seal htg e.nom,
+                    by exact ⟨d.ss, .inr ⟨trivial, by simp [TaggedAt, htg]⟩⟩⟩
+  | _, _ => Fu.ret none
+/-- G6, a lower bound, `ty_sub` and `subtyp_sel2`, at a label outside `K` (plan XII D-5). -/
+def pSelLo (r : Rec K Γ) (tg : Tags s) (p : Path s) : (T : Ty s) → Fu (Option (PathAns K tg Γ p T))     -- G6
+  | .sel q A => if hA : A ∈ K then Fu.ret none else Fu.bind (bounds Γ q A) (Fu.firstSome fun b =>
       if b.lo = .bot then Fu.ret none
-      else mapO (r (.path p b.lo)) fun d => .ty_sub d (.subtyp_sel2 b.d))
+      else mapO (r (.path p b.lo tg)) fun d =>
+        ⟨.ty_sub d.d (.subtyp_sel2 b.d), NomPath.of_not_mem hA, by exact ⟨d.ss, .inl b.sf⟩⟩)
   | _ => Fu.ret none
 end SubAlts
 
 /-! ## The step, the run and the entry points -/
 
 /-- The alternatives of `sub`, in order. -/
-def subStep {s : Sig} (Γ : Ctx s) (r : Rec Γ) (rAll : RecAll Γ) (S T : Ty s) : Fu (Option (Sub Γ S T)) :=
+def subStep {s : Sig} (K : List Label) (Γ : Ctx s) (r : Rec K Γ) (rAll : RecAll K Γ) (S T : Ty s) :
+    Fu (Option (SubAns K Γ S T)) :=
   Fu.orElse (Fu.ret (sRefl S T)) fun _ =>                -- S1
   Fu.orElse (Fu.ret (sTop S T)) fun _ =>                 -- S2
   Fu.orElse (Fu.ret (sBot S T)) fun _ =>                 -- S3
@@ -321,35 +379,39 @@ def subStep {s : Sig} (Γ : Ctx s) (r : Rec Γ) (rAll : RecAll Γ) (S T : Ty s) 
   sAndL r T S                                            -- S9
 
 /-- The alternatives of `path`, in order. -/
-def pathStep {s : Sig} (Γ : Ctx s) (r : Rec Γ) (p : Path s) (T : Ty s) :
-    Fu (Option (HasTy Γ (.path p) T)) :=
-  Fu.orElse (viewAt Γ p T) fun _ =>                      -- G1
-  if isAnd T then pAndR r p T else                       -- G2, final
-  Fu.orElse (pMu r p T) fun _ =>                         -- G3
-  Fu.orElse (pSub r p T) fun _ =>                        -- G4
-  Fu.orElse (pFld r p T) fun _ =>                        -- G5
-  pSelLo r p T                                           -- G6
+def pathStep {s : Sig} (K : List Label) (Γ : Ctx s) (r : Rec K Γ) (tg : Tags s) (p : Path s) (T : Ty s) :
+    Fu (Option (PathAns K tg Γ p T)) :=
+  Fu.orElse (mapO (viewAt Γ p T) (PathAns.ofViewed tg)) fun _ =>   -- G1
+  if isAnd T then pAndR r tg p T else                    -- G2, final
+  Fu.orElse (pMu r tg p T) fun _ =>                      -- G3
+  Fu.orElse (pSub r tg p T) fun _ =>                     -- G4
+  Fu.orElse (pFld r tg p T) fun _ =>                     -- G5
+  Fu.orElse (pSeal r tg p T) fun _ =>                    -- G7'
+  pSelLo r tg p T                                        -- G6
 
 /-- One step of the run: the goal's alternatives over the oracle `o`. -/
-def step : Step G R := fun o g =>
+def step (K : List Label) : Step G (R K) := fun o g =>
   match g with
-  | ⟨s, Γ, .sub S T⟩ => subStep Γ (fun q => o ⟨s, Γ, q⟩) (fun S₂ T₁ T₂ => o ⟨_, Γ.cons S₂, .sub T₁ T₂⟩) S T
-  | ⟨s, Γ, .path p T⟩ => pathStep Γ (fun q => o ⟨s, Γ, q⟩) p T
+  | ⟨s, Γ, .sub S T⟩ => subStep K Γ (fun q => o ⟨s, Γ, q⟩) (fun S₂ T₁ T₂ => o ⟨_, Γ.cons S₂, .sub T₁ T₂⟩) S T
+  | ⟨s, Γ, .path p T tg⟩ => pathStep K Γ (fun q => o ⟨s, Γ, q⟩) tg p T
 
 /-- The run of a goal, with depth the fuel left. -/
-def runF (g : G) : Fu (Option (R g)) := fun t => run cost step t.left [] g t
+def runF (K : List Label) (g : G) : Fu (Option (R K g)) := fun t => run cost (step K) t.left [] g t
 /-- The search of `Sub Γ S T` on the tank. -/
-def subF {s : Sig} (Γ : Ctx s) (S T : Ty s) : Fu (Option (Sub Γ S T)) := runF ⟨s, Γ, .sub S T⟩
+def subF {s : Sig} (K : List Label) (Γ : Ctx s) (S T : Ty s) : Fu (Option (SubAns K Γ S T)) :=
+  runF K ⟨s, Γ, .sub S T⟩
 /-- The search of `HasTy Γ (.path p) T` on the tank. -/
-def pathF {s : Sig} (Γ : Ctx s) (p : Path s) (T : Ty s) : Fu (Option (HasTy Γ (.path p) T)) :=
-  runF ⟨s, Γ, .path p T⟩
+def pathF {s : Sig} (K : List Label) (tg : Tags s) (Γ : Ctx s) (p : Path s) (T : Ty s) :
+    Fu (Option (PathAns K tg Γ p T)) :=
+  runF K ⟨s, Γ, .path p T tg⟩
 /-- The search of `Sub Γ S T` from a full tank of `n`. -/
-def sub? {s : Sig} (Γ : Ctx s) (S T : Ty s) (n : Nat := defaultFuel) : Option (Sub Γ S T) × Tank :=
-  subF Γ S T ⟨n, false⟩
+def sub? {s : Sig} (K : List Label) (Γ : Ctx s) (S T : Ty s) (n : Nat := defaultFuel) :
+    Option (SubAns K Γ S T) × Tank :=
+  subF K Γ S T ⟨n, false⟩
 /-- The search of `HasTy Γ (.path p) T` from a full tank of `n`. -/
-def path? {s : Sig} (Γ : Ctx s) (p : Path s) (T : Ty s) (n : Nat := defaultFuel) :
-    Option (HasTy Γ (.path p) T) × Tank :=
-  pathF Γ p T ⟨n, false⟩
+def path? {s : Sig} (K : List Label) (tg : Tags s) (Γ : Ctx s) (p : Path s) (T : Ty s) (n : Nat := defaultFuel) :
+    Option (PathAns K tg Γ p T) × Tank :=
+  pathF K tg Γ p T ⟨n, false⟩
 
 /-- An answer, tank unmarked. -/
 def answered {α : Type} (r : Option α × Tank) : Bool := r.1.isSome && !r.2.out
@@ -363,7 +425,7 @@ def used {α : Type} (r : Option α × Tank) (n : Nat := defaultFuel) : Nat := n
 Each alternative agrees with itself under oracles that agree. -/
 
 section SubFrames
-variable {s : Sig} {Γ : Ctx s} {r r' : Rec Γ} {rAll rAll' : RecAll Γ}
+variable {K : List Label} {s : Sig} {Γ : Ctx s} {r r' : Rec K Γ} {rAll rAll' : RecAll K Γ}
 
 theorem sAndR_agree (hr : ∀ q, Agree (r q) (r' q)) (S T : Ty s) : Agree (sAndR r S T) (sAndR r' S T) := by
   cases T with
@@ -413,7 +475,7 @@ theorem sReplMu_agree (hr : ∀ q, Agree (r q) (r' q)) (S T : Ty s) :
 theorem sSelLo_agree (hr : ∀ q, Agree (r q) (r' q)) (S T : Ty s) : Agree (sSelLo r S T) (sSelLo r' S T) := by
   cases T with
   | sel q A =>
-    exact bind_agree (Agree.refl (bounds_framed Γ q A)) fun bs =>
+    exact dite_agree (fun _ => ret_agree _) fun _ => bind_agree (Agree.refl (bounds_framed Γ q A)) fun bs =>
       firstSome_agree (fun _ => ite_agree (ret_agree _) (mapO_agree _ (hr _))) bs
   | _ => exact ret_agree _
 theorem sSelHi_agree (hr : ∀ q, Agree (r q) (r' q)) (T S : Ty s) : Agree (sSelHi r T S) (sSelHi r' T S) := by
@@ -429,47 +491,61 @@ theorem sAndL_agree (hr : ∀ q, Agree (r q) (r' q)) (T S : Ty s) : Agree (sAndL
     exact orElse_agree (mapO_agree _ (hr _)) (mapO_agree _ (hr _))
   | _ => exact ret_agree _
 theorem subStep_agree (hr : ∀ q, Agree (r q) (r' q)) (hA : ∀ S₂ T₁ T₂, Agree (rAll S₂ T₁ T₂) (rAll' S₂ T₁ T₂))
-    (S T : Ty s) : Agree (subStep Γ r rAll S T) (subStep Γ r' rAll' S T) := by
+    (S T : Ty s) : Agree (subStep K Γ r rAll S T) (subStep K Γ r' rAll' S T) := by
   unfold subStep
   exact orElse_agree (ret_agree _) <| orElse_agree (ret_agree _) <| orElse_agree (ret_agree _) <|
     ite_agree (sAndR_agree hr S T) <|
     orElse_agree (sStruct_agree hr hA S T) <| orElse_agree (sReplL_agree hr S T) <|
     orElse_agree (sReplR_agree hr S T) <| orElse_agree (sReplMu_agree hr S T) <|
     orElse_agree (sSelLo_agree hr S T) <| orElse_agree (sSelHi_agree hr T S) (sAndL_agree hr T S)
-theorem pAndR_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) : Agree (pAndR r p T) (pAndR r' p T) := by
+theorem pAndR_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) : Agree (pAndR r tg p T) (pAndR r' tg p T) := by
   cases T with
   | and T1 T2 => exact bindO_agree (hr _) fun _ => mapO_agree _ (hr _)
   | _ => exact ret_agree _
-theorem pMu_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) : Agree (pMu r p T) (pMu r' p T) := by
+theorem pMu_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) : Agree (pMu r tg p T) (pMu r' tg p T) := by
   cases T with
   | mu W => exact mapO_agree _ (hr _)
   | _ => exact ret_agree _
-theorem pSub_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) : Agree (pSub r p T) (pSub r' p T) :=
+theorem pSub_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) : Agree (pSub r tg p T) (pSub r' tg p T) :=
   bind_agree (Agree.refl (views_framed Γ p)) fun vs => firstSome_agree (fun _ => mapO_agree _ (hr _)) vs
-theorem pFld_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) : Agree (pFld r p T) (pFld r' p T) := by
+theorem pFld_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) : Agree (pFld r tg p T) (pFld r' tg p T) := by
   cases T with
   | rcd D =>
     cases D with
     | trm a U => exact mapO_agree _ (hr _)
     | typ _ _ _ => exact ret_agree _
   | _ => exact ret_agree _
-theorem pSelLo_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) : Agree (pSelLo r p T) (pSelLo r' p T) := by
+theorem pSeal_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) :
+    Agree (pSeal r tg p T) (pSeal r' tg p T) := by
+  cases p with
+  | var x =>
+    cases T with
+    | sel q D =>
+      simp only [pSeal]
+      split
+      · exact ret_agree _
+      · split
+        · exact ret_agree _
+        · exact bindO_agree (hr _) fun _ => mapO_agree _ (hr _)
+    | _ => exact ret_agree _
+  | sel _ _ => exact ret_agree _
+theorem pSelLo_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) : Agree (pSelLo r tg p T) (pSelLo r' tg p T) := by
   cases T with
   | sel q A =>
-    exact bind_agree (Agree.refl (bounds_framed Γ q A)) fun bs =>
+    exact dite_agree (fun _ => ret_agree _) fun _ => bind_agree (Agree.refl (bounds_framed Γ q A)) fun bs =>
       firstSome_agree (fun _ => ite_agree (ret_agree _) (mapO_agree _ (hr _))) bs
   | _ => exact ret_agree _
-theorem pathStep_agree (hr : ∀ q, Agree (r q) (r' q)) (p : Path s) (T : Ty s) :
-    Agree (pathStep Γ r p T) (pathStep Γ r' p T) := by
+theorem pathStep_agree (hr : ∀ q, Agree (r q) (r' q)) (tg : Tags s) (p : Path s) (T : Ty s) :
+    Agree (pathStep K Γ r tg p T) (pathStep K Γ r' tg p T) := by
   unfold pathStep
-  exact orElse_agree (Agree.refl (viewAt_framed Γ p T)) <| ite_agree (pAndR_agree hr p T) <|
-    orElse_agree (pMu_agree hr p T) <| orElse_agree (pSub_agree hr p T) <|
-    orElse_agree (pFld_agree hr p T) (pSelLo_agree hr p T)
+  exact orElse_agree (Agree.refl (mapO_framed _ (viewAt_framed Γ p T))) <| ite_agree (pAndR_agree hr tg p T) <|
+    orElse_agree (pMu_agree hr tg p T) <| orElse_agree (pSub_agree hr tg p T) <|
+    orElse_agree (pFld_agree hr tg p T) <| orElse_agree (pSeal_agree hr tg p T) (pSelLo_agree hr tg p T)
 end SubFrames
 
 /-! ## The step and the entry points: framed, unmarked, monotone -/
 
-theorem step_frame : FrameF step := by
+theorem step_frame (K : List Label) : FrameF (step K) := by
   intro o o' ho g
   obtain ⟨s, Γ, q⟩ := g
   cases q with
@@ -478,15 +554,14 @@ theorem step_frame : FrameF step := by
       (rAll := fun S2 T1 T2 => o ⟨_, Γ.cons S2, .sub T1 T2⟩)
       (rAll' := fun S2 T1 T2 => o' ⟨_, Γ.cons S2, .sub T1 T2⟩)
       (fun q => ho ⟨s, Γ, q⟩) (fun S2 T1 T2 => ho ⟨_, Γ.cons S2, .sub T1 T2⟩) S T
-  | path p T =>
+  | path p T tg =>
     exact pathStep_agree (r := fun q => o ⟨s, Γ, q⟩) (r' := fun q => o' ⟨s, Γ, q⟩)
-      (fun q => ho ⟨s, Γ, q⟩) p T
-theorem runF_framed (g : G) : Framed (runF g) :=
-  atLeft_framed fun d d' hd => run_agree step_frame d d' hd [] g
-theorem subF_framed {s : Sig} (Γ : Ctx s) (S T : Ty s) : Framed (subF Γ S T) :=
-  runF_framed _
-theorem pathF_framed {s : Sig} (Γ : Ctx s) (p : Path s) (T : Ty s) : Framed (pathF Γ p T) :=
-  runF_framed _
+      (fun q => ho ⟨s, Γ, q⟩) tg p T
+theorem runF_framed (K : List Label) (g : G) : Framed (runF K g) :=
+  atLeft_framed fun d d' hd => run_agree (step_frame K) d d' hd [] g
+theorem subF_framed {s : Sig} (K : List Label) (Γ : Ctx s) (S T : Ty s) : Framed (subF K Γ S T) := runF_framed K _
+theorem pathF_framed {s : Sig} (K : List Label) (tg : Tags s) (Γ : Ctx s) (p : Path s) (T : Ty s) :
+    Framed (pathF K tg Γ p T) := runF_framed K _
 
 /-- An answer of `c` leaves the tank unmarked. -/
 def Unmarked {α : Type} (c : Fu (Option α)) : Prop :=
@@ -504,11 +579,12 @@ theorem run_unmarked {G : Type} [DecidableEq G] {R : G → Type} {cost : Nat →
   intro t h
   obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp h
   exact run_some hx
-theorem runF_unmarked (g : G) : Unmarked (runF g) := fun t => run_unmarked t.left [] g t
-theorem subF_unmarked {s : Sig} (Γ : Ctx s) (S T : Ty s) : Unmarked (subF Γ S T) :=
-  runF_unmarked _
-theorem pathF_unmarked {s : Sig} (Γ : Ctx s) (p : Path s) (T : Ty s) : Unmarked (pathF Γ p T) :=
-  runF_unmarked _
+theorem runF_unmarked (K : List Label) (g : G) : Unmarked (runF K g) := fun t => run_unmarked t.left [] g t
+theorem subF_unmarked {s : Sig} (K : List Label) (Γ : Ctx s) (S T : Ty s) : Unmarked (subF K Γ S T) :=
+  runF_unmarked K _
+theorem pathF_unmarked {s : Sig} (K : List Label) (tg : Tags s) (Γ : Ctx s) (p : Path s) (T : Ty s) :
+    Unmarked (pathF K tg Γ p T) :=
+  runF_unmarked K _
 
 theorem full_add {n m : Nat} (h : n ≤ m) : (⟨n, false⟩ : Tank).add (m - n) = ⟨m, false⟩ := by
   simp only [Tank.add, Tank.mk.injEq, and_true]
@@ -519,12 +595,13 @@ theorem full_mono {α : Type} {c : Fu (Option α)} (hF : Framed c) (hU : Unmarke
   have := hF.shift ⟨n, false⟩ (some e) _ (Prod.ext h rfl) ho (m - n)
   rw [full_add hnm] at this
   rw [this]
-theorem sub?_mono {s : Sig} {Γ : Ctx s} {S T : Ty s} {n m : Nat} {e : Sub Γ S T}
-    (h : (sub? Γ S T n).1 = some e) (hnm : n ≤ m) : (sub? Γ S T m).1 = some e :=
-  full_mono (subF_framed Γ S T) (subF_unmarked Γ S T) h hnm
-theorem path?_mono {s : Sig} {Γ : Ctx s} {p : Path s} {T : Ty s} {n m : Nat} {e : HasTy Γ (.path p) T}
-    (h : (path? Γ p T n).1 = some e) (hnm : n ≤ m) : (path? Γ p T m).1 = some e :=
-  full_mono (pathF_framed Γ p T) (pathF_unmarked Γ p T) h hnm
+theorem sub?_mono {K : List Label} {s : Sig} {Γ : Ctx s} {S T : Ty s} {n m : Nat} {e : SubAns K Γ S T}
+    (h : (sub? K Γ S T n).1 = some e) (hnm : n ≤ m) : (sub? K Γ S T m).1 = some e :=
+  full_mono (subF_framed K Γ S T) (subF_unmarked K Γ S T) h hnm
+theorem path?_mono {K : List Label} {s : Sig} {tg : Tags s} {Γ : Ctx s} {p : Path s} {T : Ty s} {n m : Nat}
+    {e : PathAns K tg Γ p T}
+    (h : (path? K tg Γ p T n).1 = some e) (hnm : n ≤ m) : (path? K tg Γ p T m).1 = some e :=
+  full_mono (pathF_framed K tg Γ p T) (pathF_unmarked K tg Γ p T) h hnm
 theorem answered_isSome {α : Type} {r : Option α × Tank} (h : answered r = true) :
     r.1.isSome = true ∧ r.2.out = false := by
   simpa [answered] using h
@@ -540,8 +617,8 @@ body with that one path replaced is `{a : q.type} ∧ {b : p.type}`. -/
 section Tests
 open Nominal.Source (e10_p e10_q e10_ty)
 
-example : answered (sub? (s := []) Ctx.nil .bot .top) = true := by decide +kernel
-example : rejected (sub? (s := []) Ctx.nil .top .bot) = true := by decide +kernel
+example : answered (sub? [] (s := []) Ctx.nil .bot .top) = true := by decide +kernel
+example : rejected (sub? [] (s := []) Ctx.nil .top .bot) = true := by decide +kernel
 example : splits (s := ([],x)) (((Path.var .here).sel (.trm 0)).sel (.trm 1)) =
     [(((Path.var .here).sel (.trm 0)).sel (.trm 1), []), ((Path.var .here).sel (.trm 0), [.trm 1]),
      (.var .here, [.trm 0, .trm 1])] := by decide +kernel
@@ -567,20 +644,20 @@ section Checks
 open Nominal.Source (e9_G e9_x e9_a e9_b e10_G e10_r e10_p e10_q e10_ty e11_G e11_p e11_a n4_G)
 
 -- E9 (PDot/Source/Examples.lean:35-76): x.a.b : ⊤ and x.a.b : (x.b).type                         20, 20 units
-example : answered (path? e9_G ((e9_x.sel e9_a).sel e9_b) .top) = true := by decide +kernel
-example : answered (path? e9_G ((e9_x.sel e9_a).sel e9_b) (.sngl (e9_x.sel e9_b))) = true := by decide +kernel
+example : answered (path? [] [] e9_G ((e9_x.sel e9_a).sel e9_b) .top) = true := by decide +kernel
+example : answered (path? [] [] e9_G ((e9_x.sel e9_a).sel e9_b) (.sngl (e9_x.sel e9_b))) = true := by decide +kernel
 -- E10 (:78-136): the four types of r                                                                2, 35, 58, 31
-example : answered (path? e10_G e10_r (e10_ty e10_p e10_p)) = true := by decide +kernel
-example : answered (path? e10_G e10_r (e10_ty e10_p e10_q)) = true := by decide +kernel
-example : answered (path? e10_G e10_r (e10_ty e10_q e10_q)) = true := by decide +kernel
-example : answered (path? e10_G e10_r (e10_ty e10_q e10_p)) = true := by decide +kernel
+example : answered (path? [] [] e10_G e10_r (e10_ty e10_p e10_p)) = true := by decide +kernel
+example : answered (path? [] [] e10_G e10_r (e10_ty e10_p e10_q)) = true := by decide +kernel
+example : answered (path? [] [] e10_G e10_r (e10_ty e10_q e10_q)) = true := by decide +kernel
+example : answered (path? [] [] e10_G e10_r (e10_ty e10_q e10_p)) = true := by decide +kernel
 -- E11 (:138-173) at T = ⊤: p : {a : T}                                                               10
-example : answered (path? (e11_G .top) e11_p (.rcd (.trm e11_a Ty.top.weaken.weaken))) = true := by decide +kernel
+example : answered (path? [] [] (e11_G .top) e11_p (.rcd (.trm e11_a Ty.top.weaken.weaken))) = true := by decide +kernel
 -- E11 at T = {B : ⊥..⊤}: the answer runs G5 (ty_rcd_intro) and ty_sngl, which ⊤ skips by S2         18
-example : answered (path? (e11_G (.rcd (.typ (.typ 0) .bot .top))) e11_p
+example : answered (path? [] [] (e11_G (.rcd (.typ (.typ 0) .bot .top))) e11_p
     (.rcd (.trm e11_a (Ty.rcd (.typ (.typ 0) .bot .top)).weaken.weaken))) = true := by decide +kernel
 -- N4 (:425-526): x : x.type has no answer, tank unmarked                                            6
-example : rejected (path? (n4_G (.typ 0)) (.var .here) (.sngl (.var .here))) = true := by decide +kernel
+example : rejected (path? [] [] (n4_G (.typ 0)) (.var .here) (.sngl (.var .here))) = true := by decide +kernel
 
 /-- `q : {B : ⊥..⊤}`, `p : q.type`. -/
 abbrev pqB : Label := .typ 0
@@ -588,8 +665,8 @@ abbrev pqG : Ctx (([],x),x) := (Ctx.nil.cons (.rcd (.typ pqB .bot .top))).cons (
 abbrev pqP : Path (([],x),x) := .var .here
 abbrev pqQ : Path (([],x),x) := .var (.there .here)
 -- PQ (S6a) and QP (S6b), d3's sc/A04ReplPQ and sc/A05ReplQP                                          7, 8
-example : answered (sub? pqG (.sel pqP pqB) (.sel pqQ pqB)) = true := by decide +kernel
-example : answered (sub? pqG (.sel pqQ pqB) (.sel pqP pqB)) = true := by decide +kernel
+example : answered (sub? [] pqG (.sel pqP pqB) (.sel pqQ pqB)) = true := by decide +kernel
+example : answered (sub? [] pqG (.sel pqQ pqB) (.sel pqP pqB)) = true := by decide +kernel
 
 /-- `q : ⊤`, `p : q.type`.  In a `μ` body at `(([],x),x),x`, `p` is `.there .here` and `q` is `.there (.there .here)`. -/
 abbrev muA : Label := .trm 0
@@ -598,11 +675,11 @@ abbrev muG : Ctx (([],x),x) := (Ctx.nil.cons .top).cons (.sngl (.var .here))
 abbrev muP : Path ((([],x),x),x) := .var (.there .here)
 abbrev muQ : Path ((([],x),x),x) := .var (.there (.there .here))
 -- μ pairs (S6c): one occurrence by pq, one by qp, two occurrences one at a time, and a pair with no replacement   7, 8, 14, 1
-example : answered (sub? muG (.mu (.rcd (.trm muA (.sngl muP)))) (.mu (.rcd (.trm muA (.sngl muQ))))) = true := by decide +kernel
-example : answered (sub? muG (.mu (.rcd (.trm muA (.sngl muQ)))) (.mu (.rcd (.trm muA (.sngl muP))))) = true := by decide +kernel
-example : answered (sub? muG (.mu (.and (.rcd (.trm muA (.sngl muP))) (.rcd (.trm muB (.sngl muP)))))
+example : answered (sub? [] muG (.mu (.rcd (.trm muA (.sngl muP)))) (.mu (.rcd (.trm muA (.sngl muQ))))) = true := by decide +kernel
+example : answered (sub? [] muG (.mu (.rcd (.trm muA (.sngl muQ)))) (.mu (.rcd (.trm muA (.sngl muP))))) = true := by decide +kernel
+example : answered (sub? [] muG (.mu (.and (.rcd (.trm muA (.sngl muP))) (.rcd (.trm muB (.sngl muP)))))
     (.mu (.and (.rcd (.trm muA (.sngl muQ))) (.rcd (.trm muB (.sngl muQ)))))) = true := by decide +kernel
-example : rejected (sub? muG (.mu (.rcd (.trm muA .top))) (.mu (.rcd (.trm muA .bot)))) = true := by decide +kernel
+example : rejected (sub? [] muG (.mu (.rcd (.trm muA .top))) (.mu (.rcd (.trm muA .bot)))) = true := by decide +kernel
 
 /-- A signature of `k` variables. -/
 def sigN : Nat → Sig
@@ -619,8 +696,9 @@ def chainX0 : (n : Nat) → BVar (sigN (n + 2)) .var
   | 0 => .there .here
   | n + 1 => .there (chainX0 n)
 /-- `x(n+1).a.B <: x0.B`, the goal of R14Chain at `n + 1` links. -/
-def chainGoal (n : Nat) : Option (Sub (chainG n) (.sel (.sel (.var .here) chA) chB) (.sel (.var (chainX0 n)) chB)) × Tank :=
-  sub? (chainG n) (.sel (.sel (.var .here) chA) chB) (.sel (.var (chainX0 n)) chB)
+def chainGoal (n : Nat) :
+    Option (SubAns [] (chainG n) (.sel (.sel (.var .here) chA) chB) (.sel (.var (chainX0 n)) chB)) × Tank :=
+  sub? [] (chainG n) (.sel (.sel (.var .here) chA) chB) (.sel (.var (chainX0 n)) chB)
 -- R14Chain12, the stage's risk                                                                       1703
 example : answered (chainGoal 11) = true ∧ used (chainGoal 11) ≤ 4096 := by decide +kernel
 
@@ -637,19 +715,63 @@ abbrev hiG : Ctx ([],x) := Ctx.nil.cons (.rcd (.typ xA .bot (.rcd (.trm xa .top)
 abbrev allS : Ty [] := .all (.rcd (.typ xA .bot (.rcd (.trm xa .top)))) (.sel (.var .here) xA)
 abbrev allT : Ty [] := .all (.rcd (.typ xA .bot (.rcd (.trm xa .top)))) (.rcd (.trm xa .top))
 -- G3, then G4 and S9: x : μ(z. {b : ⊤}) in E9                                                       5
-example : answered (path? e9_G e9_x (.mu (.rcd (.trm e9_b .top)))) = true := by decide +kernel
+example : answered (path? [] [] e9_G e9_x (.mu (.rcd (.trm e9_b .top)))) = true := by decide +kernel
 -- y : x.A by the lower bound {a : ⊤}, answered by G4 then S7 (subtyp_sel2 on a path goal)            10
-example : answered (path? loG loY (.sel loX xA)) = true := by decide +kernel
+example : answered (path? [] [] loG loY (.sel loX xA)) = true := by decide +kernel
 -- S7: {a : ⊤} <: x.A                                                                                 5
-example : answered (sub? loG (.rcd (.trm xa .top)) (.sel loX xA)) = true := by decide +kernel
+example : answered (sub? [] loG (.rcd (.trm xa .top)) (.sel loX xA)) = true := by decide +kernel
 -- S8: x.A <: {a : ⊤}                                                                                 5
-example : answered (sub? hiG (.sel (.var .here) xA) (.rcd (.trm xa .top))) = true := by decide +kernel
+example : answered (sub? [] hiG (.sel (.var .here) xA) (.rcd (.trm xa .top))) = true := by decide +kernel
 -- S5 at type members: {A : ⊥..{a : ⊤}} <: {A : ⊥..⊤}                                                5
-example : answered (sub? (s := []) Ctx.nil (.rcd (.typ xA .bot (.rcd (.trm xa .top)))) (.rcd (.typ xA .bot .top))) = true := by decide +kernel
+example : answered (sub? [] (s := []) Ctx.nil (.rcd (.typ xA .bot (.rcd (.trm xa .top)))) (.rcd (.typ xA .bot .top))) = true := by decide +kernel
 -- S5 at ∀: the codomains under z : S₂, where z.A <: {a : ⊤} needs the new binder's bound (S8)       10
-example : answered (sub? Ctx.nil allS allT) = true := by decide +kernel
+example : answered (sub? [] Ctx.nil allS allT) = true := by decide +kernel
 -- S9: {a : ⊤} ∧ {b : ⊥} <: {b : ⊥} by the right operand                                            5
-example : answered (sub? (s := []) Ctx.nil (.and (.rcd (.trm xa .top)) (.rcd (.trm (.trm 1) .bot))) (.rcd (.trm (.trm 1) .bot))) = true := by decide +kernel
+example : answered (sub? [] (s := []) Ctx.nil (.and (.rcd (.trm xa .top)) (.rcd (.trm (.trm 1) .bot))) (.rcd (.trm (.trm 1) .bot))) = true := by decide +kernel
 end Checks
+
+/-! ## Class checks
+
+Plan XII's checks at the search: D-5 on J02's shapes, the class order, and
+G7'.  J02's `x : y.C` is answered at `K = []` and rejected at `K = [C]`, and
+`x : m.C` is rejected at both.  `m.C <: m.T` is answered for the class `C`
+with parent `T`.  G7' answers `ℓ : m.C` and `ℓ : m.T` with the tag and
+rejects them without it, and a tag at `m.T` does not reach `m.C`.  The last
+example reads NOM-A off the certificate of an answer. -/
+
+section ClassChecks
+open Nominal.Source (IsView Factor)
+abbrev cC : Label := .typ 0
+abbrev Tl : Label := .typ 1
+abbrev ca : Label := .trm 0
+/-- J02's context: `m : μ(z. {C : ⊥..⊤})`, `y : m.type ∧ {cC : ⊤..⊤}`, `x : ⊤`. -/
+abbrev jG : Ctx ((([],x),x),x) :=
+  ((Ctx.nil.cons (.mu (.rcd (.typ cC .bot .top)))).cons (.and (.sngl (.var .here)) (.rcd (.typ cC .top .top)))).cons .top
+-- W1 at the search: `x : y.C` by G6 through the alias's own lower bound, answered at K = [], rejected at K = [cC]
+example : answered (path? [] [] jG (.var .here) (.sel (.var (.there .here)) cC)) = true := by decide +kernel
+example : rejected (path? [cC] [] jG (.var .here) (.sel (.var (.there .here)) cC)) = true := by decide +kernel
+-- W3 at the search: `x : m.C`, rejected at both
+example : rejected (path? [] [] jG (.var .here) (.sel (.var (.there (.there .here))) cC)) = true := by decide +kernel
+example : rejected (path? [cC] [] jG (.var .here) (.sel (.var (.there (.there .here))) cC)) = true := by decide +kernel
+/-- `m :ˢ {T : ⊥..μ(z. {a : ⊤}) ∧ ⊤} ∧ {cC : ⊥..μ(z. {a : ⊤}) ∧ (m.T ∧ ⊤)}`, a class `cC` with parent `T`. -/
+abbrev cG : Ctx ([],x) := Ctx.nil.consSelf
+  (.and (.rcd (.typ Tl .bot (.and (.mu (.rcd (.trm ca .top))) .top)))
+    (.rcd (.typ cC .bot (.and (.mu (.rcd (.trm ca .top))) (.and (.sel (.var .here) Tl) .top)))))
+-- `m.C <: m.T` answered, its certificate a factorization
+example : answered (sub? [cC, Tl] cG (.sel (.var .here) cC) (.sel (.var .here) Tl)) = true := by decide +kernel
+/-- `cG` and `ℓ : μ(i. {a : ⊤})`, with `ℓ` tagged as an instance of `m.C`. -/
+abbrev lG : Ctx (([],x),x) := cG.cons (.mu (.rcd (.trm ca .top)))
+abbrev lTags : Tags (([],x),x) := [(.here, .var (.there .here), cC)]
+-- G7': `ℓ : m.C` and `ℓ : m.T` answered by the seal at the tag, rejected without the tag
+example : answered (path? [cC, Tl] lTags lG (.var .here) (.sel (.var (.there .here)) cC)) = true := by decide +kernel
+example : answered (path? [cC, Tl] lTags lG (.var .here) (.sel (.var (.there .here)) Tl)) = true := by decide +kernel
+example : rejected (path? [cC, Tl] [] lG (.var .here) (.sel (.var (.there .here)) cC)) = true := by decide +kernel
+-- The tag at `m.T` does not reach `m.C`: no seal
+example : rejected (path? [cC, Tl] [(.here, .var (.there .here), Tl)] lG (.var .here) (.sel (.var (.there .here)) cC)) = true := by decide +kernel
+-- NOM-A as a projection, at this answer
+example (d : PathAns [cC, Tl] lTags lG (.var .here) (.sel (.var (.there .here)) cC)) :
+    (∃ U, IsView lG (.var .here) U ∧ Factor lG U (.var (.there .here)) cC) ∨ SealAt lTags lG (.var .here) (.var (.there .here)) cC :=
+  d.nom _ cC rfl (by decide)
+end ClassChecks
 
 end NominalFrontend.Core

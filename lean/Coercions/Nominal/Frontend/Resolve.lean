@@ -27,6 +27,10 @@ The module proves totality on scoped, well labelled phrases whose fields have a
 right shape, the two spine equations, and the no insertion property: a phrase
 whose operands are paths resolves with no inserted `let`.
 
+Plan XII N3 g1: the tag of a `let` is `LetTag s`, so `Spine.cons`, `atomize`
+and `SBind.tag` name the signature.  Resolution writes no `inst` tag and no
+class definition before N4.
+
 Nothing here belongs to the metatheory.
 -/
 
@@ -201,7 +205,7 @@ inductive Spine : Sig → Sig → Type where
   /-- No binding. -/
   | nil : Spine s s
   /-- One binding, then the rest under it. -/
-  | cons : LetTag → PTm s → Spine (s,x) s' → Spine s s'
+  | cons : LetTag s → PTm s → Spine (s,x) s' → Spine s s'
 
 /-- Wrap a term of the inner signature in the bindings of the spine. -/
 def Spine.plug : {s s' : Sig} → Spine s s' → PTm s' → PTm s
@@ -234,13 +238,13 @@ structure Atomic (s : Sig) where
   path : Path sig
 
 /-- A path stays.  Any other term is bound by one `let` with the tag `g`. -/
-def atomize {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) : Atomic s :=
+def atomize {s : Sig} (g : LetTag s) (nv : NameEnv s) (t : PTm s) : Atomic s :=
   match t with
   | .path p => ⟨s, .nil, nv, p⟩
   | _ => ⟨(s,x), .cons g t .nil, nv.cons "%", .var .here⟩
 
 /-- `atomize` extends the environment by at most one name. -/
-theorem atomize_names_covers {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s) :
+theorem atomize_names_covers {s : Sig} (g : LetTag s) (nv : NameEnv s) (t : PTm s) :
     Covers nv.names (atomize g nv t).names.names := by
   cases t with
   | path _ => exact Covers.rfl' _
@@ -250,7 +254,7 @@ theorem atomize_names_covers {s : Sig} (g : LetTag) (nv : NameEnv s) (t : PTm s)
   | «let» _ _ _ _ => exact Covers.tail _ _
 
 /-- No insertion: a path is not bound again. -/
-theorem atomize_path {s : Sig} (g : LetTag) (nv : NameEnv s) (p : Path s) :
+theorem atomize_path {s : Sig} (g : LetTag s) (nv : NameEnv s) (p : Path s) :
     atomize g nv (.path p) = ⟨s, .nil, nv, p⟩ := rfl
 
 /-! ## The resolvers
@@ -313,7 +317,7 @@ def resolveTyOpt {s : Sig} (Λ : LabelTable) (nv : NameEnv s) :
 
 /-- The tag of a `bind`: `widen` for a widened `val`, `recv` for an unstable
 prefix. -/
-def SBind.tag : SBind → LetTag
+def SBind.tag {s : Sig} : SBind → LetTag s
   | .widen => .widen
   | .unstable => .recv
 

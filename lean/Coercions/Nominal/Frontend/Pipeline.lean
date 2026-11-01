@@ -61,6 +61,28 @@ rejected with its reason.  N4 rejected with `selfSingleton`.  The plan's risk, a
 three-level literal whose inner lambda field waits for an outer one, and the
 same reached through a path field.  A nested literal at a field that a written
 self type declares takes its declared self type.  Limit L9.
+
+Plan XII N3 g5 runs the pipeline at class labels (departures 3 and 13).  The
+labels of a run are the budget's `b.classes` followed by the term's own, the
+labels of its class definitions (`PTm.classLabels`, `ATm.classLabels`).
+`compileE` elaborates at them with `elabTopKF`, and `compileLandedF` and
+`checkAtF` type at them, so `compile_full` relates the two at the same labels
+(`PTm.classLabels_of_full?`).  `elabTop?_stable` and `elabTop?_mono` keep their
+text and speak of the class-free `elabTopF`.  `elabTopKF_stable` and
+`elabTopKF_mono` state the same at every `K`.
+
+Plan XII N3 g6 states the nominality theorems, NOM-A and NOM-B.  `subAns?` and
+`pathAns?` are the search's answers at the budget's fuel and class labels.
+`sub?_nominal` and `path?_nominal` read the certificate of an answer into a class
+type `p.C` with `C ∈ b.classes`: a factorization, or a seal at a tagged variable
+(`SealAt`).  `path?_structural` follows: a path whose views are all structural
+and that is no tagged variable gets no answer at a class type.  `compile_nominal`
+and `compile_seal_sites` read the certificates the elaborator carries to a
+compile, and `compile_nominal_resolved` states the first at the run's own labels
+`b.classes ++ p.classLabels`.  The namespace `NominalChecks` runs N3's acceptance
+on resolved terms: E14 with the constructor's literal tagged, a structural literal
+at a class rejected inside and outside the stem, J02's W1 to W4 and W5 at and
+without the class label, and NOM-A at the answers `m.C <: m.T` and G7'.
 -/
 
 namespace NominalFrontend
@@ -83,12 +105,13 @@ def Compiled.deriv {a : ATm []} (c : Compiled a) : HasTy .nil a.erase c.ty := c.
 
 /-- Check a closed annotated term against a type, with the tank. -/
 def checkAtF (b : Budget) (a : ATm []) (T : Ty []) : Option (AHasTy .nil a T) × Tank :=
-  checkTopF b.mode b.modules b.fuel a T
+  let r := checkTopF b.mode b.modules (b.classes ++ a.classLabels) b.fuel a T
+  (r.1.map (·.d), r.2)
 /-- Check a closed annotated term against a type.  A marked tank answers `none`. -/
 def checkAt (b : Budget) (a : ATm []) (T : Ty []) : Option (AHasTy .nil a T) := (checkAtF b a T).1
 /-- Synthesize the type of a closed annotated term, with the tank. -/
 def compileLandedF (b : Budget) (a : ATm []) : Option (Compiled a) × Tank :=
-  let r := synthTopF b.mode b.modules b.fuel a
+  let r := synthTopF b.mode b.modules (b.classes ++ a.classLabels) b.fuel a
   (r.1.map fun c => ⟨c.ty, c.deriv⟩, r.2)
 /-- Synthesize the type of a closed annotated term.  A marked tank answers `none`. -/
 def compileLanded (b : Budget) (a : ATm []) : Option (Compiled a) := (compileLandedF b a).1
@@ -99,7 +122,7 @@ def compileE (b : Budget) (Λ : LabelTable) (e : STm) : Except PReason ((a : ATm
   match resolveP Λ e with
   | none => .error .mismatch
   | some p =>
-      match (elabTopF b.mode b.modules b.fuel p).1 with
+      match (elabTopKF b.mode b.modules (b.classes ++ p.classLabels) b.fuel p).1 with
       | .ok c => .ok ⟨c.a, ⟨c.ty, c.ann⟩⟩
       | .error r => .error r
 /-- `compileE` without the reason. -/
@@ -122,8 +145,9 @@ def compileAndRunFC (b : Budget) (m : Nat) (Λ : LabelTable) (e : STm) :
 /-! ## The Head's theorems and their siblings -/
 
 /-- A partial term with no empty slot elaborates as the typer types the term it stands for. -/
-theorem elabN_full {md : Mode} {ms : List (List Label)} {k : Nat} {s : Sig} {Γ : Ctx s} {p : PTm s} {a : ATm s}
-    (hp : p.full? = some a) : elabN md ms (k + 1) Γ p = fullSynthAt md ms Γ p a (PTm.fills_of_full? hp) := by
+theorem elabN_full {md : Mode} {ms : List (List Label)} {K : List Label} {k : Nat} {s : Sig} {Γ : Ctx s} {p : PTm s}
+    {a : ATm s} (hp : p.full? = some a) :
+    elabN md ms K (k + 1) Γ p = fullSynthAt md ms K Γ p a (PTm.fills_of_full? hp) := by
   rw [elabN]
   split
   · rename_i a' h
@@ -134,16 +158,31 @@ theorem elabN_full {md : Mode} {ms : List (List Label)} {k : Nat} {s : Sig} {Γ 
     rw [hp] at h
     cases h
 
-theorem elabTopF_full {md : Mode} {ms : List (List Label)} {n : Nat} {p : PTm []} {a : ATm []}
+/-- A partial term with no empty slot: the elaborator at `K` is the typer's synthesis at `K` on its term. -/
+theorem elabTopKF_full {md : Mode} {ms : List (List Label)} {K : List Label} {n : Nat} {p : PTm []} {a : ATm []}
     (hp : p.full? = some a) :
-    elabTopF md ms n p =
-      match fullSynthAt md ms Ctx.nil p a (PTm.fills_of_full? hp) ⟨n, false⟩ with
+    elabTopKF md ms K n p =
+      match fullSynthAt md ms K Ctx.nil p a (PTm.fills_of_full? hp) ⟨n, false⟩ with
       | ((c :: _, _), t) => (if t.out then .error .limit else .ok c, t)
       | (([], rs), t) => (.error (Reason.top t.out rs), t) := by
-  unfold elabTopF
+  unfold elabTopKF
   obtain ⟨k, hk⟩ : ∃ k, p.size = k + 1 := ⟨p.size - 1, by have := PTm.size_pos p; omega⟩
   rw [hk, elabN_full hp]
   rfl
+
+/-- A partial term with no empty slot, at one list of class labels `K`: the elaborator's answer, read as a
+compile, is the typer's first candidate. -/
+theorem elabTopKF_full_landed (b : Budget) (K : List Label) {p : PTm []} {a : ATm []} (h : p.full? = some a) :
+    (match (elabTopKF b.mode b.modules K b.fuel p).1 with
+      | .ok c => (.ok ⟨c.a, ⟨c.ty, c.ann⟩⟩ : Except PReason ((a : ATm []) × Compiled a))
+      | .error r => .error r).toOption =
+    ((synthTopF b.mode b.modules K b.fuel a).1.map fun c => (⟨c.ty, c.deriv⟩ : Compiled a)).map (⟨a, ·⟩) := by
+  simp only [elabTopKF_full h, synthTopF, fullSynthAt, Fu.bind, Fu.ret]
+  cases hs : synthF b.mode b.modules K [] none Ctx.nil a ⟨b.fuel, false⟩ with
+  | mk cs t =>
+    cases cs with
+    | nil => simp [firstCand, Except.toOption]
+    | cons c cs => cases ht : t.out <;> simp [firstCand, ht, Except.toOption]
 
 theorem compile_full {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} (h : resolve Λ e = some a) :
     compile b Λ e = (compileLanded b a).map (⟨a, ·⟩) := by
@@ -154,13 +193,17 @@ theorem compile_full {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} (h : 
     cases h
   | some p =>
     rw [hp, Option.bind_some] at h
-    simp only [compile, compileE, hp, elabTopF_full h, compileLanded, compileLandedF, synthTopF, fullSynthAt,
-      Fu.bind, Fu.ret]
-    cases hs : synthF b.mode b.modules Ctx.nil a ⟨b.fuel, false⟩ with
-    | mk cs t =>
-      cases cs with
-      | nil => simp [firstCand, Except.toOption]
-      | cons c cs => cases ht : t.out <;> simp [firstCand, ht, Except.toOption]
+    have hl := PTm.classLabels_of_full? p h
+    have hK := elabTopKF_full_landed b (b.classes ++ p.classLabels) h
+    simp only [compile, compileE, hp, compileLanded, compileLandedF]
+    rw [← hl]
+    split
+    · rename_i c he
+      rw [he] at hK
+      exact hK
+    · rename_i r he
+      rw [he] at hK
+      exact hK
 
 /-- **Inference fills only empty slots.**  The fill agrees with every slot the program writes. -/
 theorem compileE_fills {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} {c : Compiled a}
@@ -174,7 +217,7 @@ theorem compileE_fills {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} {c 
     rw [hp] at h
     dsimp only at h
     refine ⟨p, rfl, ?_⟩
-    cases he : (elabTopF b.mode b.modules b.fuel p).1 with
+    cases he : (elabTopKF b.mode b.modules (b.classes ++ p.classLabels) b.fuel p).1 with
     | error r =>
       rw [he] at h
       cases h
@@ -188,9 +231,9 @@ theorem whyR_notSlot {s : Sig} (a : ATm s) : ∀ r ∈ whyR a, r.isSlotReason = 
   simp only [whyR, List.mem_append, List.mem_map, List.mem_singleton] at hr
   rcases hr with ⟨_, _, rfl⟩ | rfl <;> rfl
 
-theorem fullSynthAt_notSlot {md : Mode} {ms : List (List Label)} {s : Sig} {Γ : Ctx s} {p : PTm s}
-    {a : ATm s} {h : p.fills a = true} (t : Tank) :
-    ∀ r ∈ (fullSynthAt md ms Γ p a h t).1.2, r.isSlotReason = false := by
+theorem fullSynthAt_notSlot {md : Mode} {ms : List (List Label)} {K : List Label} {s : Sig} {Γ : Ctx s}
+    {p : PTm s} {a : ATm s} {h : p.fills a = true} (t : Tank) :
+    ∀ r ∈ (fullSynthAt md ms K Γ p a h t).1.2, r.isSlotReason = false := by
   intro r hr
   simp only [fullSynthAt, Fu.bind, Fu.ret] at hr
   split at hr
@@ -224,11 +267,12 @@ theorem compileE_slot {b : Budget} {Λ : LabelTable} {e : STm} {r : PReason} (h 
     | none => rfl
     | some a =>
       exfalso
-      rw [elabTopF_full hf] at h
-      have hrs := fullSynthAt_notSlot (md := b.mode) (ms := b.modules) (Γ := Ctx.nil) (p := p)
-        (h := PTm.fills_of_full? hf) ⟨b.fuel, false⟩
+      rw [elabTopKF_full hf] at h
+      have hrs := fullSynthAt_notSlot (md := b.mode) (ms := b.modules) (K := b.classes ++ p.classLabels)
+        (Γ := Ctx.nil) (p := p) (h := PTm.fills_of_full? hf) ⟨b.fuel, false⟩
       revert hrs h
-      cases fullSynthAt b.mode b.modules Ctx.nil p a (PTm.fills_of_full? hf) ⟨b.fuel, false⟩ with
+      cases fullSynthAt b.mode b.modules (b.classes ++ p.classLabels) Ctx.nil p a (PTm.fills_of_full? hf)
+        ⟨b.fuel, false⟩ with
       | mk res t =>
         obtain ⟨cs, rs⟩ := res
         intro h hrs
@@ -243,13 +287,13 @@ theorem compileE_slot {b : Budget} {Λ : LabelTable} {e : STm} {r : PReason} (h 
           rw [top_notSlot hrs] at hr
           cases hr
 
-/-- **A rejection that ends unmarked is stable.**  A closed elaboration that ends unmarked gives the
-same verdict at every larger fuel. -/
-theorem elabTop?_stable {b : Budget} {n k : Nat} {p : PTm []} {r : Except PReason (ECand Ctx.nil p)}
-    (h : elabTopF b.mode b.modules n p = (r, ⟨k, false⟩)) (j : Nat) :
-    (elabTopF b.mode b.modules (n + j) p).1 = r := by
-  unfold elabTopF at h ⊢
-  cases hs : elabN b.mode b.modules p.size Ctx.nil p ⟨n, false⟩ with
+/-- A closed elaboration at the class labels `K` that ends unmarked gives the same verdict at every larger
+fuel. -/
+theorem elabTopKF_stable {md : Mode} {ms : List (List Label)} {K : List Label} {n k : Nat} {p : PTm []}
+    {r : Except PReason (ECandK K Ctx.nil p)} (h : elabTopKF md ms K n p = (r, ⟨k, false⟩)) (j : Nat) :
+    (elabTopKF md ms K (n + j) p).1 = r := by
+  unfold elabTopKF at h ⊢
+  cases hs : elabN md ms K p.size Ctx.nil p ⟨n, false⟩ with
   | mk res t =>
     obtain ⟨cs, rs⟩ := res
     rw [hs] at h
@@ -257,7 +301,7 @@ theorem elabTop?_stable {b : Budget} {n k : Nat} {p : PTm []} {r : Except PReaso
       cases cs with
       | nil => exact (Prod.mk.inj h).2
       | cons c cs => exact (Prod.mk.inj h).2
-    have hf := (elabN_framed b.mode b.modules p.size Ctx.nil p).shift _ _ _ hs (by rw [ht]) j
+    have hf := (elabN_framed md ms K p.size Ctx.nil p).shift _ _ _ hs (by rw [ht]) j
     have hn : (⟨n + j, false⟩ : Tank) = (⟨n, false⟩ : Tank).add j := rfl
     rw [hn, hf]
     subst ht
@@ -265,10 +309,18 @@ theorem elabTop?_stable {b : Budget} {n k : Nat} {p : PTm []} {r : Except PReaso
     | nil => exact (Prod.mk.inj h).1
     | cons c cs => exact (Prod.mk.inj h).1
 
-theorem elabTopF_ok_out {md : Mode} {ms : List (List Label)} {n : Nat} {p : PTm []} {c : ECand Ctx.nil p}
-    (h : (elabTopF md ms n p).1 = .ok c) : (elabTopF md ms n p).2.out = false := by
-  unfold elabTopF at h ⊢
-  cases hs : elabN md ms p.size Ctx.nil p ⟨n, false⟩ with
+/-- **A rejection that ends unmarked is stable.**  A closed elaboration that ends unmarked gives the
+same verdict at every larger fuel. -/
+theorem elabTop?_stable {b : Budget} {n k : Nat} {p : PTm []} {r : Except PReason (ECand Ctx.nil p)}
+    (h : elabTopF b.mode b.modules n p = (r, ⟨k, false⟩)) (j : Nat) :
+    (elabTopF b.mode b.modules (n + j) p).1 = r :=
+  elabTopKF_stable (K := []) h j
+
+/-- An accepted elaboration at `K` ends with the tank unmarked. -/
+theorem elabTopKF_ok_out {md : Mode} {ms : List (List Label)} {K : List Label} {n : Nat} {p : PTm []}
+    {c : ECandK K Ctx.nil p} (h : (elabTopKF md ms K n p).1 = .ok c) : (elabTopKF md ms K n p).2.out = false := by
+  unfold elabTopKF at h ⊢
+  cases hs : elabN md ms K p.size Ctx.nil p ⟨n, false⟩ with
   | mk res t =>
     obtain ⟨cs, rs⟩ := res
     rw [hs] at h
@@ -281,15 +333,20 @@ theorem elabTopF_ok_out {md : Mode} {ms : List (List Label)} {n : Nat} {p : PTm 
         simp only [ht, if_true] at h
         cases h
 
+/-- More fuel keeps the answer of a closed elaboration at the class labels `K`. -/
+theorem elabTopKF_mono {md : Mode} {ms : List (List Label)} {K : List Label} {n m : Nat} {p : PTm []}
+    {c : ECandK K Ctx.nil p} (h : (elabTopKF md ms K n p).1 = .ok c) (hnm : n ≤ m) : (elabTopKF md ms K m p).1 = .ok c := by
+  have ho := elabTopKF_ok_out h
+  have he : elabTopKF md ms K n p = (.ok c, ⟨(elabTopKF md ms K n p).2.left, false⟩) := by
+    rw [← h, ← ho]
+  have := elabTopKF_stable he (m - n)
+  rwa [Nat.add_sub_cancel' hnm] at this
+
 /-- **More fuel keeps the answer of a closed elaboration.** -/
 theorem elabTop?_mono {b : Budget} {n m : Nat} {p : PTm []} {c : ECand Ctx.nil p}
     (h : (elabTopF b.mode b.modules n p).1 = .ok c) (hnm : n ≤ m) :
-    (elabTopF b.mode b.modules m p).1 = .ok c := by
-  have ho := elabTopF_ok_out h
-  have he : elabTopF b.mode b.modules n p = (.ok c, ⟨(elabTopF b.mode b.modules n p).2.left, false⟩) := by
-    rw [← h, ← ho]
-  have := elabTop?_stable he (m - n)
-  rwa [Nat.add_sub_cancel' hnm] at this
+    (elabTopF b.mode b.modules m p).1 = .ok c :=
+  elabTopKF_mono (K := []) h hnm
 
 section Head
 
@@ -370,8 +427,11 @@ theorem compileAndRunFC_consistent (h : compile b Λ e = some ⟨a, c⟩) {m : N
   Nominal.FCn.reachable_consistent (Nominal.Source.HasTy.translate_typed c.deriv .nil) (compileAndRunFC_reaches h hr)
 
 theorem checkAt_mono {a : ATm []} {T : Ty []} {d : AHasTy .nil a T} (h : checkAt b a T = some d)
-    {n : Nat} (hn : b.fuel ≤ n) : checkAt { b with fuel := n } a T = some d :=
-  checkTopF_mono h hn
+    {n : Nat} (hn : b.fuel ≤ n) : checkAt { b with fuel := n } a T = some d := by
+  unfold checkAt checkAtF at h ⊢
+  simp only [Option.map_eq_some_iff] at h ⊢
+  obtain ⟨d', h', rfl⟩ := h
+  exact ⟨d', checkTopF_mono h' hn, rfl⟩
 
 theorem compileLanded_mono {a : ATm []} {c : Compiled a} (h : compileLanded b a = some c)
     {n : Nat} (hn : b.fuel ≤ n) : compileLanded { b with fuel := n } a = some c := by
@@ -392,6 +452,113 @@ theorem compile_isSome {b : Budget} {Λ : LabelTable} {e : STm}
     rw [compile_full hr]
     simp only [hr, Option.any_some] at h
     simpa [Option.isSome_map] using h
+
+/-! ## The nominality theorems (plan XII NOM-A, NOM-B)
+
+NOM-A reads the certificate of an answer of the search (D-17): an answer of `sub?` at `p.C` with `C` a class
+label factors, and an answer of `path?` at `p.C` comes from a view that factors or from a seal at a tagged
+variable.  NOM-B reads the certificates the elaborator carries to a compile (`ECandK.nom`, `ECandK.ss`).  -/
+
+section Nominality
+open Nominal.Source (IsView Factor)
+
+/-- `subAns? b tags Γ S T`: the search's answer at the budget's fuel and class labels.  A subtyping goal reads no tag. -/
+def subAns? (b : Budget) {s : Sig} (_tags : Tags s) (Γ : Ctx s) (S T : Ty s) : Option (Core.SubAns b.classes Γ S T) :=
+  (Core.sub? b.classes Γ S T b.fuel).1
+/-- `pathAns? b tags Γ q T`: the search's answer for the path `q` at `T`, with the tags of its context. -/
+def pathAns? (b : Budget) {s : Sig} (tags : Tags s) (Γ : Ctx s) (q : Path s) (T : Ty s) :
+    Option (Core.PathAns b.classes tags Γ q T) :=
+  (Core.path? b.classes tags Γ q T b.fuel).1
+
+/-- **NOM-A, subtyping.**  An answer of the search to `S <: p.C` with `C ∈ b.classes` factors: `S` goes up
+through operands of `∧`, upper bounds read off views and alias replacements to `⊥` or to `q.C` with `q` an alias
+of `p`.  The proof reads the answer's certificate (departure 11). -/
+theorem sub?_nominal {b : Budget} {s : Sig} {tags : Tags s} {Γ : Ctx s} {S : Ty s} {p : Path s} {C : Label}
+    {d : Core.SubAns b.classes Γ S (.sel p C)} (hC : C ∈ b.classes) (h : subAns? b tags Γ S (.sel p C) = some d) :
+    Factor Γ S p C := by
+  have _ := h
+  exact d.nom p C rfl hC
+/-- **NOM-A, paths.**  An answer of the search to `q : p.C` with `C ∈ b.classes` comes from a view of `q` that
+factors through `p.C`, or `q` is a tagged instance of `r.K₀` and `r.K₀` factors through `p.C` (`SealAt`). -/
+theorem path?_nominal {b : Budget} {s : Sig} {tags : Tags s} {Γ : Ctx s} {q p : Path s} {C : Label}
+    {d : Core.PathAns b.classes tags Γ q (.sel p C)} (hC : C ∈ b.classes) (h : pathAns? b tags Γ q (.sel p C) = some d) :
+    (∃ U, IsView Γ q U ∧ Factor Γ U p C) ∨ SealAt tags Γ q p C := by
+  have _ := h
+  exact d.nom p C rfl hC
+/-- **A structural path is at no class type.**  If every view of `q` is structural and `q` is no tagged variable,
+the search answers no goal `q : p.C` with `C ∈ b.classes`. -/
+theorem path?_structural {b : Budget} {s : Sig} {tags : Tags s} {Γ : Ctx s} {q p : Path s} {C : Label}
+    (hC : C ∈ b.classes) (hv : ∀ U, IsView Γ q U → U.Structural) (ht : ∀ x, q = .var x → tags.get x = none) :
+    ∀ d, pathAns? b tags Γ q (.sel p C) ≠ some d := by
+  intro d h
+  rcases path?_nominal hC h with ⟨U, hU, hf⟩ | ⟨x, r, K₀, rfl, hx, _⟩
+  · exact (hv U hU).not_factor hf
+  · rw [ht x rfl] at hx
+    cases hx
+
+/-- **NOM-B.**  In a compiled derivation every `apath` and every `asub` into a class type `p.C` with
+`C ∈ b.classes` carries its certificate, `NomPath` or `NomSub` (`AHasTy.Nom`).  The run's labels are
+`b.classes ++ p.classLabels` (departure 13), so the certificate at `b.classes` is `AHasTy.Nom.of_append`. -/
+theorem compile_nominal {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} {c : Compiled a}
+    (h : compileE b Λ e = .ok ⟨a, c⟩) : c.ann.Nom b.classes := by
+  unfold compileE at h
+  cases hp : resolveP Λ e with
+  | none =>
+    rw [hp] at h
+    cases h
+  | some p =>
+    rw [hp] at h
+    dsimp only at h
+    cases he : (elabTopKF b.mode b.modules (b.classes ++ p.classLabels) b.fuel p).1 with
+    | error r =>
+      rw [he] at h
+      cases h
+    | ok c' =>
+      rw [he] at h
+      cases h
+      exact AHasTy.Nom.of_append c'.ann b.classes p.classLabels c'.nom
+/-- **NOM-B, the seals.**  Every `subtyp_seal` of a compiled derivation is the last step of a path answer at a
+tagged variable (`AHasTy.SealsTagged`). -/
+theorem compile_seal_sites {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} {c : Compiled a}
+    (h : compileE b Λ e = .ok ⟨a, c⟩) : c.ann.SealsTagged := by
+  unfold compileE at h
+  cases hp : resolveP Λ e with
+  | none =>
+    rw [hp] at h
+    cases h
+  | some p =>
+    rw [hp] at h
+    dsimp only at h
+    cases he : (elabTopKF b.mode b.modules (b.classes ++ p.classLabels) b.fuel p).1 with
+    | error r =>
+      rw [he] at h
+      cases h
+    | ok c' =>
+      rw [he] at h
+      cases h
+      exact c'.ss
+/-- NOM-B at the run's own class labels, the budget's and the resolved term's (departure 13). -/
+theorem compile_nominal_resolved {b : Budget} {Λ : LabelTable} {e : STm} {a : ATm []} {c : Compiled a}
+    (h : compileE b Λ e = .ok ⟨a, c⟩) : ∃ p, resolveP Λ e = some p ∧ c.ann.Nom (b.classes ++ p.classLabels) := by
+  unfold compileE at h
+  cases hp : resolveP Λ e with
+  | none =>
+    rw [hp] at h
+    cases h
+  | some p =>
+    rw [hp] at h
+    dsimp only at h
+    refine ⟨p, rfl, ?_⟩
+    cases he : (elabTopKF b.mode b.modules (b.classes ++ p.classLabels) b.fuel p).1 with
+    | error r =>
+      rw [he] at h
+      cases h
+    | ok c' =>
+      rw [he] at h
+      cases h
+      exact c'.nom
+
+end Nominality
 
 /-! ## Checks
 
@@ -816,3 +983,137 @@ end Fills
 end ElabChecks
 
 end NominalFrontend
+
+/-! ## NominalChecks
+
+Plan XII N3's acceptance on resolved terms.  E14 with the constructor's literal tagged, the shape N4's resolution
+writes, is typed at `⊤` with and without class labels and its image is accepted by the FCn checker.  A structural
+literal at a class type is rejected inside the stem (the constructor's literal untagged) and outside it (written or
+tagged).  J02's W1 and W2 flip with `C ∈ b.classes`, W3 and W4 stay rejected, and W5 (finding G-3) flips as well.
+NOM-A at two answers of the search, `m.C <: m.T` and the seal G7'. -/
+
+namespace NominalFrontend.NominalChecks
+
+section NominalChecks
+
+open Frontend.Fuel NominalFrontend.Core
+open Paths.FCdot (Sig BVar Label Path)
+open Nominal.Source (Ty Ctx IsView Factor)
+open Nominal.Source (e14_lself e14_u e14_getT e14_vC e14_newC e14_v e14_get e14_w e14_A e14_T e14_C e14_L
+  e14_Tσ e14_Tu e14_Ti e14_BodyT e14_BodyC fdec tdec ref0 ref1 ref2 ref3)
+
+/-! ### E14 as a resolved term (plan P12) -/
+
+/-- `{ℓself = i} ▹ {w = w} ▹ {L = ⊤} ▹ {v = w} ▹ {get = λ(y : ⊤). let g = σ.get$T i in g y}`, under `σ, w, i`. -/
+def a14_dsi : ADefs ((([],x),x),x) :=
+  .cons (.cons (.cons (.cons (.cons .nil (.path e14_lself ref0)) (.path e14_w ref1)) (.typ e14_L .top))
+    (.path e14_v ref1)) (.lam e14_get .top (.«let» .written none (.app (ref3.sel e14_getT) ref1) (.app ref0 ref1)))
+/-- `{ℓself = u'} ▹ {A = ⊤}`, under `σ, u'`. -/
+def a14_dsu : ADefs (([],x),x) := .cons (.cons .nil (.path e14_lself ref0)) (.typ e14_A .top)
+/-- `new$C = λ(w : ⊤). let[inst σ.C] ℓ = ν(i : Ti) dsi in let[asc] r : σ.C = ℓ in r`, under `σ`. -/
+def a14_newC : ADef ([],x) :=
+  .lam e14_newC .top (.«let» (.inst ref1 e14_C) none (.new e14_Ti a14_dsi)
+    (.«let» .asc (some (.sel ref2 e14_C)) (.path ref0) (.path ref0)))
+/-- The stem's definitions, under `σ`. -/
+def a14_dsσ : ADefs ([],x) :=
+  .cons (.cons (.cons (.cons (.cons (.cons (.cons .nil (.path e14_lself ref0)) (.new e14_u e14_Tu a14_dsu))
+    (.cls e14_T e14_BodyT)) (.lam e14_getT (.sel ref0 e14_T) (.lam .top (.path (ref1.sel e14_v)))))
+    (.cls e14_C (e14_BodyC ref0))) (.lam e14_vC (.sel ref0 e14_C) (.path (ref0.sel e14_w)))) a14_newC
+/-- E14: `let σ = ν(σ : Tσ) dsσ in let y = σ.new$C σ.u.ℓself in y`. -/
+def E14A : ATm [] :=
+  .«let» .written none (.new e14_Tσ a14_dsσ)
+    (.«let» .written none (.app (ref0.sel e14_newC) ((ref0.sel e14_u).sel e14_lself)) (.path ref0))
+/-- The budget at E14's two class labels `T` and `C`. -/
+def b14 : Budget := { classes := [e14_T, e14_C] }
+/-- The same program with the constructor's literal untagged: rejected, since no seal is written. -/
+def E14U : ATm [] :=
+  .«let» .written none (.new e14_Tσ (.cons (.cons (.cons (.cons (.cons (.cons (.cons .nil (.path e14_lself ref0)) (.new e14_u e14_Tu a14_dsu))
+    (.cls e14_T e14_BodyT)) (.lam e14_getT (.sel ref0 e14_T) (.lam .top (.path (ref1.sel e14_v)))))
+    (.cls e14_C (e14_BodyC ref0))) (.lam e14_vC (.sel ref0 e14_C) (.path (ref0.sel e14_w))))
+    (.lam e14_newC .top (.«let» .written none (.new e14_Ti a14_dsi)
+    (.«let» .asc (some (.sel ref2 e14_C)) (.path ref0) (.path ref0))))))
+    (.«let» .written none (.app (ref0.sel e14_newC) ((ref0.sel e14_u).sel e14_lself)) (.path ref0))
+/-- `ν(o : {ℓself : o.type} ∧ {w : σ.type} ∧ {L : ⊤..⊤} ∧ {v : σ.type}) {ℓself = o, w = σ, L = ⊤, v = σ}`, under `σ`. -/
+def oLit : ATm ([],x) :=
+  .new (.and (.and (.and (fdec e14_lself (.sngl ref0)) (fdec e14_w (.sngl ref1))) (tdec e14_L .top .top)) (fdec e14_v (.sngl ref1)))
+    (.cons (.cons (.cons (.cons .nil (.path e14_lself ref0)) (.path e14_w ref1)) (.typ e14_L .top)) (.path e14_v ref1))
+/-- `let σ = ν(σ : Tσ) dsσ in let s : σ.C = (let ℓ = oLit in ℓ) in s`: a structural literal at a class outside the stem. -/
+def E14O (g : LetTag ([],x)) : ATm [] :=
+  .«let» .written none (.new e14_Tσ a14_dsσ)
+    (.«let» .written (some (.sel ref0 e14_C)) (.«let» g none oLit (.path ref0)) (.path ref0))
+
+/-- E14 is typed at `⊤` at its class labels. -/
+theorem E14A_checkAt : (checkAt b14 E14A .top).isSome = true := by decide +kernel
+/-- The typer at `K = []` types E14 too: without class labels the seal is not needed. -/
+theorem E14A_noClass : (checkTopF .dot [] [] defaultFuel E14A .top).1.isSome = true := by decide +kernel
+/-- The term's class definitions alone give the labels (departure 13). -/
+theorem E14A_ownClasses : (checkAt {} E14A .top).isSome = true := by decide +kernel
+theorem E14A_landed : (compileLanded b14 E14A).isSome = true := by decide +kernel
+/-- The FCn checker accepts the image of every compiled derivation of E14 (no kernel run). -/
+theorem E14A_checks : ∀ c, compileLanded b14 E14A = some c →
+    Nominal.FCn.checkTm .nil c.deriv.translate c.ty.translate = true :=
+  fun c _ => Nominal.FCn.checkTm_iff.mpr (Nominal.Source.HasTy.translate_typed c.deriv .nil)
+
+/-! ### A structural literal at a class, inside and outside the stem -/
+
+/-- The constructor's literal untagged: rejected with the tank unmarked. -/
+theorem E14U_rejected : rejected (checkAtF b14 E14U .top) = true := by decide +kernel
+/-- A structural literal at `σ.C` outside the stem, untagged: rejected. -/
+theorem E14O_rejected : rejected (checkAtF b14 (E14O .written) .top) = true := by decide +kernel
+/-- The same literal tagged as an instance of `σ.C` outside the stem, where `σ` is let-bound and has no class
+reading: rejected. -/
+theorem E14T_rejected : rejected (checkAtF b14 (E14O (.inst (.var .here) e14_C)) .top) = true := by decide +kernel
+
+/-! ### J02 restated (plan P5) and W5 (finding G-3) -/
+
+/-- The judge's label table: `C` is `.typ 0`. -/
+def ΛJ : LabelTable := [("C", .typ 0)]
+/-- W1: a structural `x : ⊤` at `y.C`, by G6 at the alias's own lower bound `⊤`. -/
+def W1_src : STm := pdc%
+  λ(m : μ(z. {C : ⊥..⊤})). λ(y : m.type ∧ {C : ⊤..⊤}). λ(x : ⊤). let r : y.C = x in r
+/-- W2: then at `m.C`, by replacement of `y` by `m`. -/
+def W2_src : STm := pdc%
+  λ(m : μ(z. {C : ⊥..⊤})). λ(y : m.type ∧ {C : ⊤..⊤}). λ(x : ⊤). let r : y.C = x in let r2 : m.C = r in r2
+/-- W3: the direct goal `x : m.C`. -/
+def W3_src : STm := pdc%
+  λ(m : μ(z. {C : ⊥..⊤})). λ(y : m.type ∧ {C : ⊤..⊤}). λ(x : ⊤). let r2 : m.C = x in r2
+/-- W4: the control, without the alias's own bounds. -/
+def W4_src : STm := pdc%
+  λ(m : μ(z. {C : ⊥..⊤})). λ(y : m.type). λ(x : ⊤). let r2 : m.C = x in r2
+/-- W5: the binder `y0` declares the class label `C` with lower bound `⊤`, and avoidance widens through `down`. -/
+def W5_src : STm := pdc%
+  λ(m : μ(z. {C : ⊥..⊤})). λ(y0 : {C : ⊤..m.C}). λ(x : ⊤).
+    let f = (let y = y0 in λ(w : y.C). w) in let r : m.C = f x in r
+
+theorem W1_noClass : (compile {} ΛJ W1_src).isSome = true := by decide +kernel
+theorem W1_class : (compile { classes := [.typ 0] } ΛJ W1_src).isSome = false := by decide +kernel
+theorem W1_classNoLimit : compileReason { classes := [.typ 0] } ΛJ W1_src ≠ some .limit := by decide +kernel
+theorem W2_noClass : (compile {} ΛJ W2_src).isSome = true := by decide +kernel
+theorem W2_class : (compile { classes := [.typ 0] } ΛJ W2_src).isSome = false := by decide +kernel
+theorem W2_classNoLimit : compileReason { classes := [.typ 0] } ΛJ W2_src ≠ some .limit := by decide +kernel
+theorem W3_rejected : (compile {} ΛJ W3_src).isSome = false ∧ (compile { classes := [.typ 0] } ΛJ W3_src).isSome = false := by
+  decide +kernel
+theorem W4_rejected : (compile {} ΛJ W4_src).isSome = false ∧ (compile { classes := [.typ 0] } ΛJ W4_src).isSome = false := by
+  decide +kernel
+theorem W5_noClass : (compile {} ΛJ W5_src).isSome = true := by decide +kernel
+theorem W5_class : (compile { classes := [.typ 0] } ΛJ W5_src).isSome = false := by decide +kernel
+
+/-! ### NOM-A at a positive instance -/
+
+/-- `m.C <: m.T` is answered in `Core.cG`. -/
+theorem MC_answered : (subAns? { classes := [.typ 0, .typ 1] } ([] : Tags ([],x)) Core.cG
+    (.sel (.var .here) (.typ 0)) (.sel (.var .here) (.typ 1))).isSome = true := by decide +kernel
+/-- Its certificate: `m.C` factors through `m.T`. -/
+theorem MC_factor : Factor Core.cG (.sel (.var .here) (.typ 0)) (.var .here) (.typ 1) :=
+  sub?_nominal (by decide) (Option.some_get MC_answered).symm
+/-- G7': `ℓ : m.C` is answered in `Core.lG` under the tag of `ℓ`. -/
+theorem LC_answered : (pathAns? { classes := [.typ 0, .typ 1] } Core.lTags Core.lG (.var .here)
+    (.sel (.var (.there .here)) (.typ 0))).isSome = true := by decide +kernel
+/-- Its certificate: a view that factors, or the seal at the tagged `ℓ`. -/
+theorem LC_seal : (∃ U, IsView Core.lG (.var .here) U ∧ Factor Core.lG U (.var (.there .here)) (.typ 0)) ∨
+    SealAt Core.lTags Core.lG (.var .here) (.var (.there .here)) (.typ 0) :=
+  path?_nominal (by decide) (Option.some_get LC_answered).symm
+
+end NominalChecks
+
+end NominalFrontend.NominalChecks

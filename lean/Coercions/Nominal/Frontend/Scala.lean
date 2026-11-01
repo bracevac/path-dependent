@@ -67,6 +67,9 @@ result that widens to its object's self type prints without the hidden field.  A
 declared type whose binders equal the lambda's prints as a `def` of as many lists, any other lambda
 field as a `val`.  `Outcome.text` prints a type with these printers (`tyText`) and a reason with
 `reasonText`.  A type with no Scala form prints as `(no Scala form: <reason>)`.
+
+Plan XII N3 g1 passes the class forms through: `ptmSubst` substitutes in a tag, `pdefSubst` in a
+class definition, and `fillDef` writes none, since N4 and N6 give classes a surface form.
 -/
 
 namespace NominalFrontend.Scala
@@ -530,7 +533,7 @@ def ptmSubst : {s₁ s₂ : Sig} → PTm s₁ → PathSubst s₁ s₂ → PTm s�
   | _, _, .app p q, σ => .app (p.subst σ) (q.subst σ)
   | _, _, .lam S t, σ => .lam (S.map (·.subst σ)) (ptmSubst t σ.lift)
   | _, _, .new T ds, σ => .new (T.map (·.subst σ.lift)) (pdefsSubst ds σ.lift)
-  | _, _, .«let» g W t u, σ => .«let» g (W.map (·.subst σ)) (ptmSubst t σ) (ptmSubst u σ.lift)
+  | _, _, .«let» g W t u, σ => .«let» (g.subst σ) (W.map (·.subst σ)) (ptmSubst t σ) (ptmSubst u σ.lift)
 termination_by structural _ _ t => t
 /-- Substitution of paths in a definition of a partial term. -/
 def pdefSubst : {s₁ s₂ : Sig} → PDef s₁ → PathSubst s₁ s₂ → PDef s₂
@@ -538,6 +541,7 @@ def pdefSubst : {s₁ s₂ : Sig} → PDef s₁ → PathSubst s₁ s₂ → PDef
   | _, _, .path a p, σ => .path a (p.subst σ)
   | _, _, .lam a U S t, σ => .lam a (U.map (·.subst σ)) (S.map (·.subst σ)) (ptmSubst t σ.lift)
   | _, _, .new a T ds, σ => .new a (T.map (·.subst σ.lift)) (pdefsSubst ds σ.lift)
+  | _, _, .cls C T, σ => .cls C (T.subst σ)
 termination_by structural _ _ d => d
 /-- Substitution of paths in the definitions of a partial term. -/
 def pdefsSubst : {s₁ s₂ : Sig} → PDefs s₁ → PathSubst s₁ s₂ → PDefs s₂
@@ -1338,6 +1342,7 @@ def fillDef (Λ : LabelTable) : {s : Sig} → List String → SDefs → ADef s �
   | s, ns, ds, .new a T e =>
     .trm ds (labelText Λ a) none
       (.obj (binderName s) (some (sTyOf Λ (binderName s :: ns) T)) (fillDefs Λ (binderName s :: ns) e))
+  | _, _, ds, .cls _ _ => ds   -- N4 and N6 give classes a surface form
 termination_by structural _ _ _ d => d
 end
 

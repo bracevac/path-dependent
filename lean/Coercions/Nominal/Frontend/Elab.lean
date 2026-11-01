@@ -67,6 +67,19 @@ elaborator hands the typer terms it builds.  The entry point `elabTopF` starts
 the index at `p.size`, and each call is on a part of smaller size.  Every
 function is framed (`elab_framed`), which gives the stability of `elabTopF` in
 the fuel.
+
+Plan XII N3 g1 passes the class forms through.  The tag is `LetTag s`, and a
+class definition `{class C = T}` has the arms of a type definition, declared
+at `{C : ⊥..T}` at once (`PDef.atOnce?`).  `ADef.why` and `runJobF` still read
+`tight`, so no verdict of the elaborator moves.
+
+Plan XII N3 g5 threads the class labels `K` (departure 5).  A result carries
+the certificates of D-17 at `K` and the empty tags, `nom` and `ss`, beside its
+derivation (`ECandK`, `EChk`), and `ECand` is the class-free `ECandK []`.  Each
+`let` builds its derivation by `CHasTy.aletN0` or `CHasTy.aletS0`, so a partial
+term whose `let` carries an `inst` tag is refused with `mismatch`.  A full term
+goes to the typer whole, which threads the tags.  The entry point is
+`elabTopKF md ms K`, and `elabTopF md ms` is `elabTopKF md ms []`.
 -/
 
 namespace NominalFrontend
@@ -103,6 +116,7 @@ def PTm.size : {s : Sig} → PTm s → Nat
 termination_by structural _ t => t
 def PDef.size : {s : Sig} → PDef s → Nat
   | _, .typ _ _ => 1
+  | _, .cls _ _ => 1
   | _, .path _ _ => 1
   | _, .lam _ _ _ t => t.size + 1
   | _, .new _ _ ds => ds.size + 1
@@ -139,6 +153,7 @@ theorem PTm.fills_of_full? : ∀ {s : Sig} {p : PTm s} {a : ATm s}, p.full? = so
       · cases h
 theorem PDef.fills_of_full? : ∀ {s : Sig} {d : PDef s} {e : ADef s} (U : Ty s), d.full? = some e → d.fills U e = true
   | _, .typ _ _, e, _, h => by simp [PDef.full?] at h; subst h; simp [PDef.fills]
+  | _, .cls _ _, e, _, h => by simp [PDef.full?] at h; subst h; simp [PDef.fills]
   | _, .path _ _, e, _, h => by simp [PDef.full?] at h; subst h; simp [PDef.fills]
   | _, .lam a none (some S) t, e, U, h => by
       simp only [PDef.full?, Option.map_eq_some_iff] at h
@@ -181,16 +196,25 @@ theorem PTm.size_pos : ∀ {s : Sig} (p : PTm s), 0 < p.size
 
 /-! ## Results -/
 
-structure ECand {s : Sig} (Γ : Ctx s) (p : PTm s) where
+/-- A candidate of the elaborator: a fill `a` of `p`, its type, its derivation with the certificates at the
+class labels `K` and the empty tags, and the view it comes from when `a` is a path (plan XII D-17). -/
+structure ECandK (K : List Label) {s : Sig} (Γ : Ctx s) (p : PTm s) where
   a : ATm s
   ty : Ty s
   ann : AHasTy Γ a ty
   fills : p.fills a = true
-
-structure EChk {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) where
+  nom : AHasTy.NomAt K [] none ann
+  ss : AHasTy.SealsAt [] none ann
+  vw : ATm.Viewed Γ a ty
+/-- The class-free results, plan XI's (`elabTop?_stable`, `elabTop?_mono`). -/
+abbrev ECand {s : Sig} (Γ : Ctx s) (p : PTm s) := ECandK [] Γ p
+/-- A fill of `p` checked at `G`, with the certificates at `K` and the empty tags. -/
+structure EChk (K : List Label) {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) where
   a : ATm s
   ann : AHasTy Γ a G
   fills : p.fills a = true
+  nom : AHasTy.NomAt K [] none ann
+  ss : AHasTy.SealsAt [] none ann
 
 structure EDefs {s : Sig} (ds : PDefs s) (T : Ty s) where
   defs : ADefs s
@@ -204,8 +228,16 @@ structure Formed {s : Sig} (ds : PDefs s) where
   ty : Ty s
   defs : EDefs ds ty
 
-abbrev ESynth {s : Sig} (Γ : Ctx s) (p : PTm s) := List (ECand Γ p) × List PReason
-abbrev ECheck {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) := Option (EChk Γ p G) × List PReason
+/-- The candidate as a certified derivation. -/
+def ECandK.toC {K : List Label} {s : Sig} {Γ : Ctx s} {p : PTm s} (c : ECandK K Γ p) : CHasTy K [] none Γ c.a c.ty :=
+  ⟨c.ann, c.nom, c.ss⟩
+/-- The checked fill as a certified derivation. -/
+def EChk.toC {K : List Label} {s : Sig} {Γ : Ctx s} {p : PTm s} {G : Ty s} (c : EChk K Γ p G) :
+    CHasTy K [] none Γ c.a G :=
+  ⟨c.ann, c.nom, c.ss⟩
+
+abbrev ESynth (K : List Label) {s : Sig} (Γ : Ctx s) (p : PTm s) := List (ECandK K Γ p) × List PReason
+abbrev ECheck (K : List Label) {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) := Option (EChk K Γ p G) × List PReason
 abbrev EDefsR {s : Sig} (ds : PDefs s) (T : Ty s) := Option (EDefs ds T) × List PReason
 abbrev EDefR {s : Sig} (d : PDef s) (U : Ty s) := Option (EDef d U) × List PReason
 abbrev EForm {s : Sig} (ds : PDefs s) := Except (List PReason) (Formed ds)
@@ -228,7 +260,7 @@ def flatMapR {α β ρ : Type} (f : α → Fu (List β × List ρ)) : List α �
   | x :: xs =>
       Fu.bind (f x) fun r1 => Fu.bind (flatMapR f xs) fun r2 => Fu.ret (r1.1 ++ r2.1, r1.2 ++ r2.2)
 
-def dedupE {s : Sig} {Γ : Ctx s} {p : PTm s} : List (ECand Γ p) → List (ECand Γ p)
+def dedupE {K : List Label} {s : Sig} {Γ : Ctx s} {p : PTm s} : List (ECandK K Γ p) → List (ECandK K Γ p)
   | [] => []
   | c :: cs => c :: (dedupE cs).filter fun c' => !decide (c'.ty = c.ty)
 
@@ -242,6 +274,7 @@ def firstDup : List Label → Option Label
 
 def ADef.label {s : Sig} : ADef s → Label
   | .typ A _ => A
+  | .cls C _ => C
   | .path a _ => a
   | .lam a _ _ => a
   | .new a _ _ => a
@@ -268,6 +301,7 @@ def ATm.why : {s : Sig} → ATm s → List TReason
 termination_by structural _ a => a
 def ADef.why : {s : Sig} → ADef s → Ty s → List TReason
   | _, .typ _ _, _ => []
+  | _, .cls _ _, _ => []
   | _, .path _ _, _ => []
   | _, .lam b _ t, U => (match U with
       | .rcd (.trm _ (.all _ _)) => []
@@ -289,31 +323,33 @@ def whyChkR {s : Sig} (a : ATm s) (G : Ty s) : List PReason := (whyAt a G ++ a.w
 /-! ## The typer on a filled term -/
 
 section Typer
-variable (md : Mode) (ms : List (List Label))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
 
-def fullSynthAt {s : Sig} (Γ : Ctx s) (p : PTm s) (a : ATm s) (h : p.fills a = true) : Fu (ESynth Γ p) :=
-  Fu.bind (synthF md ms Γ a) fun cs =>
-    Fu.ret (cs.map fun c => ⟨a, c.ty, c.deriv, h⟩, if cs.isEmpty then whyR a else [])
+def fullSynthAt {s : Sig} (Γ : Ctx s) (p : PTm s) (a : ATm s) (h : p.fills a = true) : Fu (ESynth K Γ p) :=
+  Fu.bind (synthF md ms K [] none Γ a) fun cs =>
+    Fu.ret (cs.map fun c => ⟨a, c.ty, c.deriv, h, c.nom, c.ss, c.vw⟩, if cs.isEmpty then whyR a else [])
 
 def fullCheckAt {s : Sig} (Γ : Ctx s) (p : PTm s) (a : ATm s) (h : p.fills a = true) (G : Ty s) :
-    Fu (ECheck Γ p G) :=
-  Fu.bind (checkF md ms Γ a G) fun o =>
-    Fu.ret (o.map fun d => ⟨a, d, h⟩, if o.isSome then [] else whyChkR a G)
+    Fu (ECheck K Γ p G) :=
+  Fu.bind (checkF md ms K [] none Γ a G) fun o =>
+    Fu.ret (o.map fun d => ⟨a, d.d, h, d.nom, d.ss⟩, if o.isSome then [] else whyChkR a G)
 
 end Typer
 
-def toGoalE {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (c : ECand Γ p) : Fu (ECheck Γ p G) :=
-  if h : c.ty = G then Fu.ret (some ⟨c.a, h ▸ c.ann, c.fills⟩, [])
+def toGoalE (K : List Label) {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (c : ECandK K Γ p) : Fu (ECheck K Γ p G) :=
+  if h : c.ty = G then Fu.ret (some (h ▸ (⟨c.a, c.ann, c.fills, c.nom, c.ss⟩ : EChk K Γ p c.ty)), [])
   else
-    Fu.bind (subF Γ c.ty G) fun o =>
-      Fu.ret (o.map (fun e => ⟨c.a, .asub c.ann e, c.fills⟩), if o.isSome then [] else [.mismatch])
+    Fu.bind (subF K Γ c.ty G) fun o =>
+      Fu.ret (o.map (fun e => let D := c.toC.asub e
+        ⟨c.a, D.d, c.fills, D.nom, D.ss⟩), if o.isSome then [] else [.mismatch])
 
-def subsumeE {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth Γ p) : Fu (ECheck Γ p G) :=
-  Fu.bind (firstSomeR (toGoalE Γ G) r.1) fun r' => Fu.ret (r'.1, r.2 ++ r'.2)
+def subsumeE (K : List Label) {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth K Γ p) : Fu (ECheck K Γ p G) :=
+  Fu.bind (firstSomeR (toGoalE K Γ G) r.1) fun r' => Fu.ret (r'.1, r.2 ++ r'.2)
 
 /-- A literal moved to a goal: as `subsumeE`, with `literalGoal` when no candidate meets it. -/
-def subsumeLit {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth Γ p) : Fu (ECheck Γ p G) :=
-  Fu.bind (firstSomeR (toGoalE Γ G) r.1) fun r' =>
+def subsumeLit (K : List Label) {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth K Γ p) :
+    Fu (ECheck K Γ p G) :=
+  Fu.bind (firstSomeR (toGoalE K Γ G) r.1) fun r' =>
     Fu.ret (r'.1, r.2 ++ if r'.1.isSome || r.1.isEmpty then [] else [.landed .literalGoal])
 
 /-! ## Slot 1: the function part of a goal -/
@@ -324,17 +360,17 @@ inductive FunPart (s : Sig) where
   | bad
 deriving DecidableEq
 
-def meetPart {s : Sig} (Γ : Ctx s) : FunPart s → FunPart s → Fu (FunPart s)
+def meetPart (K : List Label) {s : Sig} (Γ : Ctx s) : FunPart s → FunPart s → Fu (FunPart s)
   | .bad, _ => Fu.ret .bad
   | _, .bad => Fu.ret .bad
   | .none, f => Fu.ret f
   | f, .none => Fu.ret f
   | .one S1 V1, .one S2 V2 =>
-      Fu.bind (subF Γ S2 S1) fun o2 =>
+      Fu.bind (subF K Γ S2 S1) fun o2 =>
         match o2 with
         | some _ => Fu.ret (.one S1 (.and V1 V2))
         | none =>
-            Fu.bind (subF Γ S1 S2) fun o1 =>
+            Fu.bind (subF K Γ S1 S2) fun o1 =>
               match o1 with
               | some _ => Fu.ret (.one S2 (.and V1 V2))
               | none => Fu.ret .bad
@@ -350,10 +386,10 @@ def firstPart {s : Sig} (rec : Ty s → Fu (FunPart s)) : List (Ty s) → Fu (Fu
       | .none => firstPart rec Ts
       | f => Fu.ret f
 
-def funPartTy {s : Sig} (Γ : Ctx s) (rec : Ty s → Fu (FunPart s)) : Ty s → Fu (FunPart s)
+def funPartTy (K : List Label) {s : Sig} (Γ : Ctx s) (rec : Ty s → Fu (FunPart s)) : Ty s → Fu (FunPart s)
   | .all S V => Fu.ret (.one S V)
   | .and G1 G2 =>
-      Fu.bind (funPartTy Γ rec G1) fun f1 => Fu.bind (funPartTy Γ rec G2) fun f2 => meetPart Γ f1 f2
+      Fu.bind (funPartTy K Γ rec G1) fun f1 => Fu.bind (funPartTy K Γ rec G2) fun f2 => meetPart K Γ f1 f2
   | .sel q A => Fu.bind (bounds Γ q A) fun bs => firstPart rec (bs.map (·.hi))
   | .sngl q => Fu.bind (views Γ q) fun vs => firstPart rec ((vs.map (·.1)).filter fun T => !isSngl T)
   | .mu T =>
@@ -364,11 +400,11 @@ def funPartTy {s : Sig} (Γ : Ctx s) (rec : Ty s → Fu (FunPart s)) : Ty s → 
   | .bot => Fu.ret .none
   | .rcd _ => Fu.ret .none
 
-def funPartF {s : Sig} (Γ : Ctx s) : Nat → Ty s → Fu (FunPart s)
-  | 0, G => funPartTy Γ (fun _ => markAs .none) G
-  | d + 1, G => funPartTy Γ (funPartF Γ d) G
+def funPartF (K : List Label) {s : Sig} (Γ : Ctx s) : Nat → Ty s → Fu (FunPart s)
+  | 0, G => funPartTy K Γ (fun _ => markAs .none) G
+  | d + 1, G => funPartTy K Γ (funPartF K Γ d) G
 
-def funPartAt {s : Sig} (Γ : Ctx s) (G : Ty s) : Fu (FunPart s) := fun t => funPartF Γ t.left G t
+def funPartAt (K : List Label) {s : Sig} (Γ : Ctx s) (G : Ty s) : Fu (FunPart s) := fun t => funPartF K Γ t.left G t
 
 /-! ## The goal of a call argument -/
 
@@ -377,23 +413,23 @@ def formalsF {s : Sig} (Γ : Ctx s) (f : Path s) : Fu (List (Ty s)) :=
     | .all S _ => some S
     | _ => none)
 
-def allBelowF {s : Sig} (Γ : Ctx s) (F : Ty s) : List (Ty s) → Fu Bool
+def allBelowF (K : List Label) {s : Sig} (Γ : Ctx s) (F : Ty s) : List (Ty s) → Fu Bool
   | [] => Fu.ret true
   | F' :: Fs =>
-      if F' = F then allBelowF Γ F Fs
+      if F' = F then allBelowF K Γ F Fs
       else
-        Fu.bind (subF Γ F' F) fun o =>
+        Fu.bind (subF K Γ F' F) fun o =>
           match o with
-          | some _ => allBelowF Γ F Fs
+          | some _ => allBelowF K Γ F Fs
           | none => Fu.ret false
 
-def dominantF {s : Sig} (Γ : Ctx s) (Fs : List (Ty s)) : List (Ty s) → Fu (Option (Ty s))
+def dominantF (K : List Label) {s : Sig} (Γ : Ctx s) (Fs : List (Ty s)) : List (Ty s) → Fu (Option (Ty s))
   | [] => Fu.ret none
   | F :: rest =>
-      Fu.bind (allBelowF Γ F Fs) fun b => if b then Fu.ret (some F) else dominantF Γ Fs rest
+      Fu.bind (allBelowF K Γ F Fs) fun b => if b then Fu.ret (some F) else dominantF K Γ Fs rest
 
-def argGoalF {s : Sig} (Γ : Ctx s) (f : Path s) : Fu (Option (Ty s)) :=
-  Fu.bind (formalsF Γ f) fun Fs => dominantF Γ Fs Fs
+def argGoalF (K : List Label) {s : Sig} (Γ : Ctx s) (f : Path s) : Fu (Option (Ty s)) :=
+  Fu.bind (formalsF Γ f) fun Fs => dominantF K Γ Fs Fs
 
 /-- The callee `f` of a body `f z`, `z` the lambda's parameter, `f` free of it. -/
 def calleeOf? {s : Sig} : PTm (s,x) → Option (Path s)
@@ -401,7 +437,7 @@ def calleeOf? {s : Sig} : PTm (s,x) → Option (Path s)
   | _ => none
 
 /-- The callee of a call argument `let z = t in f z`, the `let` resolution inserts. -/
-def argCallee? {s : Sig} : LetTag → Option (Ty s) → PTm (s,x) → Option (Path s)
+def argCallee? {s : Sig} : LetTag s → Option (Ty s) → PTm (s,x) → Option (Path s)
   | .arg, none, .app f (.var .here) => Nominal.FCn.Path.unweaken f
   | _, _, _ => none
 
@@ -414,49 +450,51 @@ theorem PTm.fills_lam' {s : Sig} {o : Option (Ty s)} {t : PTm (s,x)} {S : Ty s} 
 theorem slotAgrees_some {α : Type} [DecidableEq α] (x : α) : slotAgrees (some x) x = true := by
   simp [slotAgrees]
 
-theorem PTm.fills_let' {s : Sig} {g : LetTag} {o : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
+theorem PTm.fills_let' {s : Sig} {g : LetTag s} {o : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
     {a : ATm s} {b : ATm (s,x)} (ht : t.fills a = true) (hu : u.fills b = true) :
     (PTm.«let» g o t u).fills (.«let» g o a b) = true := by
   simp [PTm.fills, ht, hu]
 
-def lamCands {s : Sig} {Γ : Ctx s} {o : Option (Ty s)} {t : PTm (s,x)} (S : Ty s)
-    (ho : slotAgrees o S = true) (r : ESynth (Γ.cons S) t) : ESynth Γ (.lam o t) :=
-  (r.1.map fun c => ⟨.lam S c.a, .all S c.ty, .alam c.ann, PTm.fills_lam' ho c.fills⟩, r.2)
+def lamCands {K : List Label} {s : Sig} {Γ : Ctx s} {o : Option (Ty s)} {t : PTm (s,x)} (S : Ty s)
+    (ho : slotAgrees o S = true) (r : ESynth K (Γ.cons S) t) : ESynth K Γ (.lam o t) :=
+  (r.1.map fun c =>
+    ⟨.lam S c.a, .all S c.ty, .alam c.ann, PTm.fills_lam' ho c.fills, by exact c.nom, by exact c.ss, by exact trivial⟩, r.2)
 
 
 section Clauses
-variable (md : Mode) (ms : List (List Label))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
 
 def lamGoalF {s : Sig} (Γ : Ctx s) {o : Option (Ty s)} {t : PTm (s,x)} (S : Ty s) (V : Ty (s,x))
-    (G : Ty s) (ho : slotAgrees o S = true) (chk : Fu (ECheck (Γ.cons S) t V))
-    (syn : Unit → Fu (ESynth (Γ.cons S) t)) : Fu (ECheck Γ (.lam o t) G) :=
+    (G : Ty s) (ho : slotAgrees o S = true) (chk : Fu (ECheck K (Γ.cons S) t V))
+    (syn : Unit → Fu (ESynth K (Γ.cons S) t)) : Fu (ECheck K Γ (.lam o t) G) :=
   orElseW Option.isSome
     (Fu.bind chk fun r =>
       match r.1 with
-      | some e => toGoalE Γ G ⟨.lam S e.a, .all S V, .alam e.ann, PTm.fills_lam' ho e.fills⟩
+      | some e => toGoalE K Γ G
+          ⟨.lam S e.a, .all S V, .alam e.ann, PTm.fills_lam' ho e.fills, by exact e.nom, by exact e.ss, by exact trivial⟩
       | none => Fu.ret (none, r.2))
-    (fun _ => Fu.bind (syn ()) fun r => subsumeE Γ G (lamCands S ho r))
+    (fun _ => Fu.bind (syn ()) fun r => subsumeE K Γ G (lamCands S ho r))
 
-def lamCalleeSynF {s : Sig} (Γ : Ctx s) (t : PTm (s,x)) : Fu (ESynth Γ (.lam none t)) :=
+def lamCalleeSynF {s : Sig} (Γ : Ctx s) (t : PTm (s,x)) : Fu (ESynth K Γ (.lam none t)) :=
   match calleeOf? t with
   | some f =>
-      Fu.bind (argGoalF Γ f) fun oS =>
+      Fu.bind (argGoalF K Γ f) fun oS =>
         match oS with
         | some S =>
             match ht : t.full? with
-            | some b => fullSynthAt md ms Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht))
+            | some b => fullSynthAt md ms K Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht))
             | none => Fu.ret ([], [.missingParamType none])
         | none => Fu.ret ([], [.missingParamType none])
   | none => Fu.ret ([], [.missingParamType none])
 
-def lamCalleeChkF {s : Sig} (Γ : Ctx s) (G : Ty s) (t : PTm (s,x)) : Fu (ECheck Γ (.lam none t) G) :=
+def lamCalleeChkF {s : Sig} (Γ : Ctx s) (G : Ty s) (t : PTm (s,x)) : Fu (ECheck K Γ (.lam none t) G) :=
   match calleeOf? t with
   | some f =>
-      Fu.bind (argGoalF Γ f) fun oS =>
+      Fu.bind (argGoalF K Γ f) fun oS =>
         match oS with
         | some S =>
             match ht : t.full? with
-            | some b => fullCheckAt md ms Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht)) G
+            | some b => fullCheckAt md ms K Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht)) G
             | none => Fu.ret (none, [.missingParamType none])
         | none => Fu.ret (none, [.missingParamType none])
   | none => Fu.ret (none, [.missingParamType none])
@@ -465,17 +503,19 @@ def lamCalleeChkF {s : Sig} (Γ : Ctx s) (G : Ty s) (t : PTm (s,x)) : Fu (ECheck
 /-! ## `let` -/
 
 /-- The binder of an untyped `let`: the first candidate, widened as the typer's `binderC`. -/
-def binderE {s : Sig} {Γ : Ctx s} {p : PTm s} (g : LetTag) : List (ECand Γ p) → Fu (Option (ECand Γ p))
+def binderE {s : Sig} {Γ : Ctx s} {p : PTm s} (g : LetTag s) : List (ECandK K Γ p) → Fu (Option (ECandK K Γ p))
   | [] => Fu.ret none
-  | c :: _ => Fu.bind (binderC md ms g [(⟨c.ty, c.ann⟩ : Cand Γ c.a)]) fun o =>
-      Fu.ret (o.map fun c' => ⟨c.a, c'.ty, c'.deriv, c.fills⟩)
+  | c :: _ => Fu.bind (binderC md ms g [(⟨c.ty, c.ann, c.nom, c.ss, c.vw⟩ : Cand K [] none Γ c.a)]) fun o =>
+      Fu.ret (o.map fun c' => ⟨c.a, c'.ty, c'.deriv, c.fills, c'.nom, c'.ss, c'.vw⟩)
 
-def avoidE {s : Sig} {Γ : Ctx s} {g : LetTag} {W : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
+def avoidE {s : Sig} {Γ : Ctx s} {g : LetTag s} {W : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
     {a : ATm s} {V : Ty s} (ht : t.fills a = true)
-    (mk : {U : Ty s} → {b : ATm (s,x)} → AHasTy (Γ.cons V) b U.weaken → AHasTy Γ (.«let» g W a b) U)
-    (c : ECand (Γ.cons V) u) : Fu (List (ECand Γ (.«let» g W t u))) :=
-  Fu.bind (avoidLet Γ V c.ty) fun
-    | some r => Fu.ret [⟨.«let» g W a c.a, r.1, mk (.asub c.ann r.2), PTm.fills_let' ht c.fills⟩]
+    (mk : {U : Ty s} → {b : ATm (s,x)} → CHasTy K [] none (Γ.cons V) b U.weaken → CHasTy K [] none Γ (.«let» g W a b) U)
+    (c : ECandK K (Γ.cons V) u) : Fu (List (ECandK K Γ (.«let» g W t u))) :=
+  Fu.bind (avoidLet K Γ V c.ty) fun
+    | some r =>
+        let D := mk (CHasTy.asub ⟨c.ann, c.nom, c.ss⟩ r.2)
+        Fu.ret [⟨.«let» g W a c.a, r.1, D.d, PTm.fills_let' ht c.fills, D.nom, D.ss, trivial⟩]
     | none => Fu.ret []
 
 end Clauses
@@ -483,39 +523,40 @@ end Clauses
 /-! ## The untyped `let` -/
 
 section Lets
-variable (md : Mode) (ms : List (List Label))
-variable (syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth Γ p))
-variable (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
+variable (syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth K Γ p))
+variable (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G))
 
 /-- An untyped `let` synthesized: the binder is the first candidate of the bound term, widened as
 the typer's `binderC`, and every candidate of the body is avoided. -/
-def letNoneSynF {s : Sig} (Γ : Ctx s) (g : LetTag) (t : PTm s) (u : PTm (s,x)) :
-    Fu (ESynth Γ (.«let» g none t u)) :=
+def letNoneSynF {s : Sig} (Γ : Ctx s) (g : LetTag s) (hg : g.self = none) (t : PTm s) (u : PTm (s,x)) :
+    Fu (ESynth K Γ (.«let» g none t u)) :=
   Fu.bind (syn Γ t) fun r1 =>
-    Fu.bind (binderE md ms g r1.1) fun o =>
+    Fu.bind (binderE md ms K g r1.1) fun o =>
       match o with
       | none => Fu.ret ([], r1.2)
       | some c1 =>
           Fu.bind (syn (Γ.cons c1.ty) u) fun r2 =>
-            Fu.bind (Fu.flatMapL (avoidE c1.fills (fun d => .aletN c1.ann d)) r2.1) fun cs =>
+            Fu.bind (Fu.flatMapL (avoidE K c1.fills (fun d => CHasTy.aletN0 hg c1.toC d)) r2.1) fun cs =>
               Fu.ret (dedupE cs, r1.2 ++ r2.2)
 
 /-- An untyped `let` checked at `G`: the body checked at `G` under the binder, else synthesized,
 avoided and subsumed, as the typer's `checkN`. -/
-def letNoneChkF {s : Sig} (Γ : Ctx s) (g : LetTag) (t : PTm s) (u : PTm (s,x)) (G : Ty s) :
-    Fu (ECheck Γ (.«let» g none t u) G) :=
+def letNoneChkF {s : Sig} (Γ : Ctx s) (g : LetTag s) (hg : g.self = none) (t : PTm s) (u : PTm (s,x)) (G : Ty s) :
+    Fu (ECheck K Γ (.«let» g none t u) G) :=
   Fu.bind (syn Γ t) fun r1 =>
-    Fu.bind (binderE md ms g r1.1) fun o =>
+    Fu.bind (binderE md ms K g r1.1) fun o =>
       match o with
       | none => Fu.ret (none, r1.2)
       | some c1 =>
           orElseW Option.isSome
             (Fu.bind (chk (Γ.cons c1.ty) u G.weaken) fun r2 =>
-              Fu.ret (r2.1.map (fun e2 => ⟨.«let» g none c1.a e2.a, .aletN c1.ann e2.ann,
-                PTm.fills_let' c1.fills e2.fills⟩), r1.2 ++ r2.2))
+              Fu.ret (r2.1.map (fun e2 =>
+                let D := CHasTy.aletN0 hg c1.toC e2.toC
+                ⟨.«let» g none c1.a e2.a, D.d, PTm.fills_let' c1.fills e2.fills, D.nom, D.ss⟩), r1.2 ++ r2.2))
             (fun _ => Fu.bind (syn (Γ.cons c1.ty) u) fun r2 =>
-              Fu.bind (Fu.flatMapL (avoidE c1.fills (fun d => .aletN c1.ann d)) r2.1) fun cs =>
-                subsumeE Γ G (dedupE cs, r2.2))
+              Fu.bind (Fu.flatMapL (avoidE K c1.fills (fun d => CHasTy.aletN0 hg c1.toC d)) r2.1) fun cs =>
+                subsumeE K Γ G (dedupE cs, r2.2))
 
 end Lets
 
@@ -575,40 +616,40 @@ end CombinatorFrames
 /-! ## Frame facts of the slot 1 functions -/
 
 section Frames1
-variable (md : Mode) (ms : List (List Label))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
 
-theorem toGoalE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (c : ECand Γ p) :
-    Framed (toGoalE Γ G c) := by
+theorem toGoalE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (c : ECandK K Γ p) :
+    Framed (toGoalE K Γ G c) := by
   unfold toGoalE
   split
   · exact ret_framed _
-  · exact bind_framed (subF_framed _ _ _) fun _ => ret_framed _
+  · exact bind_framed (subF_framed _ _ _ _) fun _ => ret_framed _
 
-theorem subsumeE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth Γ p) :
-    Framed (subsumeE Γ G r) :=
-  bind_framed (firstSomeR_framed (toGoalE_framed Γ G) r.1) fun _ => ret_framed _
+theorem subsumeE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth K Γ p) :
+    Framed (subsumeE K Γ G r) :=
+  bind_framed (firstSomeR_framed (toGoalE_framed K Γ G) r.1) fun _ => ret_framed _
 
-theorem subsumeLit_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth Γ p) :
-    Framed (subsumeLit Γ G r) :=
-  bind_framed (firstSomeR_framed (toGoalE_framed Γ G) r.1) fun _ => ret_framed _
+theorem subsumeLit_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (G : Ty s) (r : ESynth K Γ p) :
+    Framed (subsumeLit K Γ G r) :=
+  bind_framed (firstSomeR_framed (toGoalE_framed K Γ G) r.1) fun _ => ret_framed _
 
 theorem fullSynthAt_framed {s : Sig} (Γ : Ctx s) (p : PTm s) (a : ATm s) (h : p.fills a = true) :
-    Framed (fullSynthAt md ms Γ p a h) :=
-  bind_framed (synthF_framed md ms Γ a) fun _ => ret_framed _
+    Framed (fullSynthAt md ms K Γ p a h) :=
+  bind_framed (synthF_framed md ms K [] none Γ a) fun _ => ret_framed _
 
 theorem fullCheckAt_framed {s : Sig} (Γ : Ctx s) (p : PTm s) (a : ATm s) (h : p.fills a = true)
-    (G : Ty s) : Framed (fullCheckAt md ms Γ p a h G) :=
-  bind_framed (checkF_framed md ms Γ a G) fun _ => ret_framed _
+    (G : Ty s) : Framed (fullCheckAt md ms K Γ p a h G) :=
+  bind_framed (checkF_framed md ms K [] none Γ a G) fun _ => ret_framed _
 
 /-! ## Frame facts of the goal readers -/
 
-theorem meetPart_framed {s : Sig} (Γ : Ctx s) (f1 f2 : FunPart s) : Framed (meetPart Γ f1 f2) := by
+theorem meetPart_framed {s : Sig} (Γ : Ctx s) (f1 f2 : FunPart s) : Framed (meetPart K Γ f1 f2) := by
   cases f1 <;> cases f2 <;> simp only [meetPart] <;> try exact ret_framed _
-  refine bind_framed (subF_framed _ _ _) fun o2 => ?_
+  refine bind_framed (subF_framed _ _ _ _) fun o2 => ?_
   cases o2 with
   | some _ => exact ret_framed _
   | none =>
-    refine bind_framed (subF_framed _ _ _) fun o1 => ?_
+    refine bind_framed (subF_framed _ _ _ _) fun o1 => ?_
     cases o1 with
     | some _ => exact ret_framed _
     | none => exact ret_framed _
@@ -624,11 +665,11 @@ theorem firstPart_agree {s : Sig} {rec rec' : Ty s → Fu (FunPart s)}
     | bad => exact ret_agree _
 
 theorem funPartTy_agree {s : Sig} (Γ : Ctx s) {rec rec' : Ty s → Fu (FunPart s)}
-    (hr : ∀ T, Agree (rec T) (rec' T)) : ∀ G, Agree (funPartTy Γ rec G) (funPartTy Γ rec' G)
+    (hr : ∀ T, Agree (rec T) (rec' T)) : ∀ G, Agree (funPartTy K Γ rec G) (funPartTy K Γ rec' G)
   | .all _ _ => ret_agree _
   | .and G1 G2 =>
     bind_agree (funPartTy_agree Γ hr G1) fun _ =>
-      bind_agree (funPartTy_agree Γ hr G2) fun _ => Agree.refl (meetPart_framed _ _ _)
+      bind_agree (funPartTy_agree Γ hr G2) fun _ => Agree.refl (meetPart_framed _ _ _ _)
   | .sel q A => bind_agree (Agree.refl (bounds_framed _ _ _)) fun _ => firstPart_agree hr _
   | .sngl q => bind_agree (Agree.refl (views_framed _ _)) fun _ => firstPart_agree hr _
   | .mu T => by
@@ -640,120 +681,120 @@ theorem funPartTy_agree {s : Sig} (Γ : Ctx s) {rec rec' : Ty s → Fu (FunPart 
   | .bot => ret_agree _
   | .rcd _ => ret_agree _
 
-theorem funPartF_framed {s : Sig} (Γ : Ctx s) : ∀ d G, Framed (funPartF Γ d G)
-  | 0, G => (funPartTy_agree Γ (fun _ => Agree.refl (markAs_framed _)) G).left
-  | d + 1, G => (funPartTy_agree Γ (fun T => Agree.refl (funPartF_framed Γ d T)) G).left
+theorem funPartF_framed {s : Sig} (Γ : Ctx s) : ∀ d G, Framed (funPartF K Γ d G)
+  | 0, G => (funPartTy_agree K Γ (fun _ => Agree.refl (markAs_framed _)) G).left
+  | d + 1, G => (funPartTy_agree K Γ (fun T => Agree.refl (funPartF_framed Γ d T)) G).left
 
 theorem funPartF_agree {s : Sig} (Γ : Ctx s) :
-    ∀ d d', d ≤ d' → ∀ G, Agree (funPartF Γ d G) (funPartF Γ d' G)
+    ∀ d d', d ≤ d' → ∀ G, Agree (funPartF K Γ d G) (funPartF K Γ d' G)
   | 0, d', _, G => by
     cases d' with
-    | zero => exact Agree.refl (funPartF_framed Γ 0 G)
-    | succ e => exact funPartTy_agree Γ (fun T => markAs_agree _ (funPartF_framed Γ e T)) G
+    | zero => exact Agree.refl (funPartF_framed K Γ 0 G)
+    | succ e => exact funPartTy_agree K Γ (fun T => markAs_agree _ (funPartF_framed K Γ e T)) G
   | d + 1, d', hd, G => by
     obtain ⟨e, rfl⟩ : ∃ e, d' = e + 1 := ⟨d' - 1, by omega⟩
-    exact funPartTy_agree Γ (fun T => funPartF_agree Γ d e (by omega) T) G
+    exact funPartTy_agree K Γ (fun T => funPartF_agree Γ d e (by omega) T) G
 
-theorem funPartAt_framed {s : Sig} (Γ : Ctx s) (G : Ty s) : Framed (funPartAt Γ G) :=
-  atLeft_framed (c := fun d => funPartF Γ d G) fun d d' h => funPartF_agree Γ d d' h G
+theorem funPartAt_framed {s : Sig} (Γ : Ctx s) (G : Ty s) : Framed (funPartAt K Γ G) :=
+  atLeft_framed (c := fun d => funPartF K Γ d G) fun d d' h => funPartF_agree K Γ d d' h G
 
 theorem formalsF_framed {s : Sig} (Γ : Ctx s) (f : Path s) : Framed (formalsF Γ f) :=
   bind_framed (views_framed _ _) fun _ => ret_framed _
 
-theorem allBelowF_framed' {s : Sig} (Γ : Ctx s) (F : Ty s) : ∀ Fs, Framed (allBelowF Γ F Fs)
+theorem allBelowF_framed' {s : Sig} (Γ : Ctx s) (F : Ty s) : ∀ Fs, Framed (allBelowF K Γ F Fs)
   | [] => ret_framed _
   | F' :: Fs => by
     unfold allBelowF
     split
     · exact allBelowF_framed' Γ F Fs
-    · refine bind_framed (subF_framed _ _ _) fun o => ?_
+    · refine bind_framed (subF_framed _ _ _ _) fun o => ?_
       cases o with
       | some _ => exact allBelowF_framed' Γ F Fs
       | none => exact ret_framed _
 
 theorem dominantF_framed {s : Sig} (Γ : Ctx s) (Fs : List (Ty s)) :
-    ∀ cands, Framed (dominantF Γ Fs cands)
+    ∀ cands, Framed (dominantF K Γ Fs cands)
   | [] => ret_framed _
   | F :: rest => by
-    refine bind_framed (allBelowF_framed' Γ F Fs) fun b => ?_
+    refine bind_framed (allBelowF_framed' K Γ F Fs) fun b => ?_
     cases b with
     | true => exact ret_framed _
     | false => exact dominantF_framed Γ Fs rest
 
-theorem argGoalF_framed {s : Sig} (Γ : Ctx s) (f : Path s) : Framed (argGoalF Γ f) :=
-  bind_framed (formalsF_framed Γ f) fun Fs => dominantF_framed Γ Fs Fs
+theorem argGoalF_framed {s : Sig} (Γ : Ctx s) (f : Path s) : Framed (argGoalF K Γ f) :=
+  bind_framed (formalsF_framed Γ f) fun Fs => dominantF_framed K Γ Fs Fs
 
 theorem lamGoalF_framed {s : Sig} (Γ : Ctx s) {o : Option (Ty s)} {t : PTm (s,x)} (S : Ty s) (V : Ty (s,x))
-    (G : Ty s) (ho : slotAgrees o S = true) {chk : Fu (ECheck (Γ.cons S) t V)}
-    {syn : Unit → Fu (ESynth (Γ.cons S) t)} (hc : Framed chk) (hs : Framed (syn ())) :
-    Framed (lamGoalF Γ S V G ho chk syn) :=
+    (G : Ty s) (ho : slotAgrees o S = true) {chk : Fu (ECheck K (Γ.cons S) t V)}
+    {syn : Unit → Fu (ESynth K (Γ.cons S) t)} (hc : Framed chk) (hs : Framed (syn ())) :
+    Framed (lamGoalF K Γ S V G ho chk syn) :=
   orElseW_framed (bind_framed hc fun r => by
       split
-      · exact toGoalE_framed _ _ _
+      · exact toGoalE_framed _ _ _ _
       · exact ret_framed _)
-    (bind_framed hs fun _ => subsumeE_framed _ _ _)
+    (bind_framed hs fun _ => subsumeE_framed _ _ _ _)
 
-theorem lamCalleeSynF_framed {s : Sig} (Γ : Ctx s) (t : PTm (s,x)) : Framed (lamCalleeSynF md ms Γ t) := by
+theorem lamCalleeSynF_framed {s : Sig} (Γ : Ctx s) (t : PTm (s,x)) : Framed (lamCalleeSynF md ms K Γ t) := by
   unfold lamCalleeSynF
   split
-  · refine bind_framed (argGoalF_framed _ _) fun oS => ?_
+  · refine bind_framed (argGoalF_framed _ _ _) fun oS => ?_
     split
     · split
-      · exact fullSynthAt_framed md ms _ _ _ _
+      · exact fullSynthAt_framed md ms K _ _ _ _
       · exact ret_framed _
     · exact ret_framed _
   · exact ret_framed _
 
 theorem lamCalleeChkF_framed {s : Sig} (Γ : Ctx s) (G : Ty s) (t : PTm (s,x)) :
-    Framed (lamCalleeChkF md ms Γ G t) := by
+    Framed (lamCalleeChkF md ms K Γ G t) := by
   unfold lamCalleeChkF
   split
-  · refine bind_framed (argGoalF_framed _ _) fun oS => ?_
+  · refine bind_framed (argGoalF_framed _ _ _) fun oS => ?_
     split
     · split
-      · exact fullCheckAt_framed md ms _ _ _ _ _
+      · exact fullCheckAt_framed md ms K _ _ _ _ _
       · exact ret_framed _
     · exact ret_framed _
   · exact ret_framed _
 
-theorem binderE_framed {s : Sig} {Γ : Ctx s} {p : PTm s} (g : LetTag) :
-    ∀ cs : List (ECand Γ p), Framed (binderE md ms g cs)
+theorem binderE_framed {s : Sig} {Γ : Ctx s} {p : PTm s} (g : LetTag s) :
+    ∀ cs : List (ECandK K Γ p), Framed (binderE md ms K g cs)
   | [] => ret_framed _
   | c :: _ => by
     unfold binderE
     exact bind_framed (binderC_framed md ms g _) fun _ => ret_framed _
 
-theorem avoidE_framed {s : Sig} {Γ : Ctx s} {g : LetTag} {W : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
+theorem avoidE_framed {s : Sig} {Γ : Ctx s} {g : LetTag s} {W : Option (Ty s)} {t : PTm s} {u : PTm (s,x)}
     {a : ATm s} {V : Ty s} (ht : t.fills a = true)
-    (mk : {U : Ty s} → {b : ATm (s,x)} → AHasTy (Γ.cons V) b U.weaken → AHasTy Γ (.«let» g W a b) U)
-    (c : ECand (Γ.cons V) u) : Framed (avoidE ht mk c) :=
-  bind_framed (avoidLet_framed _ _ _) fun o => by
+    (mk : {U : Ty s} → {b : ATm (s,x)} → CHasTy K [] none (Γ.cons V) b U.weaken → CHasTy K [] none Γ (.«let» g W a b) U)
+    (c : ECandK K (Γ.cons V) u) : Framed (avoidE K ht mk c) :=
+  bind_framed (avoidLet_framed _ _ _ _) fun o => by
     cases o
     · exact ret_framed _
     · exact ret_framed _
 
-theorem letNoneSynF_framed {syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth Γ p)}
-    (hs : ∀ {s : Sig} (Γ : Ctx s) p, Framed (syn Γ p)) {s : Sig} (Γ : Ctx s) (g : LetTag) (t : PTm s)
-    (u : PTm (s,x)) : Framed (letNoneSynF md ms syn Γ g t u) := by
-  refine bind_framed (hs _ _) fun r1 => bind_framed (binderE_framed md ms g _) fun o => ?_
+theorem letNoneSynF_framed {syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth K Γ p)}
+    (hs : ∀ {s : Sig} (Γ : Ctx s) p, Framed (syn Γ p)) {s : Sig} (Γ : Ctx s) (g : LetTag s) (hg : g.self = none)
+    (t : PTm s) (u : PTm (s,x)) : Framed (letNoneSynF md ms K syn Γ g hg t u) := by
+  refine bind_framed (hs _ _) fun r1 => bind_framed (binderE_framed md ms K g _) fun o => ?_
   cases o with
   | none => exact ret_framed _
   | some c1 =>
     exact bind_framed (hs _ _) fun r2 =>
-      bind_framed (flatMapL_framed (avoidE_framed _ _) _) fun _ => ret_framed _
+      bind_framed (flatMapL_framed (avoidE_framed _ _ _) _) fun _ => ret_framed _
 
-theorem letNoneChkF_framed {syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth Γ p)}
-    {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G)}
+theorem letNoneChkF_framed {syn : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Fu (ESynth K Γ p)}
+    {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G)}
     (hs : ∀ {s : Sig} (Γ : Ctx s) p, Framed (syn Γ p)) (hc : ∀ {s : Sig} (Γ : Ctx s) p G, Framed (chk Γ p G))
-    {s : Sig} (Γ : Ctx s) (g : LetTag) (t : PTm s) (u : PTm (s,x)) (G : Ty s) :
-    Framed (letNoneChkF md ms syn chk Γ g t u G) := by
-  refine bind_framed (hs _ _) fun r1 => bind_framed (binderE_framed md ms g _) fun o => ?_
+    {s : Sig} (Γ : Ctx s) (g : LetTag s) (hg : g.self = none) (t : PTm s) (u : PTm (s,x)) (G : Ty s) :
+    Framed (letNoneChkF md ms K syn chk Γ g hg t u G) := by
+  refine bind_framed (hs _ _) fun r1 => bind_framed (binderE_framed md ms K g _) fun o => ?_
   cases o with
   | none => exact ret_framed _
   | some c1 =>
     exact orElseW_framed (bind_framed (hc _ _ _) fun _ => ret_framed _)
       (bind_framed (hs _ _) fun r2 =>
-        bind_framed (flatMapL_framed (avoidE_framed _ _) _) fun _ => subsumeE_framed _ _ _)
+        bind_framed (flatMapL_framed (avoidE_framed _ _ _) _) fun _ => subsumeE_framed _ _ _ _)
 
 end Frames1
 
@@ -766,7 +807,7 @@ private abbrev tb : Label := .trm 1
 private abbrev tF : Label := .typ 0
 
 /-- The function part of a goal, from a full tank. -/
-private def partOf {s : Sig} (Γ : Ctx s) (G : Ty s) : FunPart s := (funPartAt Γ G ⟨defaultFuel, false⟩).1
+private def partOf {s : Sig} (Γ : Ctx s) (G : Ty s) : FunPart s := (funPartAt [] Γ G ⟨defaultFuel, false⟩).1
 
 /-- A function type is its own function part. -/
 example : partOf .nil (.all .top .top) = .one .top .top := by decide +kernel
@@ -793,18 +834,18 @@ example : partOf .nil (.mu (.all .top .top)) = .one .top .top := by decide +kern
 example : partOf .nil .top = .none := by decide +kernel
 
 /-- The dominant formal of `g : ∀(z : {a : ⊤}) ⊤` is its domain. -/
-example : (argGoalF (Ctx.nil.cons (.all (.rcd (.trm ta .top)) .top)) (.var .here) ⟨defaultFuel, false⟩).1 =
+example : (argGoalF [] (Ctx.nil.cons (.all (.rcd (.trm ta .top)) .top)) (.var .here) ⟨defaultFuel, false⟩).1 =
     some (.rcd (.trm ta .top)) := by
   decide +kernel
 
 /-- With no goal, `λx. g x` takes its domain from the callee `g`. -/
-example : ((lamCalleeSynF .dot [] (Ctx.nil.cons (.all (.rcd (.trm ta .top)) .top))
+example : ((lamCalleeSynF .dot [] [] (Ctx.nil.cons (.all (.rcd (.trm ta .top)) .top))
     (.app (.var (.there .here)) (.var .here)) ⟨defaultFuel, false⟩).1.1.map (·.ty)) =
     [.all (.rcd (.trm ta .top)) .top] := by
   decide +kernel
 
 /-- `λx. x` has no goal and no callee. -/
-example : (lamCalleeSynF .dot [] (Ctx.nil : Ctx []) (.path (.var .here)) ⟨defaultFuel, false⟩).1.2 =
+example : (lamCalleeSynF .dot [] [] (Ctx.nil : Ctx []) (.path (.var .here)) ⟨defaultFuel, false⟩).1.2 =
     [.missingParamType none] := by
   decide +kernel
 
@@ -874,6 +915,7 @@ def PTm.deps : {s : Sig} → PTm s → List (Label × List Label) → List (BVar
 termination_by structural _ t => t
 def PDef.deps : {s : Sig} → PDef s → List (Label × List Label) → List (BVar s .var) → List Label × Bool
   | _, .typ _ T, _, vs => (Ty.heads [] T vs, false)
+  | _, .cls _ T, _, vs => (Ty.heads [] T vs, false)
   | _, .path _ q, _, vs => ((Path.headIn q vs).toList, false)
   | _, .lam _ o D t, ms, vs =>
       match t.deps ms (vs.map .there) with
@@ -907,6 +949,7 @@ def PDefs.memberHeads {s : Sig} (d : PDefs s) (v : BVar s .var) : List (Label ×
 
 def PDef.label {s : Sig} : PDef s → Label
   | .typ A _ => A
+  | .cls C _ => C
   | .path a _ => a
   | .lam a _ _ _ => a
   | .new a _ _ => a
@@ -915,6 +958,7 @@ mutual
 /-- The declaration a definition has without typing anything. -/
 def PDef.atOnce? : {s : Sig} → PDef s → Option (Dec s)
   | _, .typ A T => some (.typ A T T)
+  | _, .cls C T => some (.typ C .bot T)
   | _, .path a q => some (.trm a (.sngl q))
   | _, .lam a (some U) _ _ => some (.trm a U)
   | _, .lam _ none _ _ => none
@@ -1072,26 +1116,26 @@ def roundsF {s : Sig} (snap : List (Label × Dec s) → Ty s)
 
 /-! ## The least candidate -/
 
-def leastFromE {s : Sig} (Γ : Ctx s) {p : PTm s} (Ts : List (Ty s)) :
-    List (ECand Γ p) → Fu (Option (ECand Γ p))
+def leastFromE (K : List Label) {s : Sig} (Γ : Ctx s) {p : PTm s} (Ts : List (Ty s)) :
+    List (ECandK K Γ p) → Fu (Option (ECandK K Γ p))
   | [] => Fu.ret none
-  | c :: rest => Fu.bind (belowAllF Γ c.ty Ts) fun b => if b then Fu.ret (some c) else leastFromE Γ Ts rest
+  | c :: rest => Fu.bind (belowAllF K Γ c.ty Ts) fun b => if b then Fu.ret (some c) else leastFromE K Γ Ts rest
 
-def leastE {s : Sig} (Γ : Ctx s) {p : PTm s} (cs : List (ECand Γ p)) : Fu (Option (ECand Γ p)) :=
-  leastFromE Γ (cs.map (·.ty)) cs
+def leastE (K : List Label) {s : Sig} (Γ : Ctx s) {p : PTm s} (cs : List (ECandK K Γ p)) : Fu (Option (ECandK K Γ p)) :=
+  leastFromE K Γ (cs.map (·.ty)) cs
 
 /-! ## Running a job -/
 
 /-- The done lambda field of a least candidate of `.lam oD t`. -/
-def lamDone {s : Sig} {Γ : Ctx s} (a : Label) (oD : Option (Ty s)) (t : PTm (s,x)) :
-    ECand Γ (.lam oD t) → Option (Done s)
-  | ⟨.lam S b, T, _, _⟩ => some ⟨a, .lam a none oD t, .lam a S b, .trm a T⟩
+def lamDone {K : List Label} {s : Sig} {Γ : Ctx s} (a : Label) (oD : Option (Ty s)) (t : PTm (s,x)) :
+    ECandK K Γ (.lam oD t) → Option (Done s)
+  | ⟨.lam S b, T, _, _, _, _, _⟩ => some ⟨a, .lam a none oD t, .lam a S b, .trm a T⟩
   | _ => none
 
 /-- A job against the snapshot `P`: a lambda field by synthesis with the self at `P` and its least
 candidate, a nested literal by forming its self type with the self at `P`. -/
-def runJobF {s : Sig} (Γ : Ctx s)
-    (syn : (Γ' : Ctx (s,x)) → (p : PTm (s,x)) → Fu (ESynth Γ' p))
+def runJobF (K : List Label) {s : Sig} (Γ : Ctx s)
+    (syn : (Γ' : Ctx (s,x)) → (p : PTm (s,x)) → Fu (ESynth K Γ' p))
     (form : (Γ' : Ctx (s,x)) → (es : PDefs ((s,x),x)) → Fu (EForm es))
     (P : Ty (s,x)) (j : Job (s,x)) : Fu (Except (List PReason) (Done (s,x))) :=
   match j.pd with
@@ -1100,7 +1144,7 @@ def runJobF {s : Sig} (Γ : Ctx s)
         match r.1 with
         | [] => Fu.ret (.error r.2)
         | c :: cs =>
-            Fu.bind (leastE (Γ.consSelf P) (c :: cs)) fun o =>
+            Fu.bind (leastE K (Γ.consSelf P) (c :: cs)) fun o =>
               match o with
               | some e =>
                   match lamDone a oD t e with
@@ -1134,7 +1178,7 @@ rounds typed holds what they elaborated.  A lambda field is checked at its decla
 its domain.  A nested literal with a self type has its definitions filled at it, one level down.  A
 nested literal without one has its self type formed by `form`. -/
 mutual
-def defsW (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G))
+def defsW {K : List Label} (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G))
     (form : ∀ {s : Sig}, Ctx s → (es : PDefs (s,x)) → Fu (EForm es)) :
     {s : Sig} → (Γ : Ctx s) → List (Done s) → (ds : PDefs s) → (T : Ty s) → Fu (EDefsR ds T)
   | _, Γ, done, .cons .nil d, .rcd D =>
@@ -1149,10 +1193,11 @@ def defsW (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck �
         | none => Fu.ret (none, r1.2)
   | _, _, _, _, _ => Fu.ret (none, [.mismatch])
 termination_by structural _ _ _ ds => ds
-def defW (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G))
+def defW {K : List Label} (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G))
     (form : ∀ {s : Sig}, Ctx s → (es : PDefs (s,x)) → Fu (EForm es)) :
     {s : Sig} → (Γ : Ctx s) → List (Done s) → (d : PDef s) → (D : Dec s) → Fu (EDefR d (.rcd D))
   | _, _, _, .typ A T, _ => Fu.ret (some ⟨.typ A T, by simp [PDef.fills]⟩, [])
+  | _, _, _, .cls C T, _ => Fu.ret (some ⟨.cls C T, by simp [PDef.fills]⟩, [])
   | _, _, _, .path a q, _ => Fu.ret (some ⟨.path a q, by simp [PDef.fills]⟩, [])
   | _, Γ, done, .lam a o oD t, D =>
       match lookupDone done a with
@@ -1164,7 +1209,7 @@ def defW (chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ
           | .trm c (.all U V) =>
               Fu.bind (chk Γ (.lam oD t) (.all U V)) fun r =>
                 Fu.ret ((r.1.bind fun e => match e with
-                  | ⟨.lam S b, _, h⟩ =>
+                  | ⟨.lam S b, _, h, _, _⟩ =>
                       if h' : (PDef.lam a o oD t).fills (.rcd (.trm c (.all U V))) (.lam a S b) = true
                       then some ⟨.lam a S b, h'⟩ else none
                   | _ => none), r.2)
@@ -1199,20 +1244,20 @@ end
 /-! ## Literals -/
 
 section Literals
-variable (md : Mode) (ms : List (List Label))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
 
-def newSynF {s : Sig} (Γ : Ctx s) (ds : PDefs (s,x)) (form : Fu (EForm ds)) : Fu (ESynth Γ (.new none ds)) :=
+def newSynF {s : Sig} (Γ : Ctx s) (ds : PDefs (s,x)) (form : Fu (EForm ds)) : Fu (ESynth K Γ (.new none ds)) :=
   Fu.bind form fun r =>
     match r with
-    | .ok f => fullSynthAt md ms Γ (.new none ds) (.new f.ty f.defs.defs)
+    | .ok f => fullSynthAt md ms K Γ (.new none ds) (.new f.ty f.defs.defs)
         (by simp [PTm.fills, slotAgrees, f.defs.fills])
     | .error rs => Fu.ret ([], rs)
 
 def newWSynF {s : Sig} (Γ : Ctx s) (T : Ty (s,x)) (ds : PDefs (s,x)) (defs : Fu (EDefsR ds T)) :
-    Fu (ESynth Γ (.new (some T) ds)) :=
+    Fu (ESynth K Γ (.new (some T) ds)) :=
   Fu.bind defs fun r =>
     match r.1 with
-    | some e => fullSynthAt md ms Γ (.new (some T) ds) (.new T e.defs) (by simp [PTm.fills, slotAgrees, e.fills])
+    | some e => fullSynthAt md ms K Γ (.new (some T) ds) (.new T e.defs) (by simp [PTm.fills, slotAgrees, e.fills])
     | none => Fu.ret ([], r.2)
 
 end Literals
@@ -1224,113 +1269,128 @@ calls index `k`.  The entry point starts the index at the size of the term, and 
 part of smaller size, so the index does not run out. -/
 
 mutual
-def elabN (md : Mode) (ms : List (List Label)) : Nat → {s : Sig} → (Γ : Ctx s) → (p : PTm s) →
-    Fu (ESynth Γ p)
+def elabN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : Sig} → (Γ : Ctx s) → (p : PTm s) →
+    Fu (ESynth K Γ p)
   | 0, _, _, _ => markAs ([], [])
   | k + 1, _, Γ, p =>
       match hp : p.full? with
-      | some a => fullSynthAt md ms Γ p a (PTm.fills_of_full? hp)
+      | some a => fullSynthAt md ms K Γ p a (PTm.fills_of_full? hp)
       | none =>
           match p with
           | .lam (some S) t =>
-              Fu.bind (elabN md ms k (Γ.cons S) t) fun r => Fu.ret (lamCands S (slotAgrees_some S) r)
-          | .lam none t => lamCalleeSynF md ms Γ t
+              Fu.bind (elabN md ms K k (Γ.cons S) t) fun r => Fu.ret (lamCands S (slotAgrees_some S) r)
+          | .lam none t => lamCalleeSynF md ms K Γ t
           | .new (some T) ds =>
-              newWSynF md ms Γ T ds (defsW (chkN md ms k) (formN md ms k) (Γ.consSelf T) [] ds T)
-          | .new none ds => newSynF md ms Γ ds (formN md ms k Γ ds)
+              newWSynF md ms K Γ T ds (defsW (chkN md ms K k) (formN md ms K k) (Γ.consSelf T) [] ds T)
+          | .new none ds => newSynF md ms K Γ ds (formN md ms K k Γ ds)
           | .«let» g none t u =>
-              match argCallee? g none u, hu : u.full? with
-              | some f, some b =>
-                  orElseW (fun l => !l.isEmpty)
-                    (Fu.bind (argGoalF Γ f) fun oF =>
-                      match oF with
-                      | some F =>
-                          Fu.bind (chkN md ms k Γ t F) fun r =>
-                            match r.1 with
-                            | some e => fullSynthAt md ms Γ _ (.«let» g none e.a b)
-                                (PTm.fills_let' e.fills (PTm.fills_of_full? hu))
-                            | none => Fu.ret ([], r.2)
-                      | none => Fu.ret ([], []))
-                    (fun _ => letNoneSynF md ms (elabN md ms k) Γ g t u)
-              | _, _ => letNoneSynF md ms (elabN md ms k) Γ g t u
-          | .«let» _ (some W) t u =>
-              Fu.bind (chkN md ms k Γ t W) fun r1 =>
-                match r1.1 with
-                | none => Fu.ret ([], r1.2)
-                | some e1 =>
-                    Fu.bind (elabN md ms k (Γ.cons W) u) fun r2 =>
-                      Fu.bind (Fu.flatMapL (avoidE e1.fills (fun d => .aletS e1.ann d)) r2.1) fun cs =>
-                        Fu.ret (dedupE cs, r1.2 ++ r2.2)
+              match hg : g.self with
+              | some _ => Fu.ret ([], [.mismatch])
+              | none =>
+                  match argCallee? g none u, hu : u.full? with
+                  | some f, some b =>
+                      orElseW (fun l => !l.isEmpty)
+                        (Fu.bind (argGoalF K Γ f) fun oF =>
+                          match oF with
+                          | some F =>
+                              Fu.bind (chkN md ms K k Γ t F) fun r =>
+                                match r.1 with
+                                | some e => fullSynthAt md ms K Γ _ (.«let» g none e.a b)
+                                    (PTm.fills_let' e.fills (PTm.fills_of_full? hu))
+                                | none => Fu.ret ([], r.2)
+                          | none => Fu.ret ([], []))
+                        (fun _ => letNoneSynF md ms K (elabN md ms K k) Γ g hg t u)
+                  | _, _ => letNoneSynF md ms K (elabN md ms K k) Γ g hg t u
+          | .«let» g (some W) t u =>
+              match hg : g.self with
+              | some _ => Fu.ret ([], [.mismatch])
+              | none =>
+                  Fu.bind (chkN md ms K k Γ t W) fun r1 =>
+                    match r1.1 with
+                    | none => Fu.ret ([], r1.2)
+                    | some e1 =>
+                        Fu.bind (elabN md ms K k (Γ.cons W) u) fun r2 =>
+                          Fu.bind (Fu.flatMapL (avoidE K e1.fills (fun d => CHasTy.aletS0 hg e1.toC d)) r2.1) fun cs =>
+                            Fu.ret (dedupE cs, r1.2 ++ r2.2)
           | .path _ => Fu.ret ([], [.mismatch])
           | .app _ _ => Fu.ret ([], [.mismatch])
 termination_by structural k => k
-def chkN (md : Mode) (ms : List (List Label)) : Nat → {s : Sig} → (Γ : Ctx s) → (p : PTm s) → (G : Ty s) →
-    Fu (ECheck Γ p G)
+def chkN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : Sig} → (Γ : Ctx s) → (p : PTm s) →
+    (G : Ty s) → Fu (ECheck K Γ p G)
   | 0, _, _, _, _ => markAs (none, [])
   | k + 1, _, Γ, p, G =>
       match hp : p.full? with
-      | some a => fullCheckAt md ms Γ p a (PTm.fills_of_full? hp) G
+      | some a => fullCheckAt md ms K Γ p a (PTm.fills_of_full? hp) G
       | none =>
           match p with
           | .lam none t =>
-              Fu.bind (funPartAt Γ G) fun fp =>
+              Fu.bind (funPartAt K Γ G) fun fp =>
                 match fp with
                 | .one S V =>
                     match ht : t.full? with
-                    | some b => fullCheckAt md ms Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht)) G
-                    | none => lamGoalF Γ S V G rfl (chkN md ms k (Γ.cons S) t V) (fun _ => elabN md ms k (Γ.cons S) t)
-                | .none => lamCalleeChkF md ms Γ G t
+                    | some b => fullCheckAt md ms K Γ _ (.lam S b) (PTm.fills_lam' rfl (PTm.fills_of_full? ht)) G
+                    | none => lamGoalF K Γ S V G rfl (chkN md ms K k (Γ.cons S) t V) (fun _ => elabN md ms K k (Γ.cons S) t)
+                | .none => lamCalleeChkF md ms K Γ G t
                 | .bad => Fu.ret (none, [.mismatch])
           | .lam (some S) t =>
-              Fu.bind (funPartAt Γ G) fun fp =>
+              Fu.bind (funPartAt K Γ G) fun fp =>
                 match fp with
                 | .one _ V =>
-                    lamGoalF Γ S V G (slotAgrees_some S) (chkN md ms k (Γ.cons S) t V)
-                      (fun _ => elabN md ms k (Γ.cons S) t)
-                | _ => Fu.bind (elabN md ms k (Γ.cons S) t) fun r => subsumeE Γ G (lamCands S (slotAgrees_some S) r)
+                    lamGoalF K Γ S V G (slotAgrees_some S) (chkN md ms K k (Γ.cons S) t V)
+                      (fun _ => elabN md ms K k (Γ.cons S) t)
+                | _ => Fu.bind (elabN md ms K k (Γ.cons S) t) fun r =>
+                    subsumeE K Γ G (lamCands S (slotAgrees_some S) r)
           | .new (some T) ds =>
-              Fu.bind (newWSynF md ms Γ T ds (defsW (chkN md ms k) (formN md ms k) (Γ.consSelf T) [] ds T))
-                (subsumeLit Γ G)
-          | .new none ds => Fu.bind (newSynF md ms Γ ds (formN md ms k Γ ds)) (subsumeLit Γ G)
+              Fu.bind (newWSynF md ms K Γ T ds (defsW (chkN md ms K k) (formN md ms K k) (Γ.consSelf T) [] ds T))
+                (subsumeLit K Γ G)
+          | .new none ds => Fu.bind (newSynF md ms K Γ ds (formN md ms K k Γ ds)) (subsumeLit K Γ G)
           | .«let» g none t u =>
-              match argCallee? g none u, hu : u.full? with
-              | some f, some b =>
-                  orElseW Option.isSome
-                    (Fu.bind (argGoalF Γ f) fun oF =>
-                      match oF with
-                      | some F =>
-                          Fu.bind (chkN md ms k Γ t F) fun r =>
-                            match r.1 with
-                            | some e => fullCheckAt md ms Γ _ (.«let» g none e.a b)
-                                (PTm.fills_let' e.fills (PTm.fills_of_full? hu)) G
-                            | none => Fu.ret (none, r.2)
-                      | none => Fu.ret (none, []))
-                    (fun _ => letNoneChkF md ms (elabN md ms k) (chkN md ms k) Γ g t u G)
-              | _, _ => letNoneChkF md ms (elabN md ms k) (chkN md ms k) Γ g t u G
+              match hg : g.self with
+              | some _ => Fu.ret (none, [.mismatch])
+              | none =>
+                  match argCallee? g none u, hu : u.full? with
+                  | some f, some b =>
+                      orElseW Option.isSome
+                        (Fu.bind (argGoalF K Γ f) fun oF =>
+                          match oF with
+                          | some F =>
+                              Fu.bind (chkN md ms K k Γ t F) fun r =>
+                                match r.1 with
+                                | some e => fullCheckAt md ms K Γ _ (.«let» g none e.a b)
+                                    (PTm.fills_let' e.fills (PTm.fills_of_full? hu)) G
+                                | none => Fu.ret (none, r.2)
+                          | none => Fu.ret (none, []))
+                        (fun _ => letNoneChkF md ms K (elabN md ms K k) (chkN md ms K k) Γ g hg t u G)
+                  | _, _ => letNoneChkF md ms K (elabN md ms K k) (chkN md ms K k) Γ g hg t u G
           | .«let» g (some W) t u =>
-              Fu.bind (chkN md ms k Γ t W) fun r1 =>
-                match r1.1 with
-                | none => Fu.ret (none, r1.2)
-                | some e1 =>
-                    Fu.bind (chkN md ms k (Γ.cons W) u G.weaken) fun r2 =>
-                      Fu.ret (r2.1.map (fun e2 => ⟨.«let» g (some W) e1.a e2.a, .aletS e1.ann e2.ann,
-                        PTm.fills_let' e1.fills e2.fills⟩), r1.2 ++ r2.2)
+              match hg : g.self with
+              | some _ => Fu.ret (none, [.mismatch])
+              | none =>
+                  Fu.bind (chkN md ms K k Γ t W) fun r1 =>
+                    match r1.1 with
+                    | none => Fu.ret (none, r1.2)
+                    | some e1 =>
+                        Fu.bind (chkN md ms K k (Γ.cons W) u G.weaken) fun r2 =>
+                          Fu.ret (r2.1.map (fun e2 =>
+                            let D := CHasTy.aletS0 hg e1.toC e2.toC
+                            ⟨.«let» g (some W) e1.a e2.a, D.d, PTm.fills_let' e1.fills e2.fills, D.nom, D.ss⟩),
+                            r1.2 ++ r2.2)
           | .path _ => Fu.ret (none, [.mismatch])
           | .app _ _ => Fu.ret (none, [.mismatch])
 termination_by structural k => k
-def formN (md : Mode) (ms : List (List Label)) : Nat → {s : Sig} → (Γ : Ctx s) → (ds : PDefs (s,x)) →
-    Fu (EForm ds)
+def formN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : Sig} → (Γ : Ctx s) →
+    (ds : PDefs (s,x)) → Fu (EForm ds)
   | 0, _, _, _ => markAs (.error [])
   | k + 1, _, Γ, ds =>
       let js := ds.jobs (ds.memberHeads .here) .here
       Fu.bind (roundsF (fun known => (ds.snapshot known).getD .top)
-          (runJobF Γ (fun Γ' p => elabN md ms k Γ' p) (fun Γ' es => formN md ms k Γ' es))
+          (runJobF K Γ (fun Γ' p => elabN md ms K k Γ' p) (fun Γ' es => formN md ms K k Γ' es))
           (js.length + 1) js []) fun r =>
         match r with
         | .ok done =>
             match ds.formed (Done.known done) with
             | some T =>
-                Fu.bind (defsW (chkN md ms k) (formN md ms k) (Γ.consSelf T) done ds T) fun r' =>
+                Fu.bind (defsW (chkN md ms K k) (formN md ms K k) (Γ.consSelf T) done ds T) fun r' =>
                   match r'.1 with
                   | some e => Fu.ret (.ok ⟨T, e⟩)
                   | none => Fu.ret (.error r'.2)
@@ -1341,43 +1401,47 @@ end
 
 /-! ## The entry point -/
 
-def elabTopF (md : Mode) (ms : List (List Label)) (n : Nat) (p : PTm []) :
-    Except PReason (ECand Ctx.nil p) × Tank :=
-  match elabN md ms p.size Ctx.nil p ⟨n, false⟩ with
+/-- The elaborator at the class labels `K`, from the index `p.size` and a tank of `n` units. -/
+def elabTopKF (md : Mode) (ms : List (List Label)) (K : List Label) (n : Nat) (p : PTm []) :
+    Except PReason (ECandK K Ctx.nil p) × Tank :=
+  match elabN md ms K p.size Ctx.nil p ⟨n, false⟩ with
   | ((c :: _, _), t) => (if t.out then .error .limit else .ok c, t)
   | (([], rs), t) => (.error (Reason.top t.out rs), t)
+/-- The class-free elaborator, plan XI's on every plan XI program (departure 3). -/
+def elabTopF (md : Mode) (ms : List (List Label)) (n : Nat) (p : PTm []) : Except PReason (ECand Ctx.nil p) × Tank :=
+  elabTopKF md ms [] n p
 
 /-! ## Frame facts of slots 2 and 3 -/
 
 section Frames2
-variable (md : Mode) (ms : List (List Label))
+variable (md : Mode) (ms : List (List Label)) (K : List Label)
 
 /-! ## Frame facts of the rounds -/
 
 theorem leastFromE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (Ts : List (Ty s)) :
-    ∀ cs : List (ECand Γ p), Framed (leastFromE Γ Ts cs)
+    ∀ cs : List (ECandK K Γ p), Framed (leastFromE K Γ Ts cs)
   | [] => ret_framed _
   | c :: rest => by
-    refine bind_framed (belowAllF_framed Γ c.ty Ts) fun b => ?_
+    refine bind_framed (belowAllF_framed K Γ c.ty Ts) fun b => ?_
     cases b with
     | true => exact ret_framed _
     | false => exact leastFromE_framed Γ Ts rest
 
-theorem leastE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (cs : List (ECand Γ p)) :
-    Framed (leastE Γ cs) :=
-  leastFromE_framed Γ _ cs
+theorem leastE_framed {s : Sig} (Γ : Ctx s) {p : PTm s} (cs : List (ECandK K Γ p)) :
+    Framed (leastE K Γ cs) :=
+  leastFromE_framed K Γ _ cs
 
 theorem runJobF_framed {s : Sig} (Γ : Ctx s)
-    {syn : (Γ' : Ctx (s,x)) → (p : PTm (s,x)) → Fu (ESynth Γ' p)}
+    {syn : (Γ' : Ctx (s,x)) → (p : PTm (s,x)) → Fu (ESynth K Γ' p)}
     {form : (Γ' : Ctx (s,x)) → (es : PDefs ((s,x),x)) → Fu (EForm es)}
     (hs : ∀ Γ' p, Framed (syn Γ' p)) (hf : ∀ Γ' es, Framed (form Γ' es)) (P : Ty (s,x)) (j : Job (s,x)) :
-    Framed (runJobF Γ syn form P j) := by
+    Framed (runJobF K Γ syn form P j) := by
   unfold runJobF
   split
   · refine bind_framed (hs _ _) fun r => ?_
     split
     · exact ret_framed _
-    · refine bind_framed (leastE_framed _ _) fun o => ?_
+    · refine bind_framed (leastE_framed _ _ _) fun o => ?_
       split
       · split
         · exact ret_framed _
@@ -1425,7 +1489,7 @@ theorem roundsF_framed {s : Sig} (snap : List (Label × Dec s) → Ty s)
 /-! ## Frame facts of the filling -/
 
 mutual
-theorem defsW_framed {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G)}
+theorem defsW_framed {K : List Label} {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G)}
     {form : ∀ {s : Sig}, Ctx s → (es : PDefs (s,x)) → Fu (EForm es)}
     (hc : ∀ {s : Sig} (Γ : Ctx s) p G, Framed (chk Γ p G)) (hf : ∀ {s : Sig} (Γ : Ctx s) es, Framed (form Γ es)) :
     ∀ {s : Sig} (Γ : Ctx s) (done : List (Done s)) (ds : PDefs s) (T : Ty s),
@@ -1461,12 +1525,13 @@ theorem defsW_framed {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), F
   | _, _, _, .cons (.cons _ _) _, .mu _ => by simp only [defsW]; exact ret_framed _
   | _, _, _, .cons (.cons _ _) _, .all _ _ => by simp only [defsW]; exact ret_framed _
   | _, _, _, .cons (.cons _ _) _, .sngl _ => by simp only [defsW]; exact ret_framed _
-theorem defW_framed {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck Γ p G)}
+theorem defW_framed {K : List Label} {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu (ECheck K Γ p G)}
     {form : ∀ {s : Sig}, Ctx s → (es : PDefs (s,x)) → Fu (EForm es)}
     (hc : ∀ {s : Sig} (Γ : Ctx s) p G, Framed (chk Γ p G)) (hf : ∀ {s : Sig} (Γ : Ctx s) es, Framed (form Γ es)) :
     ∀ {s : Sig} (Γ : Ctx s) (done : List (Done s)) (d : PDef s) (D : Dec s),
       Framed (defW chk form Γ done d D)
   | _, _, _, .typ _ _, _ => by simp only [defW]; exact ret_framed _
+  | _, _, _, .cls _ _, _ => by simp only [defW]; exact ret_framed _
   | _, _, _, .path _ _, _ => by simp only [defW]; exact ret_framed _
   | _, Γ, done, .lam a o oD t, D => by
       simp only [defW]
@@ -1499,92 +1564,100 @@ theorem defW_framed {chk : ∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Fu
 end
 
 theorem newSynF_framed {s : Sig} (Γ : Ctx s) (ds : PDefs (s,x)) {form : Fu (EForm ds)} (hf : Framed form) :
-    Framed (newSynF md ms Γ ds form) := by
+    Framed (newSynF md ms K Γ ds form) := by
   refine bind_framed hf fun r => ?_
   cases r with
-  | ok _ => exact fullSynthAt_framed md ms _ _ _ _
+  | ok _ => exact fullSynthAt_framed md ms K _ _ _ _
   | error _ => exact ret_framed _
 
 theorem newWSynF_framed {s : Sig} (Γ : Ctx s) (T : Ty (s,x)) (ds : PDefs (s,x)) {defs : Fu (EDefsR ds T)}
-    (hd : Framed defs) : Framed (newWSynF md ms Γ T ds defs) := by
+    (hd : Framed defs) : Framed (newWSynF md ms K Γ T ds defs) := by
   refine bind_framed hd fun r => ?_
   split
-  · exact fullSynthAt_framed md ms _ _ _ _
+  · exact fullSynthAt_framed md ms K _ _ _ _
   · exact ret_framed _
 
 end Frames2
 
 /-! ## The elaborator is framed -/
 
-theorem elab_framed (md : Mode) (ms : List (List Label)) : ∀ (k : Nat),
-    (∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Framed (elabN md ms k Γ p)) ∧
-    (∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Framed (chkN md ms k Γ p G)) ∧
-    (∀ {s : Sig} (Γ : Ctx s) (ds : PDefs (s,x)), Framed (formN md ms k Γ ds))
+theorem elab_framed (md : Mode) (ms : List (List Label)) (K : List Label) : ∀ (k : Nat),
+    (∀ {s : Sig} (Γ : Ctx s) (p : PTm s), Framed (elabN md ms K k Γ p)) ∧
+    (∀ {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s), Framed (chkN md ms K k Γ p G)) ∧
+    (∀ {s : Sig} (Γ : Ctx s) (ds : PDefs (s,x)), Framed (formN md ms K k Γ ds))
   | 0 => ⟨fun _ _ => markAs_framed _, fun _ _ _ => markAs_framed _, fun _ _ => markAs_framed _⟩
   | k + 1 => by
-    obtain ⟨hE, hC, hF⟩ := elab_framed md ms k
+    obtain ⟨hE, hC, hF⟩ := elab_framed md ms K k
     refine ⟨fun Γ p => ?_, fun Γ p G => ?_, fun Γ ds => ?_⟩
     · simp only [elabN]
       split
-      · exact fullSynthAt_framed md ms _ _ _ _
+      · exact fullSynthAt_framed md ms K _ _ _ _
       · split
         · exact bind_framed (hE _ _) fun _ => ret_framed _
-        · exact lamCalleeSynF_framed md ms _ _
-        · exact newWSynF_framed md ms _ _ _ (defsW_framed hC hF _ _ _ _)
-        · exact newSynF_framed md ms _ _ (hF _ _)
+        · exact lamCalleeSynF_framed md ms K _ _
+        · exact newWSynF_framed md ms K _ _ _ (defsW_framed hC hF _ _ _ _)
+        · exact newSynF_framed md ms K _ _ (hF _ _)
         · split
-          · refine orElseW_framed (bind_framed (argGoalF_framed _ _) fun oF => ?_)
-              (letNoneSynF_framed md ms hE _ _ _ _)
-            split
-            · refine bind_framed (hC _ _ _) fun r => ?_
-              split
-              · exact fullSynthAt_framed md ms _ _ _ _
-              · exact ret_framed _
-            · exact ret_framed _
-          · exact letNoneSynF_framed md ms hE _ _ _ _
-        · refine bind_framed (hC _ _ _) fun r1 => ?_
-          split
           · exact ret_framed _
-          · exact bind_framed (hE _ _) fun _ =>
-              bind_framed (flatMapL_framed (avoidE_framed _ _) _) fun _ => ret_framed _
+          · split
+            · refine orElseW_framed (bind_framed (argGoalF_framed _ _ _) fun oF => ?_)
+                (letNoneSynF_framed md ms K hE _ _ _ _ _)
+              split
+              · refine bind_framed (hC _ _ _) fun r => ?_
+                split
+                · exact fullSynthAt_framed md ms K _ _ _ _
+                · exact ret_framed _
+              · exact ret_framed _
+            · exact letNoneSynF_framed md ms K hE _ _ _ _ _
+        · split
+          · exact ret_framed _
+          · refine bind_framed (hC _ _ _) fun r1 => ?_
+            split
+            · exact ret_framed _
+            · exact bind_framed (hE _ _) fun _ =>
+                bind_framed (flatMapL_framed (avoidE_framed _ _ _) _) fun _ => ret_framed _
         · exact ret_framed _
         · exact ret_framed _
     · simp only [chkN]
       split
-      · exact fullCheckAt_framed md ms _ _ _ _ _
+      · exact fullCheckAt_framed md ms K _ _ _ _ _
       · split
-        · refine bind_framed (funPartAt_framed _ _) fun fp => ?_
+        · refine bind_framed (funPartAt_framed _ _ _) fun fp => ?_
           split
           · split
-            · exact fullCheckAt_framed md ms _ _ _ _ _
-            · exact lamGoalF_framed _ _ _ _ _ (hC _ _ _) (hE _ _)
-          · exact lamCalleeChkF_framed md ms _ _ _
+            · exact fullCheckAt_framed md ms K _ _ _ _ _
+            · exact lamGoalF_framed _ _ _ _ _ _ (hC _ _ _) (hE _ _)
+          · exact lamCalleeChkF_framed md ms K _ _ _
           · exact ret_framed _
-        · refine bind_framed (funPartAt_framed _ _) fun fp => ?_
+        · refine bind_framed (funPartAt_framed _ _ _) fun fp => ?_
           split
-          · exact lamGoalF_framed _ _ _ _ _ (hC _ _ _) (hE _ _)
-          · exact bind_framed (hE _ _) fun _ => subsumeE_framed _ _ _
-        · exact bind_framed (newWSynF_framed md ms _ _ _ (defsW_framed hC hF _ _ _ _)) fun _ =>
-            subsumeLit_framed _ _ _
-        · exact bind_framed (newSynF_framed md ms _ _ (hF _ _)) fun _ => subsumeLit_framed _ _ _
+          · exact lamGoalF_framed _ _ _ _ _ _ (hC _ _ _) (hE _ _)
+          · exact bind_framed (hE _ _) fun _ => subsumeE_framed _ _ _ _
+        · exact bind_framed (newWSynF_framed md ms K _ _ _ (defsW_framed hC hF _ _ _ _)) fun _ =>
+            subsumeLit_framed _ _ _ _
+        · exact bind_framed (newSynF_framed md ms K _ _ (hF _ _)) fun _ => subsumeLit_framed _ _ _ _
         · split
-          · refine orElseW_framed (bind_framed (argGoalF_framed _ _) fun oF => ?_)
-              (letNoneChkF_framed md ms hE hC _ _ _ _ _)
-            split
-            · refine bind_framed (hC _ _ _) fun r => ?_
-              split
-              · exact fullCheckAt_framed md ms _ _ _ _ _
-              · exact ret_framed _
-            · exact ret_framed _
-          · exact letNoneChkF_framed md ms hE hC _ _ _ _ _
-        · refine bind_framed (hC _ _ _) fun r1 => ?_
-          split
           · exact ret_framed _
-          · exact bind_framed (hC _ _ _) fun _ => ret_framed _
+          · split
+            · refine orElseW_framed (bind_framed (argGoalF_framed _ _ _) fun oF => ?_)
+                (letNoneChkF_framed md ms K hE hC _ _ _ _ _ _)
+              split
+              · refine bind_framed (hC _ _ _) fun r => ?_
+                split
+                · exact fullCheckAt_framed md ms K _ _ _ _ _
+                · exact ret_framed _
+              · exact ret_framed _
+            · exact letNoneChkF_framed md ms K hE hC _ _ _ _ _ _
+        · split
+          · exact ret_framed _
+          · refine bind_framed (hC _ _ _) fun r1 => ?_
+            split
+            · exact ret_framed _
+            · exact bind_framed (hC _ _ _) fun _ => ret_framed _
         · exact ret_framed _
         · exact ret_framed _
     · simp only [formN]
-      refine bind_framed (roundsF_framed _ (fun P j => runJobF_framed _ (fun Γ' p => hE Γ' p)
+      refine bind_framed (roundsF_framed _ (fun P j => runJobF_framed _ _ (fun Γ' p => hE Γ' p)
         (fun Γ' es => hF Γ' es) P j) _ _ _) fun r => ?_
       split
       · split
@@ -1595,9 +1668,9 @@ theorem elab_framed (md : Mode) (ms : List (List Label)) : ∀ (k : Nat),
         · exact ret_framed _
       · exact ret_framed _
 
-theorem elabN_framed (md : Mode) (ms : List (List Label)) (k : Nat) {s : Sig} (Γ : Ctx s) (p : PTm s) :
-    Framed (elabN md ms k Γ p) :=
-  (elab_framed md ms k).1 Γ p
+theorem elabN_framed (md : Mode) (ms : List (List Label)) (K : List Label) (k : Nat) {s : Sig} (Γ : Ctx s)
+    (p : PTm s) : Framed (elabN md ms K k Γ p) :=
+  (elab_framed md ms K k).1 Γ p
 
 /-! ## Tests of slots 2 and 3 -/
 
