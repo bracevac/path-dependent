@@ -159,6 +159,29 @@ form. `fillToScala` prints a compiled program with every slot written, and
 `pdot_scala_example` and `pdot_scala_corpus`. These three modules build as the
 library `PDotScala`, by `lake build PDotScala`.
 
+Plan XII N6 maps classes and traits. A class or trait of the wrapper or of an
+object becomes, in that template's literal, a class definition
+`class K = Body(K)`, the module functions `f$K` and the `val` witnesses `a$K`
+typed under the receiver `this : z.K`, the override witnesses whose obligations
+do not hold by their form (with `ovc` for the pairwise consistency of a type
+member inherited from two classes), and, for a concrete class, the constructor
+`new$K`, whose body is the tagged literal `ν(i) as z.K {…}`. The literal holds
+the members of the linearization in order: hidden fields `ℓx$D` of plain
+parameters, `val` parameters at the arguments the parents pass, type members at
+the first alias or the meet of the upper bounds, path `val`s, and forwarders
+that call the implementer's module function at `i`. `new p.K(ē)` is
+`let ·n = ⟦p⟧.new$K ē in ·n`. `ScalaClasses` holds Martres' implementer `mimpl`
+(thesis p.74), the class of an effective member, the order of an instance's
+members, the superclass of a class, and the checks, which `outcome` runs before
+the typer and answers `rejected` with scalac's text: the shape of the parents
+and the arity of `new` (E171, E104), OV-Need at a concrete member (E164),
+OV-Nothing (E037), OV-Accidental (thesis p.75, E164, with scalac's two texts),
+OV-Abstract and OV-New (E042). `ofScala_tags` says that the mapping writes a tag
+only on a constructor's instance literal, and `scala_seal_sites` that an `ok`
+outcome seals only at tagged variables, with the class order of each seal in the
+certificate `Nom`. The printers give a class definition and a tagged literal the
+gap `gapClass`.
+
 The corpus is `scala/pdot/`, 78 files, which `scala/README.md` describes. The
 module `Coercions.ScalaCorpus.PDot` judges each file in the kernel from its
 bytes when `lake build ScalaCorpusPDot` builds it. The harness
@@ -200,6 +223,7 @@ UnstableSngl. The table names the cause of each.
 | `Pipeline` | `compileE`, `compile`, `checkAt`, `compileLanded`, the two drivers, the theorems, and the checks of E1 to E8, E13 and N1 to N4 |
 | `Pretty` | printers of surface, partial, annotated and source terms, types, reasons and runs |
 | `Examples` | the paths programs compiled, E10 and E11 as programs, and the runs of E5, E7 and E8 on both machines |
+| `ScalaClasses` | the implementer `mimpl`, the effective member, the members of an instance, the superclass, and the checks of the classes and of `new` |
 | `Scala` | the mapping from the reader's tree to `STm`, `readPDot`, `outcome` with the member check R-M and its three theorems, the printers `toScala` and `fillToScala`, and `roundTrip` |
 | `ScalaTests` | checks of the mapping, the outcomes, the member check, the printers and the round trips, by `#eval expect` |
 | `ScalaCmd` | the commands `pdot_scala_example` and `pdot_scala_corpus` |

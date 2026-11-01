@@ -209,7 +209,7 @@ def errOf (ls : List String) : Option ScalaSyntax.Err :=
 #eval expect (reasonOf ["val program = { val f = x => x; f }"] == some (.missingParamType none)) "rejected, a slot"
 #eval expect (reasonOf ["object loop { def go(u: Any) = loop.go(u) }", "val program = loop"] ==
   some (.cyclicRef (.trm 1))) "rejected, cyclic"
-#eval expect (kindOf ["class C", "val program = A"] == .outside) "outside, by the reader"
+#eval expect (kindOf ["trait T { class C }", "val program = A"] == .outside) "outside, by the reader"
 #eval expect ((outcome "".toList).kind == .outside) "outside, an empty file"
 
 /-! ## The member check R-M -/
@@ -353,6 +353,275 @@ def gapOf (e : STm) : Option String :=
   "a typed let with another body"
 #eval expect (gapOf (.«let» "ℓ" none (.obj "z" none .nil) (.asc (.var "ℓ") .top)) == some gapSelfField)
   "a literal without ℓself"
+
+/-! ## Classes and traits (plan XII, stage N6)
+
+One check per equation of "The mapping, one equation per construct", on a text read by `readNominal`.
+Then the five class-shape checks and the five OV checks, each rejected with scalac's text beside an
+accepted neighbour, the worked example against `Run_src`, the member check R-M in a class, the tags,
+and the printers on a class file. -/
+
+/-- The binder of a class body or an instance in the stem. -/
+def b1 : String := "ν'"
+/-- The binder of a class body in an object of the stem. -/
+def b2 : String := "ν''"
+
+/-- The labels of definitions, in order. -/
+def labelsOfDefs : SDefs → List String
+  | .nil => []
+  | .typ ds A _ | .cls ds A _ => labelsOfDefs ds ++ [A]
+  | .trm ds a _ _ => labelsOfDefs ds ++ [a]
+
+/-- The definitions of the stem of a term. -/
+def stemOf : STm → Option SDefs
+  | .«let» "σ" none (.obj "σ" none d) _ => some d
+  | _ => none
+
+/-- The definition `a` of a list of definitions, its written type and its right side. -/
+def defOf (a : String) : SDefs → Option (Option SType × STm)
+  | .nil => none
+  | .typ ds _ _ | .cls ds _ _ => defOf a ds
+  | .trm ds b T t => if decide (a = b) then some (T, t) else defOf a ds
+
+/-- The body of the class `C` of a list of definitions. -/
+def clsOf (C : String) : SDefs → Option SType
+  | .nil => none
+  | .typ ds _ _ | .trm ds _ _ _ => clsOf C ds
+  | .cls ds D T => if decide (C = D) then some T else clsOf C ds
+
+/-- The tagged literal at the end of a chain of lambdas. -/
+def instIn : STm → Option STm
+  | .lam _ _ t => instIn t
+  | .inst x p C d => some (.inst x p C d)
+  | _ => none
+
+/-- The stem of a text. -/
+def stemT (ls : List String) : Option SDefs := (term ls).bind stemOf
+
+/-- The definition `a` of the stem of a text. -/
+def defT (ls : List String) (a : String) : Option (Option SType × STm) := (stemT ls).bind (defOf a)
+
+/-- The instance of the constructor `new$K` of the stem of a text. -/
+def instT (ls : List String) (K : String) : Option STm := (defT ls ("new$" ++ K)).bind fun (_, t) => instIn t
+
+/-- The refusal of a check of the classes. -/
+def checkedOf (ls : List String) : Option ScalaSyntax.Err :=
+  match outcome (file ls).toList with
+  | .checked _ e => some e
+  | _ => none
+
+/-- `{ℓself : z.type}`. -/
+def selfDec (z : String) : SType := .fld "ℓself" (.sngl (.var z))
+
+/-! ### The equations of the mapping -/
+
+-- ⟦trait K { ms }⟧ᶻ = class K = Body(K), modfuns(K): own declarations, `⋀ᴸ`, `⋀ᴿ [] = ⊤`, `modfun`
+#eval expect (stemT ["trait T { type L; val v: L; def get(y: Any): L = v }", "val program = A"] ==
+  some (.trm (.cls (sd "σ") "T" (.and (.mu b1 (.and (.and (.and (selfDec b1) (.typ "L" .bot .top))
+      (.fld "v" (.sel (.var b1) "L"))) (.fld "get" (.all "y" .top (.sel (.var b1) "L"))))) .top))
+    "get$T" (some (.all b1 (.sel (.var "σ") "T") (.all "y" .top (.sel (.var b1) "L"))))
+    (.lam b1 (some (.sel (.var "σ") "T")) (.lam "y" (some .top) (tp b1 ["v"]))))) "trait, Body, own, modfun"
+-- ⟦class K⟧ᶻ with no parameter: Ctor-Nil, `Inst(K)` with `ℓself` only, `⟦new K⟧ = let ·n = σ.new$K σ in ·n`
+#eval expect (term ["class C", "val program = new C"] ==
+  some (stem (.trm (.cls (sd "σ") "C" (.and (.mu b1 (selfDec b1)) .top)) "new$C"
+      (some (.all "·c" .top (.sel (.var "σ") "C"))) (.lam "·c" (some .top) (.inst b1 (.var "σ") "C" (sd b1))))
+    (.«let» "·n" none (.app (tp "σ" ["new$C"]) (.var "σ")) (.var "·n")))) "class, Ctor-Nil, new"
+-- ⟦abstract class K(ps) extends P⟧ᶻ: `vdec`, parents, no constructor (Ctor-Abs)
+#eval expect (stemT ["trait T", "abstract class B(val v: Any) extends T", "val program = A"] ==
+  some (.cls (.cls (sd "σ") "T" (.and (.mu b1 (selfDec b1)) .top)) "B"
+    (.and (.mu b1 (.and (selfDec b1) (.fld "v" .top))) (.and (.sel (.var "σ") "T") .top)))) "abstract class, vdec"
+-- `witness(K, val a : T = q)`, `inst(x)`, `inst(a)` with the parameter replaced by its argument
+#eval expect (defT ["class C(val w: Any) { val v: Any = w }", "val program = A"] "v$C" ==
+  some (some (.all b1 (.sel (.var "σ") "C") .top), .lam b1 (some (.sel (.var "σ") "C")) (tp b1 ["w"]))) "val witness"
+#eval expect (instT ["class C(val w: Any) { val v: Any = w }", "val program = A"] "C" ==
+  some (.inst b1 (.var "σ") "C" (.trm (.trm (sd b1) "w" none (.var "w")) "v" none (.var "w")))) "inst(x), inst(a)"
+-- `hid(x : S)`, `⟦x⟧ = this.ℓx$K`, `inst(ℓx)`, the forwarder `inst(f)` (D-9, D-11)
+#eval expect (stemT ["class C(x: Any) { def get(u: Any): Any = x }", "val program = A"] ==
+  some (.trm (.trm (.cls (sd "σ") "C" (.and (.mu b1 (.and (.and (selfDec b1) (.fld "ℓx$C" .top))
+      (.fld "get" (.all "u" .top .top)))) .top))
+    "get$C" (some (.all b1 (.sel (.var "σ") "C") (.all "u" .top .top)))
+      (.lam b1 (some (.sel (.var "σ") "C")) (.lam "u" (some .top) (tp b1 ["ℓx$C"]))))
+    "new$C" (some (.all "x" .top (.sel (.var "σ") "C")))
+      (.lam "x" (some .top) (.inst b1 (.var "σ") "C" (.trm (.trm (sd b1) "ℓx$C" none (.var "x")) "get"
+        (some (.all "u" .top .top)) (.lam "u" (some .top)
+          (.«let» "·g" none (.app (tp "σ" ["get$C"]) (.var b1)) (.app (.var "·g") (.var "u"))))))))) "hid, plain parameter"
+-- `arg(K, D, y)`: an inherited `val` parameter at the argument of the parent
+#eval expect (instT ["class C(val v: Any)", "class D(val w: Any) extends C(w)", "val program = A"] "D" ==
+  some (.inst b1 (.var "σ") "D" (.trm (.trm (sd b1) "w" none (.var "w")) "v" none (.var "w")))) "arg through a parent"
+#eval expect (instT ["class C1(val v1: Any)", "class C2(val v2: Any) extends C1(v2)", "class C3(val v3: Any) extends C2(v3)",
+    "val program = A"] "C3" ==
+  some (.inst b1 (.var "σ") "C3" (.trm (.trm (.trm (sd b1) "v3" none (.var "v3")) "v2" none (.var "v3")) "v1" none
+    (.var "v3")))) "arg through two parents"
+-- `inst(f)` from an ancestor: the forwarder calls the ancestor's module function at the instance
+#eval expect ((instT ["trait T { def get(y: Any): Any = y }", "class C extends T", "val program = A"] "C") ==
+  some (.inst b1 (.var "σ") "C" (.trm (sd b1) "get" (some (.all "y" .top .top)) (.lam "y" (some .top)
+    (.«let» "·g" none (.app (tp "σ" ["get$T"]) (.var b1)) (.app (.var "·g") (.var "y"))))))) "inherited forwarder"
+-- `inst(A)`: the first alias in `L(K)`, else the meet of the upper bounds
+#eval expect ((instT ["trait L { type T = Any }", "trait R { type T }", "class C extends L with R", "val program = A"] "C") ==
+  some (.inst b1 (.var "σ") "C" (.typ (sd b1) "T" .top))) "inst(A), alias"
+#eval expect ((instT ["trait A0", "trait B0", "trait L { type X <: A0 }", "trait R { type X <: B0 }", "class C extends L with R",
+    "val program = A"] "C") ==
+  some (.inst b1 (.var "σ") "C" (.typ (sd b1) "X" (.and (.sel (.var "σ") "B0") (.sel (.var "σ") "A0"))))) "inst(A), meet"
+-- `⟦this⟧ = this.ℓself` in a body
+#eval expect (defT ["class C { def me(u: Any): C = this }", "val program = A"] "me$C" ==
+  some (some (.all b1 (.sel (.var "σ") "C") (.all "u" .top (.sel (.var "σ") "C"))),
+    .lam b1 (some (.sel (.var "σ") "C")) (.lam "u" (some .top) (ts b1 [])))) "this"
+-- `⟦C⟧ = z'.C`, `⟦new p.K(ē)⟧ = let ·n = ⟦p⟧.new$K ē in ·n`
+#eval expect ((term ["object m { class C(val v: Any) }", "val program = (c: m.C) => new m.C(c)"]).map (fun e =>
+    (match e with
+    | .«let» _ _ _ b => b
+    | e => e)) ==
+  some (.lam "c" (some (.sel (sp "σ" ["m"]) "C")) (.«let» "·n" none (.app (tp "σ" ["m", "new$C"]) (.var "c")) (.var "·n"))))
+  "class type, new with a prefix"
+-- a class in an object: its module functions in the object, its forwarders by the object's binder
+#eval expect (((term ["object m { trait T { def f(u: Any): Any = u }; class C extends T }", "val program = A"]).bind (fun e =>
+    (stemOf e).bind (defOf "m"))).map (fun (_, t) => (match t with
+      | .obj _ _ d => (labelsOfDefs d, (defOf "new$C" d).bind fun (_, t) => instIn t)
+      | _ => ([], none))) ==
+  some (["ℓself", "T", "f$T", "C", "new$C"], some (.inst b2 (.var b1) "C" (.trm (sd b2) "f" (some (.all "u" .top .top))
+    (.lam "u" (some .top) (.«let» "·g" none (.app (tp b1 ["f$T"]) (.var b2)) (.app (.var "·g") (.var "u")))))))) "class in an object"
+-- an ancestor in another object: its module function by its path from the stem
+#eval expect (((term ["object a { trait T { def f(u: Any): Any = u } }", "object b { class C extends a.T }", "val program = A"]).bind
+    (fun e => (stemOf e).bind (defOf "b"))).bind (fun (_, t) => (match t with
+      | .obj _ _ d => (defOf "new$C" d).bind fun (_, t) => instIn t
+      | _ => none)) ==
+  some (.inst b2 (.var b1) "C" (.trm (sd b2) "f" (some (.all "u" .top .top))
+    (.lam "u" (some .top) (.«let» "·g" none (.app (tp "σ" ["a", "f$T"]) (.var b2)) (.app (.var "·g") (.var "u"))))))) "ancestor in another object"
+-- `ovm` and `ovp` written for different types, left out for equal ones (D-13)
+#eval expect ((stemT ["class K", "trait L { def m(u: Any): K = new K }", "trait R { def m(u: Any): Any }", "class C extends L with R",
+    "val program = A"]).map labelsOfDefs ==
+  some ["ℓself", "K", "new$K", "L", "m$L", "R", "C", "ov$C$m$R", "new$C"]) "ovm written, ovp left out"
+#eval expect ((stemT ["trait B { def m(u: Any): Any }", "trait L extends B { override def m(u: Any): Any = u }",
+    "trait R extends B { override def m(u: Any): Any = u }", "class C extends L with R", "val program = A"]).map labelsOfDefs ==
+  some ["ℓself", "B", "L", "m$L", "R", "m$R", "C", "new$C"]) "witnesses of equal types left out"
+#eval expect (defT ["trait T { type L <: Any }", "trait U extends T { type L <: { type V } }", "val program = A"] "ovu$U$L$T" ==
+  none) "ovu left out at an upper bound ⊤"
+#eval expect ((defT ["trait T { type L <: { type V } }", "class D extends T { type L = Any }", "val program = A"] "ovu$D$L$T").map
+    (·.1) == some (some (.all b1 (.sel (.var "σ") "D") (.all "·w" .top (.typ "V" .bot .top))))) "ovu written"
+#eval expect ((defT ["trait T { val a: Any }", "class C(val a: T) extends T", "val program = A"] "ovv$C$a$T") == none &&
+  (defT ["trait T { val a: T }", "class C(val a: Any) extends T", "val program = A"] "ovv$C$a$T").isSome) "ovv"
+-- ovc(K, A, D, E): the inherited bounds of `A` in `D` and `E`, pairwise (refutation G-1, probes Q26, V1)
+/-- Two traits that bound the type member `X` of the trait `K` from below by `u.type` and from above by `Nothing`. -/
+def inhText (hi : String) : List String :=
+  ["object u { type V = Any }", "trait L { type X >: u.type }", "trait R { type X" ++ hi ++ " }", "trait K extends L with R",
+    "val program: Any = u"]
+#eval expect ((defT (inhText " <: Nothing") "ovc$K$X$L$R").map (·.1) == some (some (.all b1 (.sel (.var "σ") "K")
+    (.all "·w" (.sngl (.sel (.var "σ") "u")) .bot))) && defT (inhText " <: Nothing") "ovc$K$X$R$L" == none) "ovc"
+#eval expect (kindOf (inhText " <: Nothing") == .rejected && kindOf (inhText "") == .ok) "ovc, rejected and its neighbour"
+-- the tags of the term sit on constructors only (`ofScala_tags`)
+#eval expect ((term ["trait T { def get(y: Any): Any = y }", "class C(val w: Any) extends T", "val program = new C(A)"]).map tmTags ==
+  some true) "tags"
+#eval expect (tmTags (.inst "i" (.var "σ") "C" .nil) == false && tmTags (stem (.trm (sd "σ") "mk" none
+  (.lam "u" none (.inst "i" (.var "σ") "C" .nil))) (.var "σ")) == false) "tags, refused shapes"
+
+/-! ### The checks -/
+
+-- S30, the arity of `new` (scalac E171), and an argument to a class without parameters
+#eval expect (checkedOf ["class C(val x: Any)", "val program: Any = new C"] ==
+  some ⟨⟨5, 22⟩, "missing argument for parameter x of constructor C in class C (scalac E171)"⟩) "S30"
+#eval expect (kindOf ["class C(val x: Any)", "val program: Any = new C(A)"] == .ok) "S30, neighbour"
+#eval expect (checkedOf ["class C", "val program: Any = new C(A)"] ==
+  some ⟨⟨5, 28⟩, "too many arguments for constructor C in class C"⟩) "S30, no parameter"
+#eval expect (errOf ["class C(val x: Any)", "val program: Any = new C(A, A)"] == some ⟨⟨5, 26⟩, msgTupled⟩) "tupled arguments"
+#eval expect (checkedOf ["class C(val x: Any, val y: Any)", "val program: Any = new C(A, A, A)"] ==
+  some ⟨⟨5, 34⟩, "too many arguments for constructor C in class C"⟩) "S30, two parameters"
+-- S31, the arity of the first parent (scalac E171)
+#eval expect (checkedOf ["class D(val x: Any)", "class K extends D", "val program: Any = new K"] ==
+  some ⟨⟨5, 19⟩, "missing argument for parameter x of constructor D in class D (scalac E171)"⟩) "S31"
+#eval expect (kindOf ["class D(val x: Any)", "class K extends D(A)", "val program: Any = new K"] == .ok) "S31, neighbour"
+#eval expect (checkedOf ["class D(val x: Any, val y: Any)", "class K extends D(A, A, A)", "val program: Any = new K"] ==
+  some ⟨⟨5, 27⟩, "too many arguments for constructor D in class D"⟩) "S31, two parameters"
+#eval expect (checkedOf ["class B(val x: Any)", "trait T extends B", "class K extends T", "val program: Any = new K"] ==
+  some ⟨⟨6, 9⟩, "missing argument for parameter x of constructor B in class B (scalac E171)"⟩) "S31, through a trait"
+#eval expect (kindOf ["class D(val x: Any)", "trait T extends D", "class K(val y: Any) extends D(y) with T",
+  "val program: Any = new K(A)"] == .ok) "S31, not at a trait"
+#eval expect (errOf ["class D(val x: Any)", "class K extends D((u: Any) => u)", "val program: Any = new K"] ==
+  some ⟨⟨5, 19⟩, msgParentArg⟩) "a parent argument that is no path"
+-- S32, arguments to a trait parent
+#eval expect (checkedOf ["trait T", "class K extends T(A)", "val program: Any = new K"] ==
+  some ⟨⟨5, 21⟩, "too many arguments for constructor T in trait T"⟩) "S32"
+#eval expect (kindOf ["trait T", "class K extends T", "val program: Any = new K"] == .ok) "S32, neighbour"
+-- S33, a class after `with` (scalac E104)
+#eval expect (checkedOf ["class A0", "class B0", "class K extends A0 with B0", "val program: Any = new K"] ==
+  some ⟨⟨6, 27⟩, "class B0 is not a trait (scalac E104)"⟩) "S33"
+#eval expect (kindOf ["class A0", "trait B0", "class K extends A0 with B0", "val program: Any = new K"] == .ok) "S33, neighbour"
+-- S34, a trait after `with` whose superclass the class's superclass does not derive from
+#eval expect (checkedOf ["class A0", "class B0", "trait T extends B0", "class K extends A0 with T", "val program: Any = new K"] ==
+  some ⟨⟨7, 27⟩, "illegal trait inheritance: superclass A0 does not derive from trait T's superclass B0"⟩) "S34"
+#eval expect (kindOf ["class B0", "class A0 extends B0", "trait T extends B0", "class K extends A0 with T",
+  "val program: Any = new K"] == .ok) "S34, neighbour"
+#eval expect (kindOf ["class A0", "class B0 extends A0", "trait T1 extends B0", "trait T2 extends A0", "class K extends T2 with T1",
+  "val program: Any = new K"] == .ok) "S34, the superclass through the parents"
+-- OV-Need (scalac E164)
+#eval expect (checkedOf ["class P { def m(u: Any): Any = u }", "class Q extends P { def m(u: Any): Any = u }", "val program = new Q"] ==
+  some ⟨⟨5, 27⟩, "error overriding method m in class P: method m needs `override` modifier (scalac E164)"⟩) "OV-Need"
+#eval expect (kindOf ["class P { def m(u: Any): Any = u }", "class Q extends P { override def m(u: Any): Any = u }",
+  "val program = new Q"] == .ok) "OV-Need, neighbour"
+#eval expect (kindOf ["class P { def m(u: Any): Any = u }", "abstract class Q extends P { def m(u: Any): Any }",
+  "val program = A"] == .ok) "OV-Need, not at an abstract member"
+-- OV-Nothing (scalac E037)
+#eval expect (checkedOf ["class P { override def m(u: Any): Any = u }", "val program = new P"] ==
+  some ⟨⟨4, 26⟩, "method m overrides nothing (scalac E037)"⟩) "OV-Nothing"
+#eval expect (kindOf ["class P { def m(u: Any): Any = u }", "val program = new P"] == .ok) "OV-Nothing, neighbour"
+-- OV-Accidental (Martres p.75, scalac E164)
+#eval expect (checkedOf ["trait L { def m(u: Any): Any = u }", "trait R { def m(u: Any): Any = u }", "class C extends L with R",
+  "val program = new C"] ==
+  some ⟨⟨6, 9⟩, "class C inherits conflicting members: m in trait L and m in trait R (scalac E164)"⟩) "OV-Accidental"
+#eval expect (checkedOf ["trait Base { def foo(u: Any): Any }", "trait Sub1 extends Base { def foo(u: Any): Any = u }",
+  "trait Unrelated { def foo(u: Any): Any }", "trait Sub2 extends Unrelated { override def foo(u: Any): Any = A }",
+  "class C extends Sub1 with Sub2", "val program = new C"] ==
+  some ⟨⟨8, 9⟩, "error overriding method foo in trait Sub1: method foo in trait Sub2 cannot override a concrete member " ++
+    "without a third member that's overridden by both (scalac E164)"⟩) "OV-Accidental, thesis"
+#eval expect (kindOf ["trait B { def m(u: Any): Any }", "trait L extends B { override def m(u: Any): Any = u }",
+  "trait R extends B { override def m(u: Any): Any = u }", "class C extends L with R", "val program = new C"] == .ok)
+  "OV-Accidental, neighbour"
+-- OV-Abstract
+#eval expect (checkedOf ["trait T { def m(u: Any): Any }", "class C extends T", "val program = new C"] ==
+  some ⟨⟨5, 9⟩, "class C needs to be abstract, since m in trait T is not defined"⟩) "OV-Abstract"
+#eval expect (kindOf ["trait T { def m(u: Any): Any }", "abstract class C extends T", "val program = A"] == .ok)
+  "OV-Abstract, neighbour"
+-- OV-New (scalac E042)
+#eval expect (checkedOf ["trait T { def m(u: Any): Any }", "val program = new T"] ==
+  some ⟨⟨5, 21⟩, "T is a trait; it cannot be instantiated (scalac E042)"⟩) "OV-New, trait"
+#eval expect (checkedOf ["abstract class C", "val program = new C"] ==
+  some ⟨⟨5, 21⟩, "C is abstract; it cannot be instantiated (scalac E042)"⟩) "OV-New, abstract class"
+#eval expect (kindOf ["trait T { def m(u: Any): Any }", "class C extends T { def m(u: Any): Any = u }", "val program = new C"] ==
+  .ok) "OV-New, neighbour"
+
+/-! ### The worked example, the member check, the printers -/
+
+/-- The worked example of plan XII ("A worked example"). -/
+def workedText : List String := ["object u { type A = Any }", "trait T {", "  type L", "  val v: L",
+  "  def get(y: Any): L = v", "}", "class C(val w: Any) extends T {", "  type L = Any", "  val v: L = w", "}",
+  "val program: T = new C(u)"]
+
+-- It compiles at `Body(T)`, as `Run_src` (`Examples.lean:407`), whose type prints the same
+#eval expect (textOf workedText == "ok : { type L; val v: this.L; val get: Any => this.L } & Any") "worked example"
+-- the stem holds `Run_src`'s definitions in `Run_src`'s order, and the instance `Run_src`'s fields
+#eval expect ((stemT workedText).map labelsOfDefs == some ["ℓself", "u", "T", "get$T", "C", "v$C", "new$C"] &&
+  (instT workedText "C").map (fun t => match t with
+    | .inst _ _ _ d => labelsOfDefs d
+    | _ => []) == some ["ℓself", "w", "L", "v", "get"]) "worked example, the definitions of Run_src"
+-- R-M in a class body (scalac E008)
+#eval expect (errOf ["object o { type T = Any }", "class C(val p: o.type) { def get(u: p.B): Any = u }", "val program = new C(o)"] ==
+  some ⟨⟨5, 41⟩, "type B is not a member of the type of p (scalac E008)"⟩) "R-M in a class"
+#eval expect (kindOf ["object o { type T = Any }", "class C(val p: o.type) { def get(u: p.T): Any = u }", "val program = new C(o)"] ==
+  .ok) "R-M in a class, neighbour"
+-- the printers: a class program has no Scala form, its fill neither, and its round trip is the gap
+#eval expect ((term workedText).map (fun e => match toScala e with
+    | .error w => decide (w = gapClass)
+    | .ok _ => false) == some true) "toScala of a class program"
+#eval expect (match outcome (file workedText).toList with
+  | .ok Λ r => match fillToScala Λ r.1 with
+    | .error w => decide (w = gapClass)
+    | .ok _ => false
+  | _ => false) "fillToScala of a class program"
+#eval expect (match readNominal (file workedText).toList with
+  | .ok (e, Λ, _) => match roundTrip Λ e with
+    | .gap w => decide (w = gapClass)
+    | _ => false
+  | .error _ => false) "roundTrip of a class program"
+#eval expect (gapReasons.length == 11 && gapReasons.contains gapClass) "gap reasons"
 
 /-! ## A program for the `// same as:` link of the fixture -/
 

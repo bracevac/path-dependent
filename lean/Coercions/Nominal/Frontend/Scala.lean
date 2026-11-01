@@ -1,6 +1,7 @@
 import Coercions.Nominal.Frontend.Pipeline
 import Coercions.Nominal.Frontend.ScalaRead.Scope
 import Coercions.Nominal.Frontend.ScalaRead.Print
+import Coercions.Nominal.Frontend.ScalaClasses
 
 /-!
 # Scala programs in the pDOT front end
@@ -38,7 +39,7 @@ that the term is a lambda body or a block result.  `under` is the written type a
 since a literal is only read under one (D-16).
 
 `readFile` parses (`ScalaRead.parseFile`), checks (`ScalaRead.check`), maps (`ofScala`), numbers the
-member names (`ScalaRead.labels`) and gives the module chains as label chains from `σ` (D-13).
+member names (`ScalaRead.labels`, with the labels of the inherited type witnesses, `labelsN`) and gives the module chains as label chains from `σ` (D-13).
 `readNominal` is its projection to the term, the table and the chains.  Every function is structural.
 
 `outcome` reads a file, compiles its term in the Scala mode with the file's module chains
@@ -68,16 +69,38 @@ declared type whose binders equal the lambda's prints as a `def` of as many list
 field as a `val`.  `Outcome.text` prints a type with these printers (`tyText`) and a reason with
 `reasonText`.  A type with no Scala form prints as `(no Scala form: <reason>)`.
 
-Plan XII N3 g1 passes the class forms through: `ptmSubst` substitutes in a tag, `pdefSubst` in a
-class definition, and `fillDef` writes none, since N4 and N6 give classes a surface form.
+Plan XII N3 g1 passes the class forms through: `ptmSubst` substitutes in a tag and `pdefSubst` in a
+class definition.
+
+Plan XII N6 maps classes and traits ("The mapping, one equation per construct").  A class or trait `K`
+of a template `z` becomes `class K = Body(K)`, its module functions `f$K` and `val` witnesses `a$K`
+under the receiver `this : z.K`, its override witnesses, and for a concrete class the constructor
+`new$K`, whose body is the tagged literal `ν(i) as z.K {…}` with the members of `names(K)`: hidden
+fields, `val` parameters at their arguments, type members at the first alias or the meet of the upper
+bounds, path `val`s, and forwarders to the module functions of the implementer.  `Body(K)` is
+`μ(this. ⋀ᴸ decls(K)) ∧ ⋀ᴿ parents(K)`, a parameter type read in the class head (`Scope.headEnv`).  A
+type of another class is read at the binder of `K` or of its instance, and a template not around `K`
+by its path from the stem (`clsSubst`).  A type member that `K` inherits from two classes and does not
+declare gets the witnesses `ovc` of their pairwise consistency.  A witness whose obligation holds by its
+form is left out.
+`new p.K(ē)` is `let ·n = ⟦p⟧.new$K ē in ·n`, `this` in a body is `this.ℓself`, and a plain parameter
+`x` is the hidden field `ℓx$K`.  The mapping refuses two shapes as outside: more than one argument
+for one parameter, which scalac tuples, and a parent's argument that is no path.  `outcome` runs the checks of
+`ScalaClasses.lean` before the typer and answers `rejected` with scalac's text (`Outcome.checked`).
+`ofScala_tags` says that the mapping writes a tag only on the instance literal of a constructor, and
+`scala_seal_sites` that an `ok` outcome seals only at tagged variables.  The printers give a class
+definition and a tagged literal the gap `gapClass`.
 -/
 
 namespace NominalFrontend.Scala
 
 open ScalaSyntax (Pos Err)
 open Paths.FCdot (Sig BVar Label Rename Path PathSubst)
-open NominalFrontend.ScalaRead (File Mems Stats Decls Bound Param)
-open NominalFrontend.ScalaRead.Scope (Entry lookup lookupTyp thisOf kindPath)
+open NominalFrontend.ScalaRead (File Mems Stats Decls Bound Param ClsDecl ClassRef CMems Args newName modName hidName
+  witName)
+open Paths.FCdot (Label)
+open NominalFrontend.ScalaRead.Scope (Entry lookup lookupTyp thisOf kindPath clsOf? clsKey memCls headEnv lookupCls
+  clsKind refEnv?)
 
 /-! ## Names -/
 
@@ -93,6 +116,14 @@ def unstName : String := "·u"
 def anonName : String := "_"
 /-- The label name of the hidden self-alias field (D-7). -/
 def selfName : String := ScalaRead.selfLabelName
+/-- The binder of the result of `new` (D-15). -/
+def newVar : String := "·n"
+/-- The binder of a forwarder's partial application (D-9). -/
+def fwdVar : String := "·g"
+/-- The binder of an override witness (D-13). -/
+def witVar : String := "·w"
+/-- The parameter of the constructor of a class without parameters (D-8, Ctor-Nil). -/
+def nilVar : String := "·c"
 
 /-- The binder of a template at depth `d`: `σ` for the stem, `ν'`, `ν''`, … below it. -/
 def tmplName : Nat → String
@@ -122,8 +153,10 @@ def msgEmptyRefinement : String := "an empty refinement is outside the subset"
 def msgLitNoType : String := "an object literal needs a written type: scalac types it as Object"
 /-- A field whose right side is neither a path nor a lambda. -/
 def msgField : String := "a field holds a path or a value in pDOT: move the computation into `program`"
-/-- A class, a trait or `new` of a class, which the reader takes and the mapping of stage N6 maps. -/
-def msgClassesN6 : String := "classes and traits are mapped in stage N6"
+/-- More arguments than parameters, which scalac tuples (probes P01, P02). -/
+def msgTupled : String := "more arguments than the one parameter: scalac tuples them, which is outside the subset"
+/-- An argument of a parent that is no path. -/
+def msgParentArg : String := "an argument of a parent is a path in this stage"
 
 /-! ## Contexts -/
 
@@ -201,8 +234,15 @@ def isStem : STm → Bool
 
 /-! ## Paths -/
 
+/-- The label of the member `x` of the template at the head of `env`: `ℓx$K` for a plain parameter `x`
+of a class `K` (D-11), else `x`. -/
+def memLabel (env : List Entry) (x : String) : String :=
+  match clsOf? env with
+  | some d => if d.plain x then hidName x d.name else x
+  | none => x
+
 /-- A path of a written type: the root by the scope, `this` and a self name as the template's binder,
-a bare member `m` of `r` as `⟦r⟧.m`. -/
+a bare member `m` of `r` as `⟦r⟧.m`, a plain parameter `x` of a class `K` as `⟦r⟧.ℓx$K`. -/
 def pathS (env : List Entry) : ScalaRead.Path → Except Err SPath
   | .this p =>
     match thisOf env with
@@ -212,11 +252,13 @@ def pathS (env : List Entry) : ScalaRead.Path → Except Err SPath
     match lookup x env with
     | .param .. | .val .. => pure (.var x)
     | .self env' => pure (.var (binderOf env'))
-    | .member env' => pure (.sel (.var (binderOf env')) x)
+    | .member env' => pure (.sel (.var (binderOf env')) (memLabel env' x))
     | _ => throw ⟨p, msgScope x⟩
   | .sel q _ a => do
     let q' ← pathS env q
-    pure (.sel q' a)
+    match q, thisOf env with
+    | .this _, some env' => pure (.sel q' (memLabel env' a))
+    | _, _ => pure (.sel q' a)
 
 /-- The shortest prefix of length two or more of a proper prefix whose kind is a method or unstable,
 with the steps after it. -/
@@ -257,9 +299,9 @@ def termPath (c : MCtx) (q : ScalaRead.Path) : Except Err STm :=
     pure (.bind .unstable unstName (pathTm r') (unstRest cs))
   | none => do
     let q' ← pathS c.env q
-    match (kindPath c.fuel c.env none q).word with
-    | .obj | .lit => pure (.proj (pathTm q') selfName)
-    | _ => pure (pathTm q')
+    match (kindPath c.fuel c.env none q).word, q with
+    | .obj, _ | .lit, _ | .inst, .this _ => pure (.proj (pathTm q') selfName)
+    | _, _ => pure (pathTm q')
 
 /-! ## Types -/
 
@@ -356,6 +398,444 @@ def lamChain : List (String × SType) → STm → STm
   | [], b => b
   | (x, S) :: xs, b => .lam x (some S) (lamChain xs b)
 
+/-! ## Classes (plan XII, "The mapping, one equation per construct") -/
+
+/-- The path a name stands for in a substitution of roots. -/
+def lookupS (x : String) : List (String × SPath) → Option SPath
+  | [] => none
+  | (y, p) :: σ => if decide (x = y) then some p else lookupS x σ
+
+/-- A substitution of roots without the name `x`, under a binder of that name. -/
+def dropS (x : String) : List (String × SPath) → List (String × SPath)
+  | [] => []
+  | (y, p) :: σ => if decide (x = y) then dropS x σ else (y, p) :: dropS x σ
+
+/-- A path with its root replaced by the path the substitution gives it. -/
+def substRoot (σ : List (String × SPath)) : SPath → SPath
+  | .var x => (lookupS x σ).getD (.var x)
+  | .sel p a => .sel (substRoot σ p) a
+
+/-- A type with the roots of its paths replaced, simultaneously, a binder of the type hiding its name. -/
+def substRoots (σ : List (String × SPath)) : SType → SType
+  | .top => .top
+  | .bot => .bot
+  | .typ A S T => .typ A (substRoots σ S) (substRoots σ T)
+  | .fld a T => .fld a (substRoots σ T)
+  | .sngl p => .sngl (substRoot σ p)
+  | .sel p A => .sel (substRoot σ p) A
+  | .mu x T => .mu x (substRoots (dropS x σ) T)
+  | .all x S T => .all x (substRoots σ S) (substRoots (dropS x σ) T)
+  | .and S T => .and (substRoots σ S) (substRoots σ T)
+
+/-- The path from the stem of the template at the head of `env`: `σ` for the stem, `p.o` for an object
+`o` of the template at `p`, none for another template. -/
+def tmplPath : List Entry → Option SPath
+  | [] => none
+  | .tmpl (.stem ..) :: _ => some (.var stemName)
+  | .tmpl (.obj _ o _ _) :: env => (tmplPath env).map (·.sel o)
+  | .tmpl _ :: _ => none
+  | _ :: env => tmplPath env
+
+/-- The binder of each template of a context that is the stem or an object, with its path from the stem. -/
+def objSubst : List Entry → List (String × SPath)
+  | [] => []
+  | e :: env =>
+    (match e, tmplPath (e :: env) with
+     | .tmpl _, some p => [(binderOf (e :: env), p)]
+     | _, _ => []) ++ objSubst env
+
+/-- The binders of the stem and the objects around the class at the head of `eD` that are not around the
+class at the head of `eK`, each with its path from the stem.  The others are in scope at `K`. -/
+def relSubst (eD eK : List Entry) : List (String × SPath) :=
+  (objSubst eD.tail).filter fun bp => !(objSubst eK.tail).contains bp
+
+/-- The substitution that reads a type of the class at the head of `eD` at the binder `b` inside the template
+of the class at the head of `eK`: the class's binder to `b`, each binder of the stem and the objects around it
+and not around `K` to its path from the stem. -/
+def clsSubst (eD eK : List Entry) (b : String) : List (String × SPath) :=
+  (binderOf eD, .var b) :: relSubst eD eK
+
+/-- The template of the class at the head of `eD` as a path at the class at the head of `eK`: its binder when it
+is around `K`, else its path from the stem. -/
+def tmplAt (eD eK : List Entry) : Option SPath :=
+  (tmplPath eD.tail).map fun p =>
+    match (objSubst eK.tail).find? fun bp => decide (bp.2 = p) with
+    | some (b, _) => .var b
+    | none => p
+
+/-- The parameters of a class at its body binder `b`: `b.x` for a `val` parameter, `b.ℓx$K` for a plain one. -/
+def paramSubst (d : ClsDecl) (b : String) : List (String × SPath) :=
+  d.params.map fun x => (x.name, .sel (.var b) (if x.isVal then x.name else hidName x.name d.name))
+
+/-- `⋀ᴸ`: the left-nested intersection, `⊤` for none. -/
+def andL : List SType → SType
+  | [] => .top
+  | T :: Ts => Ts.foldl .and T
+
+/-- `⋀ᴿ`: the right-nested intersection ending in `⊤`. -/
+def andR : List SType → SType
+  | [] => .top
+  | T :: Ts => .and T (andR Ts)
+
+/-- A class reference as a written type, `C` or `q.C`. -/
+def refTy (P : ClassRef) : ScalaRead.Ty :=
+  match P.pre with
+  | none => .name P.pos P.name
+  | some q => .sel P.pos q P.name
+
+/-- `own(m)` for each member of a class body, in text order, in the body's context `cK`. -/
+def ownDecls (cK : MCtx) : CMems → Except Err (List SType)
+  | .nil => pure []
+  | .typ _ _ A lo hi r => do
+    let S ← boundS cK .bot lo
+    let U ← boundS cK .top hi
+    let rest ← ownDecls cK r
+    pure (.typ A S U :: rest)
+  | .alias _ _ A T r => do
+    let T' ← tyS cK T
+    let rest ← ownDecls cK r
+    pure (.typ A T' T' :: rest)
+  | .valDecl _ _ a T r | .val _ _ a T _ r => do
+    let T' ← tyS cK T
+    let rest ← ownDecls cK r
+    pure (.fld a T' :: rest)
+  | .defDecl _ _ f ps R r | .defn _ _ f ps R _ r => do
+    let (doms, cP) ← paramsS cK ps
+    let R' ← tyS cP R
+    let rest ← ownDecls cK r
+    pure (.fld f (allChain doms R') :: rest)
+
+/-- `class K = Body(K)` after `ds`: `μ(b. ⋀ᴸ decls(K)) ∧ ⋀ᴿ parents(K)`, with `decls(K)` the self-alias field,
+`hid` of every plain parameter, `vdec` of every `val` parameter, then `own` of every member.  A parameter's
+type is read in the head context, its parameters at their fields (N5 departure 4). -/
+def clsDefS (c : MCtx) (d : ClsDecl) (ds : SDefs) : Except Err SDefs := do
+  let cK := c.push (.tmpl (.cls d))
+  let b := binderOf cK.env
+  let hc : MCtx := { c with env := headEnv cK.env }
+  let ps ← d.params.mapM fun x => do
+    let S ← tyS hc x.ty
+    pure (x, substRoots (paramSubst d b) S)
+  let hid := ps.filterMap fun (x, S) => if x.isVal then none else some (SType.fld (hidName x.name d.name) S)
+  let vdec := ps.filterMap fun (x, S) => if x.isVal then some (SType.fld x.name S) else none
+  let own ← ownDecls cK d.body
+  let parents ← d.parents.refs.mapM fun P => tyS c (refTy P)
+  pure (.cls ds d.name (.and (.mu b (andL (.fld selfName (.sngl (.var b)) :: hid ++ vdec ++ own))) (andR parents)))
+
+/-- The declared type of the member `a` in the body of the class whose context is `cD`, if it declares one. -/
+def bodyTy (cD : MCtx) (a : String) : CMems → Except Err (Option SType)
+  | .nil => pure none
+  | .typ _ _ _ _ _ r | .alias _ _ _ _ r => bodyTy cD a r
+  | .valDecl _ _ b T r | .val _ _ b T _ r =>
+    if decide (a = b) then some <$> tyS cD T else bodyTy cD a r
+  | .defDecl _ _ f ps R r | .defn _ _ f ps R _ r =>
+    if decide (a = f) then do
+      let (doms, cP) ← paramsS cD ps
+      let R' ← tyS cP R
+      pure (some (allChain doms R'))
+    else bodyTy cD a r
+
+/-- The declared type of the term member `a` of the class at the head of `eD`, read at the binder `b`
+(`clsSubst`): a `val` parameter's type in the head context, a body member's in the body. -/
+def memTy (c : MCtx) (eK eD : List Entry) (b a : String) : Except Err (Option SType) :=
+  match clsOf? eD with
+  | none => pure none
+  | some d =>
+    match d.params.find? fun x => x.isVal && decide (x.name = a) with
+    | some x => do
+      let S ← tyS { c with env := headEnv eD } x.ty
+      pure (some (substRoots (clsSubst eD eK b) (substRoots (paramSubst d (binderOf eD)) S)))
+    | none => do
+      let T ← bodyTy { c with env := eD } a d.body
+      pure (T.map (substRoots (clsSubst eD eK b)))
+
+/-- The bounds of the type member `A` of the class at the head of `eD`, read at the binder `b`: an alias as
+both bounds, an absent bound as `⊥` or `⊤`. -/
+def memBounds (c : MCtx) (eK eD : List Entry) (b A : String) : Except Err (Option (SType × SType)) :=
+  match (clsOf? eD).bind (·.body.findTyp A) with
+  | some (.alias T) => do
+    let T' ← tyS { c with env := eD } T
+    let T'' := substRoots (clsSubst eD eK b) T'
+    pure (some (T'', T''))
+  | some (.bounds lo hi) => do
+    let S ← boundS { c with env := eD } .bot lo
+    let U ← boundS { c with env := eD } .top hi
+    pure (some (substRoots (clsSubst eD eK b) S, substRoots (clsSubst eD eK b) U))
+  | none => pure none
+
+/-- The first `n` binders of a dependent function type, and the rest. -/
+def splitAll : Nat → SType → List (String × SType) × SType
+  | n + 1, .all x S T => let (ps, R) := splitAll n T; ((x, S) :: ps, R)
+  | _, T => ([], T)
+
+/-- A dependent function type with the result after its first `n` binders replaced by `⊤`. -/
+def resTop : Nat → SType → SType
+  | n + 1, .all x S T => .all x S (resTop n T)
+  | _, _ => .top
+
+/-- The witness `l : ∀(b : recv) ∀(·w : S) T = λ(b : recv). λ(·w : S). ·w` after `ds` (D-13), left out when
+`S <: T` holds by its form: `S = T`, `S = ⊥` or `T = ⊤`. -/
+def witS (ds : SDefs) (l b : String) (recv S T : SType) : SDefs :=
+  if decide (S = T) || decide (S = .bot) || decide (T = .top) then ds
+  else .trm ds l (some (.all b recv (.all witVar S T))) (.lam b (some recv) (.lam witVar (some S) (.var witVar)))
+
+/-- The number of lists of the member `a` of the class at the head of `e`, `none` for a `val`. -/
+def defLists (e : List Entry) (a : String) : Option Nat :=
+  match (clsOf? e).bind (·.findMem a) with
+  | some (.defn n) => some n
+  | _ => none
+
+/-- The witnesses of the term member `a` of `K` at the receiver `b : recv` after `ds`: for each `D ≠ E` of `L`
+that declares `a`, `E` the class of `eff(a, K)`, `ov` and `ovp` for a `def`, `ovv` for a `val`, unless the two
+types are equal or a class `P ≠ K` of `L` has `eff(a, P)` from `E` and `D` in `L(P)`. -/
+def trmWits (c : MCtx) (K : String) (eK : List Entry) (L : List (List Entry)) (b : String) (recv : SType) (ds : SDefs) (a : String) :
+    Except Err SDefs :=
+  match Classes.effCls a L with
+  | none => pure ds
+  | some eE => do
+    match ← memTy c eK eE b a with
+    | none => pure ds
+    | some FE =>
+      let Ds := L.filter fun eD => !decide (clsKey eD = clsKey eE) && Classes.declaresAt a eD &&
+        !(L.tail.any fun eP => match Classes.effCls a (Classes.linD eP) with
+          | some eE' => decide (clsKey eE' = clsKey eE) && memCls eD (Classes.linD eP)
+          | none => false)
+      Ds.foldlM (fun ds eD => do
+        match ← memTy c eK eD b a with
+        | none => pure ds
+        | some FD =>
+          let D := Classes.nameAt eD
+          match defLists eE a with
+          | some n => pure (witS (witS ds (witName "ov" K a D) b recv FE FD) (witName "ovp" K a D) b recv
+              (resTop n FD) (resTop n FE))
+          | none => pure (witS ds (witName "ovv" K a D) b recv FE FD)) ds
+
+/-- The witnesses `ovl` and `ovu` of the type member `A` that the body of `K` declares, for each `D ≠ K` of
+`L(K)` that declares it, unless the two bounds are equal. -/
+def typWits (c : MCtx) (K : String) (eK : List Entry) (L : List (List Entry)) (b : String) (recv : SType)
+    (ds : SDefs) (A : String) : Except Err SDefs := do
+  match ← memBounds c eK eK b A with
+  | none => pure ds
+  | some (LK, UK) =>
+    L.tail.foldlM (fun ds eD => do
+      if !Classes.declaresTypAt A eD then pure ds
+      else
+        match ← memBounds c eK eD b A with
+        | none => pure ds
+        | some (LD, UD) =>
+          let D := Classes.nameAt eD
+          pure (witS (witS ds (witName "ovl" K A D) b recv LD LK) (witName "ovu" K A D) b recv UK UD)) ds
+
+/-- The witnesses `ovc` of the type member `A` that `K` inherits and does not declare: for each ordered pair
+`D ≠ E` of classes of `L(K)` after `K` that declare `A`, `ovc$K$A$D$E : ∀(b : recv) ∀(·w : L_D) U_E`, the
+pairwise consistency scalac asks of two inherited declarations (probes Q26, V1 to V5), left out by its form
+as every witness. -/
+def inhWits (c : MCtx) (K : String) (eK : List Entry) (L : List (List Entry)) (b : String) (recv : SType)
+    (ds : SDefs) (A : String) : Except Err SDefs := do
+  let Ds := L.tail.filter (Classes.declaresTypAt A)
+  Ds.foldlM (fun ds eD => do
+    match ← memBounds c eK eD b A with
+    | none => pure ds
+    | some (LD, _) =>
+      Ds.foldlM (fun ds eE => do
+        if decide (clsKey eD = clsKey eE) then pure ds else
+        match ← memBounds c eK eE b A with
+        | none => pure ds
+        | some (_, UE) => pure (witS ds (witName "ovc" K A (Classes.nameAt eD ++ "$" ++ Classes.nameAt eE)) b recv LD UE)) ds) ds
+
+/-- The type members of `names(K)` that `K` does not declare. -/
+def inhTyps (d : ClsDecl) (L : List (List Entry)) : List String :=
+  (Classes.names L).filterMap fun
+    | .typ A => if d.body.declaresTyp A then none else some A
+    | _ => none
+
+/-- The labels of the witnesses of `inhWits` for the class at the head of `e`, one per ordered pair, written
+or not. -/
+def inhLabels (e : List Entry) : List (String × Bool) :=
+  match clsOf? e with
+  | some d =>
+    let L := Classes.linD e
+    (inhTyps d L).flatMap fun A =>
+      let Ds := L.tail.filter (Classes.declaresTypAt A)
+      Ds.flatMap fun eD => Ds.filterMap fun eE =>
+        if decide (clsKey eD = clsKey eE) then none
+        else some (witName "ovc" d.name A (Classes.nameAt eD ++ "$" ++ Classes.nameAt eE), false)
+  | none => []
+
+/-- `witnesses(K)` after `ds`, at the receiver `b : z.K` with `b` the body's binder (plan 784 to 796, D-13). -/
+def witnessesS (c : MCtx) (d : ClsDecl) (ds : SDefs) : Except Err SDefs := do
+  let eK := (c.push (.tmpl (.cls d))).env
+  let b := binderOf eK
+  let recv : SType := .sel (.var (binderOf c.env)) d.name
+  let L := Classes.linD eK
+  let ds ← (Classes.termNames L).foldlM (trmWits c d.name eK L b recv) ds
+  let ds ← d.body.typNames.foldlM (typWits c d.name eK L b recv) ds
+  (inhTyps d L).foldlM (inhWits c d.name eK L b recv) ds
+
+/-- The position of `y` in a list of parameters. -/
+def indexOf (y : String) : List ScalaRead.CParam → Option Nat
+  | [] => none
+  | x :: xs => if decide (x.name = y) then some 0 else (indexOf y xs).map (· + 1)
+
+/-- The `j`-th argument. -/
+def argAt : Nat → Args → Option ScalaRead.Tm
+  | _, .nil => none
+  | 0, .cons t _ => some t
+  | j + 1, .cons _ r => argAt j r
+
+/-- `arg(K, D, y)` (plan 811 to 812): the parameter `y` itself at `K`, else the `j`-th argument of the first
+parent of the class `E` of `L(K)` whose first parent is `D`, `y` the `j`-th parameter of `D`, read in the head
+context of `E` with each parameter of `E` replaced by its argument and the stem and objects around `E` by their
+paths.  Fuelled by the length of `L(K)`. -/
+def argPath (c : MCtx) (eK : List Entry) (L : List (List Entry)) : Nat → List Entry → String → Option SPath
+  | 0, _, _ => none
+  | n + 1, eD, y =>
+    if decide (clsKey eD = clsKey eK) then some (.var y)
+    else
+      L.findSome? fun eE =>
+        match clsOf? eE, (clsOf? eD).bind fun dD => indexOf y dD.params with
+        | some dE, some j =>
+          match dE.parents with
+          | .cons P as _ =>
+            if ((refEnv? eE.tail P).map fun eP => decide (clsKey eP = clsKey eD)).getD false then
+              match argAt j as with
+              | some (.path q) =>
+                match termPath { c with env := headEnv eE } q with
+                | .ok t => t.toPath?.map fun p =>
+                    substRoot ((dE.params.filterMap fun x => (argPath c eK L n eE x.name).map (x.name, ·)) ++
+                      relSubst eE eK) p
+                | .error _ => none
+              | _ => none
+            else none
+          | .nil => none
+        | _, _ => none
+
+/-- A path of a `val`'s right side in the body of `P`, read in an instance with self `i`: `bP.x` for a
+parameter `x` of `P` as its argument, the root `bP` as `i`, the stem and objects around `P` as their paths. -/
+def instPath (bP i : String) (args objs : List (String × SPath)) : SPath → SPath
+  | .var x => if decide (x = bP) then .var i else (lookupS x objs).getD (.var x)
+  | .sel p a =>
+    match p with
+    | .var x => if decide (x = bP) then (lookupS a args).getD (.sel (.var i) a) else .sel (instPath bP i args objs p) a
+    | _ => .sel (instPath bP i args objs p) a
+
+/-- `apps(g, ys)` (plan 813 to 814): `g y` for the last name, `let g = g y in …` before it. -/
+def appsS : List String → STm
+  | [] => .var fwdVar
+  | [y] => .app (.var fwdVar) (.var y)
+  | y :: ys => .«let» fwdVar none (.app (.var fwdVar) (.var y)) (appsS ys)
+
+/-- The forwarder `f : F = Λs(Ls, let ·g = zD.f$D i in apps(·g, names Ls))` after `ds`, `Ls` the first `n`
+binders of `F` (D-9, plan 810). -/
+def fwdS (ds : SDefs) (f : String) (F : SType) (n : Nat) (zD : SPath) (D i : String) : SDefs :=
+  let ps := (splitAll n F).1
+  .trm ds f (some F) (lamChain ps (.«let» fwdVar none (.app (pathTm (zD.sel (modName f D))) (.var i))
+    (appsS (ps.map (·.1)))))
+
+/-- `inst(m)` after `ds` for the member `m` of `names(K)` in the instance with self `i` (plan 803 to 810). -/
+def instMem (c : MCtx) (eK : List Entry) (L : List (List Entry)) (i : String) (arg : List Entry → String → SPath) (ds : SDefs) :
+    Classes.IName → Except Err SDefs
+  | .hid x D =>
+    match L.find? fun e => decide (Classes.nameAt e = D) with
+    | some eD => pure (.trm ds (hidName x D) none (pathTm (arg eD x)))
+    | none => pure ds
+  | .typ A => do
+    match L.findSome? fun eD => (clsOf? eD).bind fun dD =>
+        if dD.body.aliases A then (dD.body.findTyp A).map (eD, ·) else none with
+    | some (eD, .alias T) => do
+      let T' ← tyS { c with env := eD } T
+      pure (.typ ds A (substRoots (clsSubst eD eK i) T'))
+    | _ => do
+      let Us ← L.filterMapM fun eD => do
+        match (clsOf? eD).bind (·.body.findTyp A) with
+        | some (.bounds _ hi) => do
+          let U ← boundS { c with env := eD } .top hi
+          pure (if decide (U = .top) then none else some (substRoots (clsSubst eD eK i) U))
+        | _ => pure none
+      pure (.typ ds A (andL Us))
+  | .trm a =>
+    match Classes.mimpl a L with
+    | none => pure ds
+    | some eP =>
+      match clsOf? eP, tmplAt eP eK with
+      | some dP, some zP =>
+        if dP.params.any fun x => x.isVal && decide (x.name = a) then pure (.trm ds a none (pathTm (arg eP a)))
+        else
+          match dP.body.valRhs? a with
+          | some (.path q) => do
+            let t ← termPath { c with env := eP } q
+            match t.toPath? with
+            | some p =>
+              let args := dP.params.map fun x => (if x.isVal then x.name else hidName x.name dP.name, arg eP x.name)
+              pure (.trm ds a none (pathTm (instPath (binderOf eP) i args (relSubst eP eK) p)))
+            | none => pure ds
+          | some _ => do
+            match ← memTy c eK eP i a with
+            | some F => pure (fwdS ds a F 1 zP dP.name i)
+            | none => pure ds
+          | none => do
+            match ← memTy c eK eP i a, defLists eP a with
+            | some F, some n => pure (fwdS ds a F n zP dP.name i)
+            | _, _ => pure ds
+      | _, _ => pure ds
+
+/-- `Inst(K) = ν(i) as z.K {ℓself = i, insts(K)}`, the members in the order of `names(K)` (plan 800 to 810).
+The literal stands bare, since resolution binds it already (`Resolve.lean:378-382`).  An argument the parents do
+not give reads as `σ`: the class checks reject such a file first. -/
+def instS (c : MCtx) (d : ClsDecl) : Except Err STm := do
+  let eK := (c.push (.tmpl (.cls d))).env
+  let i := binderOf eK
+  let L := Classes.linD eK
+  let arg (eD : List Entry) (y : String) : SPath := (argPath c eK L L.length eD y).getD (.var stemName)
+  let ds ← (Classes.names L).foldlM (instMem c eK L i arg) (selfDefs i)
+  pure (.inst i (.var (binderOf c.env)) d.name ds)
+
+/-- `ctor(K)` after `ds`: `new$K : Πs(params K, z.K) = Λs(params K, Inst(K))`, the parameter types read in the
+head context, or `∀(·c : ⊤) z.K` when `K` has no parameter (Ctor-Nil, D-8). -/
+def ctorS (c : MCtx) (d : ClsDecl) (ds : SDefs) : Except Err SDefs := do
+  let hc : MCtx := { c with env := headEnv (.tmpl (.cls d) :: c.env) }
+  let ps ← d.params.mapM fun x => do
+    let S ← tyS hc x.ty
+    pure (x.name, S)
+  let inst ← instS c d
+  let ps' := if ps.isEmpty then [(nilVar, SType.top)] else ps
+  pure (.trm ds (newName d.name) (some (allChain ps' (.sel (.var (binderOf c.env)) d.name))) (lamChain ps' inst))
+
+/-- The shapes the mapping refuses at a class head: a first parent with one parameter given more arguments,
+which scalac tuples into it (probe P02), and an argument of a parent that is no path. -/
+def headOk (c : MCtx) (d : ClsDecl) : Except Err Unit :=
+  match d.parents with
+  | .cons P as _ => do
+    match (refEnv? c.env P).bind clsOf? with
+    | some D => if D.params.length = 1 && 1 < Classes.argsLen as then throw ⟨P.pos, msgTupled⟩
+    | none => pure ()
+    if !Classes.argsPaths as then throw ⟨P.pos, msgParentArg⟩
+  | .nil => pure ()
+
+/-- The prefix of `new p.K`: `⟦p⟧`, or the binder of the template declaring a bare `K`. -/
+def newPre (c : MCtx) (K : ClassRef) : Except Err SPath :=
+  match K.pre with
+  | some q => pathS c.env q
+  | none =>
+    match lookupCls K.name c.env with
+    | some (_ :: envT) => pure (.var (binderOf envT))
+    | _ => throw ⟨K.pos, msgScope K.name⟩
+
+/-- The arity the mapping refuses at `new p.K(ē)`: more than one argument to a `K` with one parameter, which
+scalac tuples into it (probes P01, P16).  With no parameter or two or more, the check `Classes.checkNew`
+answers "too many arguments" (probe Q29). -/
+def newArity (c : MCtx) (K : ClassRef) (n : Nat) : Except Err Unit :=
+  match clsKind c.fuel c.env K with
+  | .inst e =>
+    match clsOf? e with
+    | some d => if d.params.length = 1 && 1 < n then throw ⟨K.pos, msgTupled⟩ else pure ()
+    | none => pure ()
+  | _ => pure ()
+
+/-- `f a₁ … aₙ`, applications nested to the left. -/
+def appChain : STm → List STm → STm
+  | f, [] => f
+  | f, a :: as => appChain (.app f a) as
+
 /-! ## Terms -/
 
 /-- Whether a term is an object literal. -/
@@ -412,8 +892,22 @@ def tmS (c : MCtx) (wr res : Bool) (under : Option ScalaRead.Ty) (t : ScalaRead.
       let T' ← tyS c T
       pure (litForm z ds T')
     | none => throw ⟨p, msgLitNoType⟩
-  | .new p _ _ => throw ⟨p, msgClassesN6⟩ -- N6 replaces this arm with ⟦new p.K(ē)⟧
+  | .new _ K as => do
+    let args ← argsS c as
+    newArity c K args.length
+    let pre ← newPre c K
+    pure (.«let» newVar none (appChain (pathTm (pre.sel (newName K.name))) (if args.isEmpty then [.var stemName] else args))
+      (.var newVar))
 termination_by structural t
+/-- The arguments of `new`, each an operand. -/
+def argsS (c : MCtx) (as : Args) : Except Err (List STm) :=
+  match as with
+  | .nil => pure []
+  | .cons t r => do
+    let t' ← tmS c false false none t
+    let r' ← argsS c r
+    pure (t' :: r')
+termination_by structural as
 /-- A block's statements, the last one its result. -/
 def statsS (c : MCtx) (wr : Bool) (ss : Stats) : Except Err STm :=
   match ss with
@@ -477,7 +971,36 @@ def memsS (c : MCtx) (ds : SDefs) (ms : Mems) : Except Err SDefs :=
     let R' ← tyOptS cP R
     let body ← tmS cP R.isSome true R e
     memsS c (.trm ds f (R'.map (allChain doms)) (lamChain doms body)) r
-  | .cls p _ _ _ _ _ _ => throw ⟨p, msgClassesN6⟩ -- N6 replaces this arm with ⟦class K …⟧ᶻ
+  | .cls p k C ps Ps b r => do
+    let d : ClsDecl := ⟨p, k, C, ps, Ps, b⟩
+    headOk c d
+    let ds₁ ← clsDefS c d ds
+    let ds₂ ← cmemsS (c.push (.tmpl (.cls d))) (binderOf c.env) C ds₁ b
+    let ds₃ ← witnessesS c d ds₂
+    let ds₄ ← if k = .concrete then ctorS c d ds₃ else pure ds₃
+    memsS c ds₄ r
+termination_by structural ms
+/-- The module functions and `val` witnesses of a class body after `ds`, in text order, each under the receiver
+`b : z.K`, `b` the body's binder (D-9, D-10). -/
+def cmemsS (cK : MCtx) (z K : String) (ds : SDefs) (ms : CMems) : Except Err SDefs :=
+  match ms with
+  | .nil => pure ds
+  | .typ _ _ _ _ _ r | .alias _ _ _ _ r | .valDecl _ _ _ _ r | .defDecl _ _ _ _ _ r => cmemsS cK z K ds r
+  | .val p _ a T e r => do
+    let recv : SType := .sel (.var z) K
+    let T' ← tyS cK T
+    let e' ← match e with
+      | .lam .. => tmS cK true false none e
+      | .path q => termPath cK q
+      | _ => throw ⟨p, msgField⟩
+    cmemsS cK z K (.trm ds (modName a K) (some (.all (binderOf cK.env) recv T')) (.lam (binderOf cK.env) (some recv) e')) r
+  | .defn _ _ f ps R e r => do
+    let recv : SType := .sel (.var z) K
+    let (doms, cP) ← paramsS cK ps
+    let R' ← tyS cP R
+    let body ← tmS cP true true (some R) e
+    cmemsS cK z K (.trm ds (modName f K) (some (.all (binderOf cK.env) recv (allChain doms R')))
+      (.lam (binderOf cK.env) (some recv) (lamChain doms body))) r
 termination_by structural ms
 end
 
@@ -513,12 +1036,19 @@ stem (D-13). -/
 def modulesOf (Λ : LabelTable) (F : File) (stem : Bool) : List (List Label) :=
   if stem then [] :: (ScalaRead.modules F).filterMap (chainLabels Λ) else []
 
+/-- The label table of a file: the reader's (`ScalaRead.labels`) with the labels of `inhLabels` after the
+hidden labels and before `ℓself`. -/
+def labelsN (F : File) : LabelTable :=
+  let Λ := intern [] 0 0 (F.labelNames ++ ScalaRead.hiddenNames F ++
+    (F.mems.clsEnvs (ScalaRead.Scope.stemEnv F)).flatMap inhLabels)
+  Λ ++ [(ScalaRead.selfLabelName, .trm (ScalaRead.countTrm Λ))]
+
 /-- Parse, check, map, and number: the file, its term, its table, its modules. -/
 def readFile (cs : List Char) : Except Err (File × STm × LabelTable × List (List Label)) := do
   let F ← ScalaRead.parseFile cs
   ScalaRead.check F
   let e ← ofScala F
-  let Λ := ScalaRead.labels F
+  let Λ := labelsN F
   pure (F, e, Λ, modulesOf Λ F (isStem e))
 
 /-- The surface term, the label table and the module chains of the characters of a file. -/
@@ -613,6 +1143,14 @@ def memberOpt {s : Sig} (Γ : Ctx s) : Option (Ty s) → MemberCheck
   | some T => memberTy Γ T
 
 open Nominal.Source (Ty Dec Ctx) in
+/-- The selections of a class body `μ(this. U) ∧ P`: `U` with `this` at the whole body, so that a member
+inherited through `P` is declared, then `P`. -/
+def memberCls {s : Sig} (Γ : Ctx s) (T : Ty s) : MemberCheck :=
+  match T with
+  | .and (.mu U) P => (memberTy (Γ.cons T) U).andThen (memberTy Γ P)
+  | _ => memberTy Γ T
+
+open Nominal.Source (Ty Dec Ctx) in
 mutual
 /-- The written slots of `p`, each in the context the derivation gives it. -/
 def memberD : {s : Sig} → {Γ : Ctx s} → {a : ATm s} → {T : Ty s} → AHasTy Γ a T → PTm s → MemberCheck
@@ -635,6 +1173,7 @@ as `adnew` types them (`PDot/Frontend/Judgment.lean:123-126`). -/
 def memberDefD : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ad : ADef s} → {D : Dec s} →
     ADefTy Γ r ad D → PDef s → MemberCheck
   | _, Γ, _, _, _, .adtyp, .typ _ T => memberTy Γ T
+  | _, Γ, _, _, _, .adcls _, .cls _ T => memberCls Γ T
   | _, Γ, _, _, _, .adlam d, .lam _ o S t => (memberOpt Γ o).andThen (memberD d (.lam S t))
   | _, _, r, .new b _ _, _, .adnew _ dd, .new _ _ pds => memberDefsD dd (pdefsSubst pds (PathSubst.one (r.sel b)))
   | _, _, _, _, _, _, _ => .ok
@@ -707,8 +1246,35 @@ def selTm (typ : Bool) (x : String) (t : ScalaRead.Tm) : Option (Pos × String) 
   | .asc _ e T => (selTm typ x e).or (selTy typ x T)
   | .block _ ss => selStats typ x ss
   | .lit _ _ ms => selMems typ x ms
-  | .new .. => none -- N6 replaces this arm: the selections of the class reference and the arguments
+  | .new _ K as => (if typ then none else K.pre.bind (stepIn x)).or (selArgs typ x as)
 termination_by structural t
+/-- The first selection of the member `x` in a written type inside arguments. -/
+def selArgs (typ : Bool) (x : String) (as : Args) : Option (Pos × String) :=
+  match as with
+  | .nil => none
+  | .cons t r => (selTm typ x t).or (selArgs typ x r)
+termination_by structural as
+/-- The first selection of the member `x` in parents: a class reference `q.C` selects the type `C` on `q`. -/
+def selParents (typ : Bool) (x : String) (Ps : ScalaRead.Parents) : Option (Pos × String) :=
+  match Ps with
+  | .nil => none
+  | .cons P as r =>
+    let here := match P.pre with
+      | some q => if typ then (if decide (P.name = x) then some (P.pos, q.text) else none) else stepIn x q
+      | none => none
+    here.or ((selArgs typ x as).or (selParents typ x r))
+termination_by structural Ps
+/-- The first selection of the member `x` in a written type inside a class body. -/
+def selCMems (typ : Bool) (x : String) (ms : CMems) : Option (Pos × String) :=
+  match ms with
+  | .nil => none
+  | .typ _ _ _ lo hi r => (selBound typ x lo).or ((selBound typ x hi).or (selCMems typ x r))
+  | .alias _ _ _ T r | .valDecl _ _ _ T r => (selTy typ x T).or (selCMems typ x r)
+  | .val _ _ _ T e r => (selTy typ x T).or ((selTm typ x e).or (selCMems typ x r))
+  | .defDecl _ _ _ ps R r => (selParams typ x ps).or ((selTy typ x R).or (selCMems typ x r))
+  | .defn _ _ _ ps R e r =>
+    (selParams typ x ps).or ((selTy typ x R).or ((selTm typ x e).or (selCMems typ x r)))
+termination_by structural ms
 /-- The first selection of the member `x` in a written type inside a block. -/
 def selStats (typ : Bool) (x : String) (ss : Stats) : Option (Pos × String) :=
   match ss with
@@ -724,7 +1290,8 @@ def selMems (typ : Bool) (x : String) (ms : Mems) : Option (Pos × String) :=
   | .val _ _ T e r => (selTyOpt typ x T).or ((selTm typ x e).or (selMems typ x r))
   | .defn _ _ ps R e r =>
     (selParams typ x ps).or ((selTyOpt typ x R).or ((selTm typ x e).or (selMems typ x r)))
-  | .cls _ _ _ _ _ _ r => selMems typ x r -- N6 replaces this arm: the selections inside the class
+  | .cls _ _ _ ps Ps b r =>
+    (ps.findSome? fun y => selTy typ x y.ty).or ((selParents typ x Ps).or ((selCMems typ x b).or (selMems typ x r)))
 termination_by structural ms
 end
 
@@ -746,36 +1313,41 @@ inductive Kind where
   | outside
 deriving DecidableEq, Repr
 
-/-- The outcome of a file: compiled, rejected by the typer, out of fuel, or outside the subset. -/
+/-- The outcome of a file: compiled, rejected by the typer, rejected by a check of the classes with scalac's
+text, out of fuel, or outside the subset. -/
 inductive Outcome where
   | ok (Λ : LabelTable) (r : (a : ATm []) × Compiled a)
   | rejected (Λ : LabelTable) (why : PReason)
+  | checked (Λ : LabelTable) (err : Err)
   | limit (Λ : LabelTable)
   | outside (err : Err)
 
 /-- The kind of an outcome. -/
 def Outcome.kind : Outcome → Kind
   | .ok .. => .ok
-  | .rejected .. => .rejected
+  | .rejected .. | .checked .. => .rejected
   | .limit _ => .limit
   | .outside _ => .outside
 
 /-- The budget of a file: the Scala mode and its module chains. -/
 def budgetOf (ms : List (List Label)) : Budget := { mode := .scala, modules := ms }
 
-/-- Read, compile in the Scala mode, then the member check R-M. -/
+/-- Read, check the classes, compile in the Scala mode, then the member check R-M. -/
 def outcome (cs : List Char) : Outcome :=
   match readFile cs with
   | .error err => .outside err
   | .ok (F, e, Λ, ms) =>
-    match compileE (budgetOf ms) Λ e with
-    | .error .limit => .limit Λ
-    | .error r => .rejected Λ r
-    | .ok r =>
-      match members Λ e r with
-      | .ok => .ok Λ r
-      | .undeclared typ l => .outside (undeclaredErr F typ ((nameOf Λ l).getD "?"))
-      | .limit => .limit Λ
+    match Classes.check F with
+    | .error err => .checked Λ err
+    | .ok () =>
+      match compileE (budgetOf ms) Λ e with
+      | .error .limit => .limit Λ
+      | .error r => .rejected Λ r
+      | .ok r =>
+        match members Λ e r with
+        | .ok => .ok Λ r
+        | .undeclared typ l => .outside (undeclaredErr F typ ((nameOf Λ l).getD "?"))
+        | .limit => .limit Λ
 
 /-- An `ok` outcome is the compilation of the term `readNominal` gives, in the Scala mode with the file's
 module chains. -/
@@ -788,17 +1360,19 @@ theorem outcome_ok {cs : List Char} {Λ : LabelTable} {r : (a : ATm []) × Compi
   · rename_i F e Λ' ms hr
     split at h
     · cases h
-    · cases h
-    · rename_i r' hc
-      split at h
-      · cases h
-        refine ⟨e, ms, ?_, ?_⟩
-        · simp [readNominal, hr, Except.map]
-        · simp [compile, budgetOf] at hc ⊢
-          rw [hc]
-          rfl
+    · split at h
       · cases h
       · cases h
+      · rename_i r' hc
+        split at h
+        · cases h
+          refine ⟨e, ms, ?_, ?_⟩
+          · simp [readNominal, hr, Except.map]
+          · simp [compile, budgetOf] at hc ⊢
+            rw [hc]
+            rfl
+        · cases h
+        · cases h
 
 /-- An `ok` outcome's derivation translates to an FCn term that the checker accepts. -/
 theorem outcome_checks {cs : List Char} {Λ : LabelTable} {a : ATm []} {c : Compiled a}
@@ -814,6 +1388,494 @@ theorem outcome_safe {cs : List Char} {Λ : LabelTable} {a : ATm []} {c : Compil
     (∀ p, c'.tm = .path p → Nominal.Source.PathSafe c'.store p) := by
   obtain ⟨_, _, _, hk⟩ := outcome_ok h
   exact compile_safe hk hc
+
+/-! ## Tags (plan XII, `ofScala_tags` and `scala_seal_sites`) -/
+
+mutual
+/-- Whether every tagged literal of a term sits where the mapping writes one: the body of a constructor
+field `new$K` of a template `z`, tagged `z.K`. -/
+def tmTags (e : STm) : Bool :=
+  match e with
+  | .var _ => true
+  | .lam _ _ t => tmTags t
+  | .obj z _ d => defsTags z d
+  | .app t u => tmTags t && tmTags u
+  | .proj t _ => tmTags t
+  | .«let» _ _ t u => tmTags t && tmTags u
+  | .asc t _ => tmTags t
+  | .alias _ _ u => tmTags u
+  | .bind _ _ t u => tmTags t && tmTags u
+  | .inst _ _ _ _ => false
+termination_by structural e
+/-- The same for the definitions of a template whose binder is `z`. -/
+def defsTags (z : String) (d : SDefs) : Bool :=
+  match d with
+  | .nil => true
+  | .typ ds _ _ => defsTags z ds
+  | .trm ds a _ t => defsTags z ds && (tmTags t || ctorTags z a t)
+  | .cls ds _ _ => defsTags z ds
+termination_by structural d
+/-- Whether `t` is `λ(x₁ : S₁). … λ(xₙ : Sₙ). ν(i) as z.K {ds}` with `a = new$K` and every tag of `ds`
+where `defsTags i` allows it. -/
+def ctorTags (z a : String) (t : STm) : Bool :=
+  match t with
+  | .lam _ _ b => ctorTags z a b
+  | .inst i p K ds => decide (a = newName K) && decide (p = .var z) && defsTags i ds
+  | _ => false
+termination_by structural t
+end
+
+
+/-! ### Lemmas for `ofScala_tags` -/
+
+theorem bind_ok {ε : Type u} {α β : Type v} {x : Except ε α} {f : α → Except ε β} {b : β} (h : (x >>= f) = .ok b) :
+    ∃ a, x = .ok a ∧ f a = .ok b := by
+  cases x with
+  | error e => cases h
+  | ok a => exact ⟨a, rfl, h⟩
+
+theorem pathTm_tags : (p : SPath) → tmTags (pathTm p) = true
+  | .var _ => by simp [pathTm, tmTags]
+  | .sel p _ => by simp [pathTm, tmTags, pathTm_tags p]
+
+theorem lamChain_tags : (ps : List (String × SType)) → (b : STm) → tmTags (lamChain ps b) = tmTags b
+  | [], _ => rfl
+  | _ :: ps, b => by simp [lamChain, tmTags, lamChain_tags ps b]
+
+theorem lamChain_ctor (z a : String) : (ps : List (String × SType)) → (b : STm) →
+    ctorTags z a (lamChain ps b) = ctorTags z a b
+  | [], _ => rfl
+  | _ :: ps, b => by simp [lamChain, ctorTags, lamChain_ctor z a ps b]
+
+theorem unstRest_tags : (cs : List String) → tmTags (unstRest cs) = true
+  | [] => by simp [unstRest, tmTags]
+  | [_] => by simp [unstRest, tmTags]
+  | _ :: _ :: cs => by simp [unstRest, tmTags, unstRest_tags (_ :: cs)]
+
+theorem termPath_tags {c : MCtx} {q : ScalaRead.Path} {e : STm} (h : termPath c q = .ok e) : tmTags e = true := by
+  unfold termPath at h
+  split at h
+  · obtain ⟨r', -, h⟩ := bind_ok h
+    cases h
+    simp [tmTags, pathTm_tags, unstRest_tags]
+  · obtain ⟨q', -, h⟩ := bind_ok h
+    split at h <;> cases h <;> simp [tmTags, pathTm_tags]
+
+theorem appChain_tags : (f : STm) → (as : List STm) → tmTags f = true → as.all tmTags = true →
+    tmTags (appChain f as) = true
+  | _, [], hf, _ => hf
+  | f, a :: as, hf, ha => by
+    simp only [List.all_cons, Bool.and_eq_true] at ha
+    exact appChain_tags (.app f a) as (by simp [tmTags, hf, ha.1]) ha.2
+
+theorem foldlM_inv {α : Type u} (P : SDefs → Prop) {f : SDefs → α → Except Err SDefs}
+    (hf : ∀ ds x ds', f ds x = .ok ds' → P ds → P ds') :
+    (xs : List α) → (ds ds' : SDefs) → xs.foldlM f ds = .ok ds' → P ds → P ds'
+  | [], ds, ds', h, hp => by cases h; exact hp
+  | x :: xs, ds, ds', h, hp => by
+    simp only [List.foldlM] at h
+    obtain ⟨d₁, h₁, h₂⟩ := bind_ok h
+    exact foldlM_inv P hf xs d₁ ds' h₂ (hf ds x d₁ h₁ hp)
+
+theorem witS_tags {z : String} {ds : SDefs} (l b : String) (recv S T : SType) (h : defsTags z ds = true) :
+    defsTags z (witS ds l b recv S T) = true := by
+  unfold witS
+  split
+  · exact h
+  · simp [defsTags, tmTags, h]
+
+theorem trmWits_tags {z : String} {c : MCtx} {K : String} {eK : List Entry} {L : List (List Entry)} {b : String}
+    {recv : SType} {ds ds' : SDefs} {a : String} (h : trmWits c K eK L b recv ds a = .ok ds')
+    (hd : defsTags z ds = true) : defsTags z ds' = true := by
+  unfold trmWits at h
+  split at h
+  · cases h; exact hd
+  · obtain ⟨FE?, -, h⟩ := bind_ok h
+    split at h
+    · cases h; exact hd
+    · refine foldlM_inv (defsTags z · = true) ?_ _ _ _ h hd
+      intro ds₀ eD ds₁ h₁ hp
+      obtain ⟨FD?, -, h₁⟩ := bind_ok h₁
+      split at h₁
+      · cases h₁; exact hp
+      · split at h₁ <;> cases h₁
+        · exact witS_tags _ _ _ _ _ (witS_tags _ _ _ _ _ hp)
+        · exact witS_tags _ _ _ _ _ hp
+
+theorem typWits_tags {z : String} {c : MCtx} {K : String} {eK : List Entry} {L : List (List Entry)} {b : String}
+    {recv : SType} {ds ds' : SDefs} {A : String} (h : typWits c K eK L b recv ds A = .ok ds')
+    (hd : defsTags z ds = true) : defsTags z ds' = true := by
+  unfold typWits at h
+  obtain ⟨B?, -, h⟩ := bind_ok h
+  split at h
+  · cases h; exact hd
+  · refine foldlM_inv (defsTags z · = true) ?_ _ _ _ h hd
+    intro ds₀ eD ds₁ h₁ hp
+    split at h₁
+    · cases h₁; exact hp
+    · obtain ⟨B'?, -, h₁⟩ := bind_ok h₁
+      split at h₁
+      · cases h₁; exact hp
+      · cases h₁
+        exact witS_tags _ _ _ _ _ (witS_tags _ _ _ _ _ hp)
+
+theorem inhWits_tags {z : String} {c : MCtx} {K : String} {eK : List Entry} {L : List (List Entry)} {b : String}
+    {recv : SType} {ds ds' : SDefs} {A : String} (h : inhWits c K eK L b recv ds A = .ok ds')
+    (hd : defsTags z ds = true) : defsTags z ds' = true := by
+  unfold inhWits at h
+  refine foldlM_inv (defsTags z · = true) ?_ _ _ _ h hd
+  intro ds₀ eD ds₁ h₁ hp
+  obtain ⟨B?, -, h₁⟩ := bind_ok h₁
+  split at h₁
+  · cases h₁; exact hp
+  · refine foldlM_inv (defsTags z · = true) ?_ _ _ _ h₁ hp
+    intro ds₂ eE ds₃ h₂ hq
+    split at h₂
+    · cases h₂; exact hq
+    · obtain ⟨B'?, -, h₂⟩ := bind_ok h₂
+      split at h₂
+      · cases h₂; exact hq
+      · cases h₂
+        exact witS_tags _ _ _ _ _ hq
+
+theorem witnessesS_tags {z : String} {c : MCtx} {d : ScalaRead.ClsDecl} {ds ds' : SDefs}
+    (h : witnessesS c d ds = .ok ds') (hd : defsTags z ds = true) : defsTags z ds' = true := by
+  unfold witnessesS at h
+  obtain ⟨d₁, h₁, h₂⟩ := bind_ok h
+  obtain ⟨d₂, h₂, h₃⟩ := bind_ok h₂
+  have t₁ := foldlM_inv (defsTags z · = true) (fun _ _ _ hx hp => trmWits_tags hx hp) _ _ _ h₁ hd
+  have t₂ := foldlM_inv (defsTags z · = true) (fun _ _ _ hx hp => typWits_tags hx hp) _ _ _ h₂ t₁
+  exact foldlM_inv (defsTags z · = true) (fun _ _ _ hx hp => inhWits_tags hx hp) _ _ _ h₃ t₂
+
+theorem clsDefS_tags {z : String} {c : MCtx} {d : ScalaRead.ClsDecl} {ds ds' : SDefs}
+    (h : clsDefS c d ds = .ok ds') (hd : defsTags z ds = true) : defsTags z ds' = true := by
+  unfold clsDefS at h
+  obtain ⟨_, -, h⟩ := bind_ok h
+  obtain ⟨_, -, h⟩ := bind_ok h
+  obtain ⟨_, -, h⟩ := bind_ok h
+  cases h
+  simp [defsTags, hd]
+
+theorem appsS_tags : (ys : List String) → tmTags (appsS ys) = true
+  | [] => by simp [appsS, tmTags]
+  | [_] => by simp [appsS, tmTags]
+  | _ :: _ :: ys => by simp [appsS, tmTags, appsS_tags (_ :: ys)]
+
+theorem fwdS_tags {z : String} {ds : SDefs} (f : String) (F : SType) (n : Nat) (zD : SPath) (D i : String)
+    (h : defsTags z ds = true) : defsTags z (fwdS ds f F n zD D i) = true := by
+  simp [fwdS, defsTags, h, lamChain_tags, tmTags, pathTm_tags, appsS_tags]
+
+theorem instMem_tags {c : MCtx} {eK : List Entry} {L : List (List Entry)} {i : String}
+    {arg : List Entry → String → SPath} {ds ds' : SDefs} {m : Classes.IName}
+    (h : instMem c eK L i arg ds m = .ok ds') (hd : defsTags i ds = true) : defsTags i ds' = true := by
+  unfold instMem at h
+  split at h
+  · split at h <;> cases h
+    · simp [defsTags, hd, pathTm_tags]
+    · exact hd
+  · split at h
+    · obtain ⟨_, -, h⟩ := bind_ok h
+      cases h
+      simp [defsTags, hd]
+    · obtain ⟨_, -, h⟩ := bind_ok h
+      cases h
+      simp [defsTags, hd]
+  · split at h
+    · cases h; exact hd
+    · split at h
+      · split at h
+        · cases h; simp [defsTags, hd, pathTm_tags]
+        · split at h
+          · obtain ⟨t, -, h⟩ := bind_ok h
+            split at h <;> cases h
+            · simp [defsTags, hd, pathTm_tags]
+            · exact hd
+          · obtain ⟨F?, -, h⟩ := bind_ok h
+            split at h <;> cases h
+            · exact fwdS_tags _ _ _ _ _ _ hd
+            · exact hd
+          · obtain ⟨F?, -, h⟩ := bind_ok h
+            split at h <;> cases h
+            · exact fwdS_tags _ _ _ _ _ _ hd
+            · exact hd
+      · cases h; exact hd
+
+theorem instS_tags {c : MCtx} {d : ScalaRead.ClsDecl} {t : STm} (h : instS c d = .ok t) :
+    ctorTags (binderOf c.env) (newName d.name) t = true := by
+  unfold instS at h
+  obtain ⟨ds, h₁, h⟩ := bind_ok h
+  cases h
+  have : defsTags (binderOf (c.push (Entry.tmpl (.cls d))).env) ds = true :=
+    foldlM_inv (defsTags _ · = true) (fun _ _ _ hx hp => instMem_tags hx hp) _ _ _ h₁ (by simp [selfDefs, defsTags, tmTags])
+  simp [ctorTags, this]
+
+theorem ctorS_tags {c : MCtx} {d : ScalaRead.ClsDecl} {ds ds' : SDefs} (h : ctorS c d ds = .ok ds')
+    (hd : defsTags (binderOf c.env) ds = true) : defsTags (binderOf c.env) ds' = true := by
+  unfold ctorS at h
+  obtain ⟨_, -, h⟩ := bind_ok h
+  obtain ⟨t, ht, h⟩ := bind_ok h
+  cases h
+  simp [defsTags, hd, lamChain_ctor, instS_tags ht]
+
+theorem litForm_tags (z : String) (ds : SDefs) (T : SType) : tmTags (litForm z ds T) = defsTags z ds := by
+  simp [litForm, tmTags]
+
+mutual
+theorem tmS_tags : (t : ScalaRead.Tm) → ∀ {c : MCtx} {wr res : Bool} {under : Option ScalaRead.Ty} {e : STm},
+    tmS c wr res under t = .ok e → tmTags e = true
+  | .path q, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    exact termPath_tags h
+  | .sel u p a, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    obtain ⟨u', hu, h⟩ := bind_ok h
+    cases h
+    simp [tmTags, tmS_tags u hu]
+  | .app f u, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    obtain ⟨f', hf, h⟩ := bind_ok h
+    obtain ⟨u', hu, h⟩ := bind_ok h
+    split at h <;> cases h <;> simp [tmTags, tmS_tags f hf, tmS_tags u hu]
+  | .lam p x T b, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    obtain ⟨T', -, h⟩ := bind_ok h
+    obtain ⟨b', hb, h⟩ := bind_ok h
+    cases h
+    simp [tmTags, tmS_tags b hb]
+  | .asc p e₀ T, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    split at h
+    · exact tmS_tags e₀ h
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      obtain ⟨T', -, h⟩ := bind_ok h
+      cases h
+      simp [tmTags, tmS_tags e₀ he]
+  | .block p ss, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    exact statsS_tags ss h
+  | .lit p s ms, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    split at h
+    · obtain ⟨ds, hds, h⟩ := bind_ok h
+      obtain ⟨T', -, h⟩ := bind_ok h
+      cases h
+      rw [litForm_tags]
+      exact memsS_tags ms hds (by simp [selfDefs, defsTags, tmTags])
+    · cases h
+  | .new p K as, c, wr, res, under, e, h => by
+    simp only [tmS] at h
+    obtain ⟨args, ha, h⟩ := bind_ok h
+    obtain ⟨_, -, h⟩ := bind_ok h
+    obtain ⟨pre, -, h⟩ := bind_ok h
+    cases h
+    have hargs := argsS_tags as ha
+    simp only [tmTags, Bool.and_true]
+    apply appChain_tags _ _ (pathTm_tags _)
+    split
+    · simp [tmTags]
+    · exact hargs
+theorem argsS_tags : (as : ScalaRead.Args) → ∀ {c : MCtx} {es : List STm}, argsS c as = .ok es → es.all tmTags = true
+  | .nil, c, es, h => by
+    simp only [argsS] at h
+    cases h
+    rfl
+  | .cons t r, c, es, h => by
+    simp only [argsS] at h
+    obtain ⟨t', ht, h⟩ := bind_ok h
+    obtain ⟨r', hr, h⟩ := bind_ok h
+    cases h
+    simp only [List.all_cons, Bool.and_eq_true]
+    exact ⟨tmS_tags t ht, argsS_tags r hr⟩
+theorem statsS_tags : (ss : ScalaRead.Stats) → ∀ {c : MCtx} {wr : Bool} {e : STm}, statsS c wr ss = .ok e →
+    tmTags e = true
+  | .last t, c, wr, e, h => by
+    simp only [statsS] at h
+    exact tmS_tags t h
+  | .val p x none e₀ r, c, wr, e, h => by
+    simp only [statsS] at h
+    obtain ⟨r', hr, h⟩ := bind_ok h
+    have hr' := statsS_tags r hr
+    split at h
+    · split at h
+      · obtain ⟨q', -, h⟩ := bind_ok h
+        cases h
+        simp [tmTags, hr']
+      · obtain ⟨q', hq, h⟩ := bind_ok h
+        cases h
+        simp [tmTags, hr', termPath_tags hq]
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      cases h
+      simp [tmTags, hr', tmS_tags e₀ he]
+  | .val p x (some T) e₀ r, c, wr, e, h => by
+    simp only [statsS] at h
+    obtain ⟨r', hr, h⟩ := bind_ok h
+    have hr' := statsS_tags r hr
+    split at h
+    · obtain ⟨q', -, h⟩ := bind_ok h
+      cases h
+      simp [tmTags, hr']
+    · obtain ⟨T', -, h⟩ := bind_ok h
+      split at h
+      · obtain ⟨e', he, h⟩ := bind_ok h
+        cases h
+        simp [tmTags, tmS_tags e₀ he]
+      · split at h
+        · obtain ⟨e', he, h⟩ := bind_ok h
+          cases h
+          simp [tmTags, hr', tmS_tags e₀ he]
+        · obtain ⟨e', he, h⟩ := bind_ok h
+          cases h
+          simp [tmTags, hr', tmS_tags e₀ he]
+theorem memsS_tags : (ms : ScalaRead.Mems) → ∀ {c : MCtx} {ds ds' : SDefs}, memsS c ds ms = .ok ds' →
+    defsTags (binderOf c.env) ds = true → defsTags (binderOf c.env) ds' = true
+  | .nil, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    cases h
+    exact hd
+  | .obj p o s b r, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    obtain ⟨bd, hb, h⟩ := bind_ok h
+    have hbd := memsS_tags b hb (by simp [selfDefs, defsTags, tmTags])
+    exact memsS_tags r h (by simp [defsTags, tmTags, hd, hbd])
+  | .typ p A T r, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    obtain ⟨T', -, h⟩ := bind_ok h
+    exact memsS_tags r h (by simp [defsTags, hd])
+  | .val p a T e₀ r, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    obtain ⟨T', -, h⟩ := bind_ok h
+    split at h
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      exact memsS_tags r h (by simp [defsTags, hd, tmS_tags _ he])
+    · obtain ⟨q', -, h⟩ := bind_ok h
+      exact memsS_tags r h (by simp [defsTags, hd, pathTm_tags])
+    · cases h
+  | .defn p f ps R e₀ r, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    obtain ⟨⟨doms, cP⟩, -, h⟩ := bind_ok h
+    obtain ⟨R', -, h⟩ := bind_ok h
+    obtain ⟨body, hb, h⟩ := bind_ok h
+    exact memsS_tags r h (by simp [defsTags, hd, lamChain_tags, tmS_tags e₀ hb])
+  | .cls p k C ps Ps b r, c, ds, ds', h, hd => by
+    simp only [memsS] at h
+    obtain ⟨_, -, h⟩ := bind_ok h
+    obtain ⟨d₁, h₁, h⟩ := bind_ok h
+    obtain ⟨d₂, h₂, h⟩ := bind_ok h
+    obtain ⟨d₃, h₃, h⟩ := bind_ok h
+    have t₁ := clsDefS_tags h₁ hd
+    have t₂ := cmemsS_tags b h₂ t₁
+    have t₃ := witnessesS_tags h₃ t₂
+    split at h
+    · obtain ⟨d₄, h₄, h⟩ := bind_ok h
+      exact memsS_tags r h (ctorS_tags h₄ t₃)
+    · exact memsS_tags r h t₃
+theorem cmemsS_tags : (ms : ScalaRead.CMems) → ∀ {cK : MCtx} {z' z K : String} {ds ds' : SDefs},
+    cmemsS cK z K ds ms = .ok ds' → defsTags z' ds = true → defsTags z' ds' = true
+  | .nil, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    cases h
+    exact hd
+  | .typ _ _ _ _ _ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    exact cmemsS_tags r h hd
+  | .alias _ _ _ _ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    exact cmemsS_tags r h hd
+  | .valDecl _ _ _ _ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    exact cmemsS_tags r h hd
+  | .defDecl _ _ _ _ _ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    exact cmemsS_tags r h hd
+  | .val p o a T e₀ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    obtain ⟨T', -, h⟩ := bind_ok h
+    split at h
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      exact cmemsS_tags r h (by simp [defsTags, hd, tmTags, tmS_tags _ he])
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      exact cmemsS_tags r h (by simp [defsTags, hd, tmTags, termPath_tags he])
+    · cases h
+  | .defn p o f ps R e₀ r, cK, z', z, K, ds, ds', h, hd => by
+    simp only [cmemsS] at h
+    obtain ⟨⟨doms, cP⟩, -, h⟩ := bind_ok h
+    obtain ⟨R', -, h⟩ := bind_ok h
+    obtain ⟨body, hb, h⟩ := bind_ok h
+    exact cmemsS_tags r h (by simp [defsTags, hd, tmTags, lamChain_tags, tmS_tags e₀ hb])
+end
+
+theorem stem_tags {c : MCtx} {ms : ScalaRead.Mems} {body e : STm} (hc : binderOf c.env = stemName)
+    (tb : tmTags body = true)
+    (h : (do
+      let ds ← memsS c (selfDefs stemName) ms
+      match ms with
+      | .nil => if tmMentions stemName body then pure (.«let» stemName none (.obj stemName none ds) body) else pure body
+      | _ => pure (.«let» stemName none (.obj stemName none ds) body)) = Except.ok e) : tmTags e = true := by
+  obtain ⟨ds, hds, h⟩ := bind_ok h
+  have td : defsTags stemName ds = true := by
+    have := memsS_tags ms hds (by rw [hc]; simp [selfDefs, defsTags, tmTags])
+    rwa [hc] at this
+  split at h
+  · split at h <;> cases h
+    · simp [tmTags, td, tb]
+    · exact tb
+  · cases h
+    simp [tmTags, td, tb]
+
+theorem ofScala_tags {F : File} {e : STm} (h : ofScala F = .ok e) : tmTags e = true := by
+  unfold ofScala at h
+  dsimp only at h
+  split at h
+  · obtain ⟨body, hb, h⟩ := bind_ok h
+    exact stem_tags rfl (tmS_tags _ hb) h
+  · split at h
+    · obtain ⟨body, hb, h⟩ := bind_ok h
+      exact stem_tags rfl (tmS_tags _ hb) h
+    · obtain ⟨e', he, h⟩ := bind_ok h
+      obtain ⟨T', -, h⟩ := bind_ok h
+      exact stem_tags rfl (by simp [tmTags, tmS_tags _ he]) h
+
+/-- The term of a file the reader takes is the mapping's. -/
+theorem readFile_ofScala {cs : List Char} {F : File} {e : STm} {Λ : LabelTable} {ms : List (List Label)}
+    (h : readFile cs = .ok (F, e, Λ, ms)) : ofScala F = .ok e := by
+  unfold readFile at h
+  simp only [bind, Except.bind, pure, Except.pure] at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · split at h
+      · cases h
+      · rename_i F' _ _ _ _ e' he
+        cases h
+        exact he
+
+/-- An `ok` outcome seals only at tagged variables (`compile_seal_sites`), the mapped term carries a tag only on
+a constructor's instance literal (`ofScala_tags`), and the derivation carries the certificate `Nom` at the
+resolved term's class labels (`compile_nominal_resolved`), whose `SealAt` part gives each seal's class a
+`Factor` from the class of the sealed instance. -/
+theorem scala_seal_sites {cs : List Char} {Λ : LabelTable} {a : ATm []} {c : Compiled a}
+    (h : outcome cs = .ok Λ ⟨a, c⟩) :
+    c.ann.SealsTagged ∧ ∃ e ms p, readNominal cs = .ok (e, Λ, ms) ∧ tmTags e = true ∧
+      compileE (budgetOf ms) Λ e = .ok ⟨a, c⟩ ∧ resolveP Λ e = some p ∧ c.ann.Nom p.classLabels := by
+  unfold outcome at h
+  split at h
+  · cases h
+  · rename_i F e Λ' ms hr
+    split at h
+    · cases h
+    · split at h
+      · cases h
+      · cases h
+      · rename_i r' hc
+        split at h
+        · cases h
+          obtain ⟨p, hp, hn⟩ := compile_nominal_resolved hc
+          exact ⟨compile_seal_sites hc, e, ms, p, by simp [readNominal, hr, Except.map],
+            ofScala_tags (readFile_ofScala hr), hc, hp, by simpa [budgetOf] using hn⟩
+        · cases h
+        · cases h
+
 
 /-! ## The printers -/
 
@@ -839,11 +1901,13 @@ def gapBind : String := "an inserted binding outside the shapes of the mapping h
 def gapField : String := "a field that holds no path, lambda or object has no Scala form (R-R)"
 /-- Why a literal ascribed directly has no Scala form. -/
 def gapAscLiteral : String := "a literal ascribed directly reads back as `let ℓ = ν(s) {…} in (ℓ : T)` (D-16)"
+/-- Why a class definition or a tagged literal has no Scala form (plan XII N6, the cause F-C of N7). -/
+def gapClass : String := "a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6)"
 
-/-- The ten reasons of the printers, in the order of their definitions. -/
+/-- The eleven reasons of the printers, in the order of their definitions. -/
 def gapReasons : List String :=
   [gapSelfType, gapUntypedLiteral, gapSelfField, gapMuBody, gapMuOuter, gapLitOuter, gapLetType, gapBind,
-   gapField, gapAscLiteral]
+   gapField, gapAscLiteral, gapClass]
 
 /-! ### The context of the printer -/
 
@@ -990,7 +2054,7 @@ def tyP (c : PCtx) (T : SType) : Except String (ScalaRead.Ty × Option Decls) :=
   | .sngl p => do
     let p' ← pathP c p
     pure (.sngl .zero p', none)
-  | .mu x U => do
+  | .mu x U => if isSelfDec U then pure (.any .zero, none) else do
     let (U', ch) ← tyP (c.enter ⟨some x, .ref, (chainNames U).1, (chainNames U).2⟩ true) U
     match ch with
     | none => throw gapMuBody
@@ -1006,11 +2070,8 @@ def tyP (c : PCtx) (T : SType) : Except String (ScalaRead.Ty × Option Decls) :=
     let (U', cu) ← tyP c U
     match cs, cu with
     | some d, some ds =>
-      match memName d with
-      | [A] =>
-        if (memName ds).contains A then pure (.and S' U', none)
-        else pure (.refine .zero (appendDecls d ds), some (appendDecls d ds))
-      | _ => pure (.and S' U', none)
+      if (memName d).any (memName ds).contains then pure (.and S' U', none)
+      else pure (.refine .zero (appendDecls d ds), some (appendDecls d ds))
     | _, _ => pure (.and S' U', none)
 termination_by structural T
 
@@ -1191,7 +2252,7 @@ def tmP (c : PCtx) (block : List String) (e : STm) : Except String Stats :=
       let q' ← pathP c q
       pure (.last (.path q'))
     | none => throw gapBind
-  | .inst _ _ _ _ => throw msgClassesN6 -- N6 gives a tagged literal its Scala form
+  | .inst _ _ _ _ => throw gapClass
 termination_by structural e
 /-- The body of `n ≥ 1` lambdas. -/
 def peelP (c : PCtx) (n : Nat) (t : STm) : Except String Stats :=
@@ -1251,7 +2312,7 @@ def defsP (c : PCtx) (d : SDefs) : Except String Mems :=
           | none => pure (Mems.val .zero a none (.path q') .nil)
         | none => throw gapField
     pure (appendMems r m)
-  | .cls _ _ _ => throw msgClassesN6 -- N6 gives a class definition its Scala form
+  | .cls _ _ _ => throw gapClass
 termination_by structural d
 end
 
@@ -1347,7 +2408,7 @@ def fillDef (Λ : LabelTable) : {s : Sig} → List String → SDefs → ADef s �
   | s, ns, ds, .new a T e =>
     .trm ds (labelText Λ a) none
       (.obj (binderName s) (some (sTyOf Λ (binderName s :: ns) T)) (fillDefs Λ (binderName s :: ns) e))
-  | _, _, ds, .cls _ _ => ds   -- N4 and N6 give classes a surface form
+  | _, ns, ds, .cls C T => .cls ds (labelText Λ C) (sTyOf Λ ns T)
 termination_by structural _ _ _ d => d
 end
 
@@ -1413,6 +2474,7 @@ line and column with the refusal's message. -/
 def Outcome.text : Outcome → String
   | .ok Λ r => "ok : " ++ tyText Λ r.2.ty
   | .rejected Λ r => "rejected: " ++ reasonText Λ r
+  | .checked _ e => "rejected " ++ toString e.pos.line ++ ":" ++ toString e.pos.col ++ ": " ++ e.msg
   | .limit _ => "limit: Recursion limit exceeded"
   | .outside e => "outside " ++ toString e.pos.line ++ ":" ++ toString e.pos.col ++ ": " ++ e.msg
 
