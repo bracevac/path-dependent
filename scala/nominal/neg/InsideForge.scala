@@ -6,7 +6,7 @@ object InsideForge {
   object m {
     class C(val v: Any)
     def bad(x: Any): C = {
-      val r: { val v: Any } = new Object { val v: Any = x }
+      val r: { val v: Any } = new Object { val v: x.type = x }
       r // error
     }
   }

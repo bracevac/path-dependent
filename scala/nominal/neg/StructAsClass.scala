@@ -5,7 +5,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 object StructAsClass {
   class C(val v: Any)
   val program = {
-    val o: { val v: Any } = new Object { val v: Any = StructAsClass }
+    val o: { val v: Any } = new Object { val v: StructAsClass.type = StructAsClass }
     val c: C = o // error
     c
   }

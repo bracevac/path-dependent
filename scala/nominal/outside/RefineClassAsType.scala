@@ -6,7 +6,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 object RefineClassAsType {
   object m {
     class C(val v: Any)
-    def s(u: Any): { val v: Any } = new Object { val v: Any = u }
+    def s(u: Any): { val v: Any } = new Object { val v: u.type = u }
   }
   val program = (y: m.type & { type C = Any }) => {
     val w = m.s(m)

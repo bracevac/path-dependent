@@ -3,7 +3,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 // from: notes-nominal/scratch-judge/sc/JS02ValAtAliasOfTrait.scala, judge JS02ValAtAliasOfTrait
 object ValAtAliasOfTrait {
   object o {
-    type T = Any
+    type V = Any
   }
   trait T {
     type L

@@ -2,7 +2,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 
 // from: notes-nominal/scratch-d3/sc/K05TypeMemberImpl.scala, d3 K05TypeMemberImpl
 object TypeMemberImpl {
-  object u { type T = Any }
+  object u { type V = Any }
   trait T {
     type A
     val a: A

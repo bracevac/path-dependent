@@ -4,7 +4,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 object BadBoundsDead {
   object m {
     class C(val v: Any)
-    def s(u: Any): { val v: Any } = new Object { val v: Any = u }
+    def s(u: Any): { val v: Any } = new Object { val v: u.type = u }
   }
   val program = (y: { type A >: { val v: Any } <: m.C }) => {
     val w0 = m.s(m)

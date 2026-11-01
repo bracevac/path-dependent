@@ -2,7 +2,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 
 // from: notes-nominal/scratch-d3/sc/K04ThisAsTrait.scala, d3 K04ThisAsTrait
 object ThisAsTrait {
-  object u { type T = Any }
+  object u { type V = Any }
   trait T {
     def me(x: Any): T = this
   }

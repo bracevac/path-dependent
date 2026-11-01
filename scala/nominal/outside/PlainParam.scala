@@ -8,6 +8,6 @@ object PlainParam {
   class C(x: Any) {
     def get(y: Any): Any = x
   }
-  val ok: Any = new C(u).get(u)
+  def ok(y: Any): Any = new C(u).get(u)
   val program: Any = new C(u).x // error
 }

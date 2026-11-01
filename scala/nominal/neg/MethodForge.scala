@@ -5,7 +5,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 object MethodForge {
   class C(val v: Any) {
     def forge(u: Any): C = {
-      val r: { val v: Any } = new Object { val v: Any = u }
+      val r: { val v: Any } = new Object { val v: u.type = u }
       r // error
     }
   }

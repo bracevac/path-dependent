@@ -6,7 +6,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 object InheritedVsOuter {
   trait T { val v: Any = InheritedVsOuter }
   object o {
-    val v: Any = o
+    val v: o.type = o
     class C extends T { def get(u: Any): Any = v } // error
   }
   val program = o
