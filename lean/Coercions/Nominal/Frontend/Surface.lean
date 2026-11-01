@@ -9,7 +9,9 @@ inductives below and nothing else.  All the work on the indexed calculus
 happens later, in the ordinary functions of `Resolve.lean`.
 
 The tree is the one of the paths front end (`Paths/Frontend/Surface.lean`)
-with four changes (plan XI, "The surface tree").  There is no stable field
+with four changes (plan XI, "The surface tree").  Plan XII adds a class
+definition `class C = T` and a literal tagged as an instance of a class,
+`ν(x) as p.C {d}` (D-16).  There is no stable field
 declaration.  Definitions are a spine that grows on the right from `nil`, as
 pDOT's `Defs` do.  Two term forms have no notation: `alias` and `bind`, which
 only the Scala reader makes (plan XI D-10, D-12).
@@ -106,6 +108,9 @@ inductive STm : Type where
   /-- No notation, made by `ofScala` (plan XI D-10, D-12).  A binding of `x`
   to `t` in `u` that the reader inserted, of kind `k`. -/
   | bind (k : SBind) (x : String) (t u : STm)
+  /-- `ν(x) as p.C {d}`, a literal tagged as an instance of the class `p.C`
+  (plan XII D-16).  Its self type is left to inference. -/
+  | inst (x : String) (p : SPath) (C : String) (d : SDefs)
 /-- Surface definitions, a spine that grows on the right. -/
 inductive SDefs : Type where
   /-- No definition yet, the start of `{d₁, …, dₙ}`. -/
@@ -114,6 +119,8 @@ inductive SDefs : Type where
   | typ (ds : SDefs) (A : String) (T : SType)
   /-- `ds, a = t`, or `ds, a : T = t` with a written type. -/
   | trm (ds : SDefs) (a : String) (T : Option SType) (t : STm)
+  /-- `ds, class C = T`, a class with its body (plan XII D-16). -/
+  | cls (ds : SDefs) (C : String) (T : SType)
 end
 
 deriving instance DecidableEq, Repr for STm, SDefs
@@ -198,6 +205,7 @@ def STm.labelNames (e : STm) : List (String × Bool) :=
   | .asc t T => STm.labelNames t ++ T.labelNames
   | .alias _ p u => p.labelNames ++ STm.labelNames u
   | .bind _ _ t u => STm.labelNames t ++ STm.labelNames u
+  | .inst _ p C d => p.labelNames ++ (C, true) :: SDefs.labelNames d
 termination_by structural e
 /-- The names in label position of surface definitions, in text order: the
 earlier definitions, then the defined name, then its type and right side. -/
@@ -207,6 +215,7 @@ def SDefs.labelNames (d : SDefs) : List (String × Bool) :=
   | .typ ds A T => SDefs.labelNames ds ++ (A, true) :: T.labelNames
   | .trm ds a T t =>
       SDefs.labelNames ds ++ (a, false) :: (SType.labelNamesOpt T ++ STm.labelNames t)
+  | .cls ds C T => SDefs.labelNames ds ++ (C, true) :: T.labelNames
 termination_by structural d
 end
 
@@ -269,6 +278,7 @@ def STm.Scoped (Γ : List String) (e : STm) : Bool :=
   | .asc t T => STm.Scoped Γ t && SType.Scoped Γ T
   | .alias x p u => SPath.Scoped Γ p && STm.Scoped (x :: Γ) u
   | .bind _ x t u => STm.Scoped Γ t && STm.Scoped (x :: Γ) u
+  | .inst x p _ d => SPath.Scoped Γ p && SDefs.Scoped (x :: Γ) d
 termination_by structural e
 /-- Every free name of surface definitions is in the list. -/
 def SDefs.Scoped (Γ : List String) (d : SDefs) : Bool :=
@@ -276,6 +286,7 @@ def SDefs.Scoped (Γ : List String) (d : SDefs) : Bool :=
   | .nil => true
   | .typ ds _ T => SDefs.Scoped Γ ds && SType.Scoped Γ T
   | .trm ds _ T t => SDefs.Scoped Γ ds && SType.ScopedOpt Γ T && STm.Scoped Γ t
+  | .cls ds _ T => SDefs.Scoped Γ ds && SType.Scoped Γ T
 termination_by structural d
 end
 
@@ -320,6 +331,7 @@ def STm.LabelsIn (Λ : LabelTable) (e : STm) : Bool :=
   | .asc t T => STm.LabelsIn Λ t && SType.LabelsIn Λ T
   | .alias _ p u => SPath.LabelsIn Λ p && STm.LabelsIn Λ u
   | .bind _ _ t u => STm.LabelsIn Λ t && STm.LabelsIn Λ u
+  | .inst _ p C d => SPath.LabelsIn Λ p && (labelTyp? Λ C).isSome && SDefs.LabelsIn Λ d
 termination_by structural e
 /-- Every label of surface definitions is in the table at the right sort. -/
 def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
@@ -328,6 +340,7 @@ def SDefs.LabelsIn (Λ : LabelTable) (d : SDefs) : Bool :=
   | .typ ds A T => SDefs.LabelsIn Λ ds && (labelTyp? Λ A).isSome && SType.LabelsIn Λ T
   | .trm ds a T t =>
       SDefs.LabelsIn Λ ds && (labelTrm? Λ a).isSome && SType.LabelsInOpt Λ T && STm.LabelsIn Λ t
+  | .cls ds C T => SDefs.LabelsIn Λ ds && (labelTyp? Λ C).isSome && SType.LabelsIn Λ T
 termination_by structural d
 end
 
@@ -364,6 +377,7 @@ def STm.FieldsOk (e : STm) : Bool :=
   | .asc t _ => STm.FieldsOk t
   | .alias _ _ u => STm.FieldsOk u
   | .bind _ _ t u => STm.FieldsOk t && STm.FieldsOk u
+  | .inst _ _ _ d => SDefs.FieldsOk d
 termination_by structural e
 /-- Every field of surface definitions, and of the literals inside them, has a
 right shape. -/
@@ -372,6 +386,7 @@ def SDefs.FieldsOk (d : SDefs) : Bool :=
   | .nil => true
   | .typ ds _ _ => SDefs.FieldsOk ds
   | .trm ds _ T t => SDefs.FieldsOk ds && STm.FieldsOk t && fieldShape T t
+  | .cls ds _ _ => SDefs.FieldsOk ds
 termination_by structural d
 end
 
@@ -393,6 +408,7 @@ def STm.PathOperands (e : STm) : Bool :=
   | .asc t _ => STm.PathOperands t
   | .alias _ _ u => STm.PathOperands u
   | .bind .. => false
+  | .inst _ _ _ d => SDefs.PathOperands d
 termination_by structural e
 /-- Every operand and receiver in surface definitions is a path, and no `bind`
 occurs. -/
@@ -401,6 +417,7 @@ def SDefs.PathOperands (d : SDefs) : Bool :=
   | .nil => true
   | .typ ds _ _ => SDefs.PathOperands ds
   | .trm ds _ _ t => SDefs.PathOperands ds && STm.PathOperands t
+  | .cls ds _ _ => SDefs.PathOperands ds
 termination_by structural d
 end
 
@@ -475,5 +492,25 @@ example : STm.PathOperands (.app (.var "f") (.app (.var "g") (.var "x"))) = fals
 example : STm.PathOperands (.bind .widen "u" (.var "x") (.var "u")) = false := by decide
 
 example : STm.PathOperands (.bind .unstable "u" (.var "x") (.var "u")) = false := by decide
+
+/-! ### The class forms (plan XII D-16) -/
+
+/-- `ν(s) {class C = μ(z. {a : ⊤}) ∧ ⊤, type A = ⊤}`: the class label is at the type sort. -/
+example : labelsOfProgram (.obj "s" none (.typ (.cls .nil "C" (.and (.mu "z" (.fld "a" .top)) .top)) "A" .top)) =
+    [("C", .typ 0), ("a", .trm 0), ("A", .typ 1)] := by decide
+
+/-- `ν(i) as s.C {b = i}` under `[s]`: the path `s` is scoped outside the literal, the self `i` inside. -/
+example : STm.Scoped ["s"] (.inst "i" (.var "s") "C" (.trm .nil "b" none (.var "i"))) = true := by decide
+
+example : STm.Scoped [] (.inst "i" (.var "s") "C" (.trm .nil "b" none (.var "i"))) = false := by decide
+
+/-- The class of a tagged literal is a type label of the table. -/
+example : STm.LabelsIn [("b", .trm 0)] (.inst "i" (.var "s") "C" (.trm .nil "b" none (.var "i"))) = false := by
+  decide
+
+/-- A tagged literal is no field: a field holds a path, a lambda or a literal. -/
+example : STm.FieldsOk (.obj "s" none (.trm .nil "a" none (.inst "i" (.var "s") "C" .nil))) = false := by decide
+
+example : STm.PathOperands (.inst "i" (.var "s") "C" (.cls .nil "C" .top)) = true := by decide
 
 end NominalFrontend

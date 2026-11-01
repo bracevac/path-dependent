@@ -175,6 +175,7 @@ def tmMentions (b : String) (e : STm) : Bool :=
   | .asc t T => tmMentions b t || tyMentions b T
   | .alias _ p u => decide (pathRoot p = b) || tmMentions b u
   | .bind _ _ t u => tmMentions b t || tmMentions b u
+  | .inst _ p _ d => decide (pathRoot p = b) || defsMention b d
 termination_by structural e
 /-- Whether `b` occurs in a list of definitions. -/
 def defsMention (b : String) (d : SDefs) : Bool :=
@@ -182,6 +183,7 @@ def defsMention (b : String) (d : SDefs) : Bool :=
   | .nil => false
   | .typ ds _ T => defsMention b ds || tyMentions b T
   | .trm ds _ T t => defsMention b ds || tyOptMentions b T || tmMentions b t
+  | .cls ds _ T => defsMention b ds || tyMentions b T
 termination_by structural d
 end
 
@@ -1097,6 +1099,7 @@ def dropSelf : SDefs → Option SDefs
   | .nil => none
   | .typ ds A T => (dropSelf ds).map (.typ · A T)
   | .trm ds a T t => (dropSelf ds).map (.trm · a T t)
+  | .cls ds C T => (dropSelf ds).map (.cls · C T)
 
 /-- The self name a literal prints with: none when its binder occurs only as `ℓself = z`. -/
 def litSelf (z : String) (d : SDefs) (depth : Nat) : Option String :=
@@ -1188,6 +1191,7 @@ def tmP (c : PCtx) (block : List String) (e : STm) : Except String Stats :=
       let q' ← pathP c q
       pure (.last (.path q'))
     | none => throw gapBind
+  | .inst _ _ _ _ => throw msgClassesN6 -- N6 gives a tagged literal its Scala form
 termination_by structural e
 /-- The body of `n ≥ 1` lambdas. -/
 def peelP (c : PCtx) (n : Nat) (t : STm) : Except String Stats :=
@@ -1247,6 +1251,7 @@ def defsP (c : PCtx) (d : SDefs) : Except String Mems :=
           | none => pure (Mems.val .zero a none (.path q') .nil)
         | none => throw gapField
     pure (appendMems r m)
+  | .cls _ _ _ => throw msgClassesN6 -- N6 gives a class definition its Scala form
 termination_by structural d
 end
 

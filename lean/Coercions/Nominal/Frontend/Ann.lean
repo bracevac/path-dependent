@@ -407,6 +407,30 @@ def Tags.push (tg : Tags s) (o : Option (Path s × Label)) : Tags (s,x) :=
   | some (p, C) => (.here, p.weaken, C) :: tg.weaken
 
 mutual
+/-- The labels of the `inst` tags of a partial term, at every depth (plan XII). -/
+def PTm.tagLabels : {s : Sig} → PTm s → List Label
+  | _, .path _ => []
+  | _, .app _ _ => []
+  | _, .lam _ t => t.tagLabels
+  | _, .new _ ds => ds.tagLabels
+  | _, .«let» g _ t u => (g.self.map (·.2)).toList ++ t.tagLabels ++ u.tagLabels
+termination_by structural _ t => t
+/-- The labels of the `inst` tags of a definition. -/
+def PDef.tagLabels : {s : Sig} → PDef s → List Label
+  | _, .typ _ _ => []
+  | _, .path _ _ => []
+  | _, .lam _ _ _ t => t.tagLabels
+  | _, .new _ _ ds => ds.tagLabels
+  | _, .cls _ _ => []
+termination_by structural _ d => d
+/-- The labels of the `inst` tags of definitions. -/
+def PDefs.tagLabels : {s : Sig} → PDefs s → List Label
+  | _, .nil => []
+  | _, .cons ds d => ds.tagLabels ++ d.tagLabels
+termination_by structural _ ds => ds
+end
+
+mutual
 /-- The number of `let`s tagged `arg` or `recv`, through every subterm. -/
 def PTm.inserted : {s : Sig} → PTm s → Nat
   | _, .path _ => 0

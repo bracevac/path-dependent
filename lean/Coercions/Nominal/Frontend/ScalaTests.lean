@@ -321,6 +321,7 @@ def occurs (s : STm) (e : STm) : Bool :=
   | .asc t _ => occurs s t
   | .alias _ _ u => occurs s u
   | .bind _ _ t u => occurs s t || occurs s u
+  | .inst _ _ _ d => occursD s d
 termination_by structural e
 /-- Whether `s` occurs in the definitions of a template. -/
 def occursD (s : STm) (d : SDefs) : Bool :=
@@ -328,6 +329,7 @@ def occursD (s : STm) (d : SDefs) : Bool :=
   | .nil => false
   | .typ ds _ _ => occursD s ds
   | .trm ds _ _ t => occursD s ds || occurs s t
+  | .cls ds _ _ => occursD s ds
 termination_by structural d
 end
 #eval expect ((term protoSelf).map (occurs (ts "σ" ["core", "types"])) == some true &&

@@ -50,6 +50,7 @@ def stmExpr (e : STm) : Expr :=
   | .asc t T => mkApp2 (mkConst ``STm.asc) (stmExpr t) (toExpr T)
   | .alias x p u => mkApp3 (mkConst ``STm.alias) (toExpr x) (toExpr p) (stmExpr u)
   | .bind k x t u => mkApp4 (mkConst ``STm.bind) (toExpr k) (toExpr x) (stmExpr t) (stmExpr u)
+  | .inst x p C d => mkApp4 (mkConst ``STm.inst) (toExpr x) (toExpr p) (toExpr C) (sdefsExpr d)
 termination_by structural e
 /-- The expression that builds surface definitions. -/
 def sdefsExpr (d : SDefs) : Expr :=
@@ -57,6 +58,7 @@ def sdefsExpr (d : SDefs) : Expr :=
   | .nil => mkConst ``SDefs.nil
   | .typ ds A T => mkApp3 (mkConst ``SDefs.typ) (sdefsExpr ds) (toExpr A) (toExpr T)
   | .trm ds a T t => mkApp4 (mkConst ``SDefs.trm) (sdefsExpr ds) (toExpr a) (toExpr T) (stmExpr t)
+  | .cls ds C T => mkApp3 (mkConst ``SDefs.cls) (sdefsExpr ds) (toExpr C) (toExpr T)
 termination_by structural d
 end
 

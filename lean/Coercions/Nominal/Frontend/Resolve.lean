@@ -31,6 +31,11 @@ Plan XII N3 g1: the tag of a `let` is `LetTag s`, so `Spine.cons`, `atomize`
 and `SBind.tag` name the signature.  Resolution writes no `inst` tag and no
 class definition before N4.
 
+Plan XII adds a class definition, which resolves to `PDef.cls`, and a tagged
+literal, which resolves to a `let` tagged `inst p C` around the literal and an
+ascription to `p.C`.  `resolveP` refuses a tag at a label that no class
+definition of the program has.
+
 Nothing here belongs to the metatheory.
 -/
 
@@ -153,6 +158,9 @@ theorem STm.Scoped_covers : ∀ (e : STm) {Γ Γ' : List String}, Covers Γ Γ' 
   | .bind _ x t u, _, _, h, hs => by
       simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨STm.Scoped_covers t h hs.1, STm.Scoped_covers u (h.cons x) hs.2⟩
+  | .inst x p _ d, _, _, h, hs => by
+      simp only [STm.Scoped, Bool.and_eq_true] at hs ⊢
+      exact ⟨SPath.Scoped_covers p h hs.1, SDefs.Scoped_covers d (h.cons x) hs.2⟩
 /-- Scoping of definitions survives a larger name list. -/
 theorem SDefs.Scoped_covers : ∀ (d : SDefs) {Γ Γ' : List String}, Covers Γ Γ' →
     SDefs.Scoped Γ d = true → SDefs.Scoped Γ' d = true
@@ -164,6 +172,9 @@ theorem SDefs.Scoped_covers : ∀ (d : SDefs) {Γ Γ' : List String}, Covers Γ 
       simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
       exact ⟨⟨SDefs.Scoped_covers ds h hs.1.1, SType.ScopedOpt_covers T h hs.1.2⟩,
         STm.Scoped_covers t h hs.2⟩
+  | .cls ds _ T, _, _, h, hs => by
+      simp only [SDefs.Scoped, Bool.and_eq_true] at hs ⊢
+      exact ⟨SDefs.Scoped_covers ds h hs.1, SType.Scoped_covers T h hs.2⟩
 end
 
 /-- A name in the environment resolves. -/
@@ -364,6 +375,12 @@ def resolveTm {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (P
       let t' ← resolveTm Λ nv t
       let u' ← resolveTm Λ (nv.cons x) u
       pure (.«let» k.tag none t' u')
+  | .inst x p C d => do
+      let p' ← resolvePath Λ nv p
+      let l ← labelTyp? Λ C
+      let d' ← resolveDefs Λ (nv.cons x) d
+      pure (.«let» (.inst p' l) none (.new none d')
+        (.«let» .asc (some (.sel p'.weaken l)) (.path (.var .here)) (.path (.var .here))))
 termination_by structural e
 /-- Resolve surface definitions.  A field holding a lambda is `PDef.lam`, one
 holding a literal `PDef.new`, one holding a path `PDef.path`.  A written type
@@ -377,6 +394,11 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
       let l ← labelTyp? Λ A
       let T' ← resolveTy Λ nv T
       pure (.cons ds' (.typ l T'))
+  | .cls ds C T => do
+      let ds' ← resolveDefs Λ nv ds
+      let l ← labelTyp? Λ C
+      let T' ← resolveTy Λ nv T
+      pure (.cons ds' (.cls l T'))
   | .trm ds a T (.lam y D b) => do
       let ds' ← resolveDefs Λ nv ds
       let l ← labelTrm? Λ a
@@ -402,12 +424,28 @@ def resolveDefs {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (d : SDefs) : Optio
 termination_by structural d
 end
 
+/-! ## The class of a tag
+
+A tag `inst p C` names a class: its label is the label of a class definition of the
+program (plan XII, finding G-7 of N3's refutation).  `resolveP` refuses a program
+with a tag at any other label, and `resolveTm` does not look, so its totality keeps
+its statement.  The check is by label: a tag `p.C` passes when some class definition
+of the program has the label `C`, wherever it sits. -/
+
+/-- Every tag of the term names a class definition of the term. -/
+def PTm.tagsClassed {s : Sig} (p : PTm s) : Bool :=
+  p.tagLabels.all fun C => decide (C ∈ p.classLabels)
+
 /-- Resolve a program under the names of a context, with every slot written. -/
 def resolveIn {s : Sig} (Λ : LabelTable) (nv : NameEnv s) (e : STm) : Option (ATm s) :=
   (resolveTm Λ nv e).bind PTm.full?
 
-/-- Resolve a closed surface program to a partial term. -/
-def resolveP (Λ : LabelTable) (e : STm) : Option (PTm []) := resolveTm Λ .nil e
+/-- Resolve a closed surface program to a partial term.  A tag at a label that no class
+definition of the program has gives `none`. -/
+def resolveP (Λ : LabelTable) (e : STm) : Option (PTm []) :=
+  match resolveTm Λ .nil e with
+  | some p => if p.tagsClassed then some p else none
+  | none => none
 
 /-- Resolve a closed surface program with every slot written.  A program with an
 empty slot resolves to `none` here, and to its partial term by `resolveP`. -/
@@ -720,6 +758,20 @@ theorem resolveTm_isSome : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
         cases hu : resolveTm Λ (nv.cons x) u with
         | none => rw [hu] at h2; simp at h2
         | some _ => rfl
+  | .inst x p C d, _, Λ, nv, hs, hl, hf => by
+      simp only [STm.Scoped, STm.LabelsIn, STm.FieldsOk, Bool.and_eq_true] at hs hl hf
+      have h1 := resolvePath_isSome Λ nv p hs.1 hl.1.1
+      have h2 := resolveDefs_isSome d Λ (nv.cons x) hs.2 hl.2 hf
+      simp only [resolveTm]
+      cases hp : resolvePath Λ nv p with
+      | none => rw [hp] at h1; simp at h1
+      | some _ =>
+        cases hC : labelTyp? Λ C with
+        | none => rw [hC] at hl; simp at hl
+        | some _ =>
+          cases hd : resolveDefs Λ (nv.cons x) d with
+          | none => rw [hd] at h2; simp at h2
+          | some _ => rfl
 /-- Scoped, well labelled definitions whose fields have a right shape
 resolve. -/
 theorem resolveDefs_isSome : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : NameEnv s),
@@ -736,6 +788,20 @@ theorem resolveDefs_isSome : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : N
       | some _ =>
         cases hA : labelTyp? Λ A with
         | none => rw [hA] at hl; simp at hl
+        | some _ =>
+          cases hT : resolveTy Λ nv T with
+          | none => rw [hT] at h1; simp at h1
+          | some _ => rfl
+  | .cls ds C T, _, Λ, nv, hs, hl, hf => by
+      simp only [SDefs.Scoped, SDefs.LabelsIn, SDefs.FieldsOk, Bool.and_eq_true] at hs hl hf
+      have h0 := resolveDefs_isSome ds Λ nv hs.1 hl.1.1 hf
+      have h1 := resolveTy_isSome T Λ nv hs.2 hl.2
+      simp only [resolveDefs]
+      cases hd : resolveDefs Λ nv ds with
+      | none => rw [hd] at h0; simp at h0
+      | some _ =>
+        cases hC : labelTyp? Λ C with
+        | none => rw [hC] at hl; simp at hl
         | some _ =>
           cases hT : resolveTy Λ nv T with
           | none => rw [hT] at h1; simp at h1
@@ -823,6 +889,7 @@ theorem resolveDefs_isSome : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : N
       | .asc _ _, _, _, hf => cases T <;> simp [fieldShape, STm.isPath, STm.toPath?] at hf
       | .alias _ _ _, _, _, hf => cases T <;> simp [fieldShape, STm.isPath, STm.toPath?] at hf
       | .bind _ _ _ _, _, _, hf => cases T <;> simp [fieldShape, STm.isPath, STm.toPath?] at hf
+      | .inst _ _ _ _, _, _, hf => cases T <;> simp [fieldShape, STm.isPath, STm.toPath?] at hf
 end
 
 /-! ## The two spine equations -/
@@ -878,6 +945,7 @@ theorem resolveTm_path : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameEnv
   | .asc .., _, _, _, _, hp, _ => by simp [STm.isPath] at hp
   | .alias .., _, _, _, _, hp, _ => by simp [STm.isPath] at hp
   | .bind .., _, _, _, _, hp, _ => by simp [STm.isPath] at hp
+  | .inst .., _, _, _, _, hp, _ => by simp [STm.isPath] at hp
 
 mutual
 /-- A term whose operands are paths resolves with no inserted `let`. -/
@@ -941,6 +1009,13 @@ theorem resolve_noInsert : ∀ (e : STm) {s : Sig} (Λ : LabelTable) (nv : NameE
       obtain ⟨q', _, hu⟩ := h
       exact resolve_noInsert u Λ (nv.alias x q') p ho hu
   | .bind .., _, _, _, _, ho, _ => by simp [STm.PathOperands] at ho
+  | .inst x q C d, _, Λ, nv, p, ho, h => by
+      simp only [STm.PathOperands] at ho
+      simp only [resolveTm, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨_, _, _, _, d', hd, rfl⟩ := h
+      simp only [PTm.inserted, LetTag.counts]
+      rw [resolveDefs_noInsert d Λ (nv.cons x) d' ho hd]
 /-- Definitions whose operands are paths resolve with no inserted `let`. -/
 theorem resolveDefs_noInsert : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv : NameEnv s)
     (ds : PDefs s), SDefs.PathOperands d = true → resolveDefs Λ nv d = some ds → ds.inserted = 0
@@ -949,6 +1024,13 @@ theorem resolveDefs_noInsert : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv :
       subst h
       rfl
   | .typ d A T, _, Λ, nv, ds, ho, h => by
+      simp only [SDefs.PathOperands] at ho
+      simp only [resolveDefs, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+        Option.some.injEq] at h
+      obtain ⟨d', hd, _, _, _, _, rfl⟩ := h
+      simp only [PDefs.inserted, PDef.inserted]
+      rw [resolveDefs_noInsert d Λ nv d' ho hd]
+  | .cls d C T, _, Λ, nv, ds, ho, h => by
       simp only [SDefs.PathOperands] at ho
       simp only [resolveDefs, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
         Option.some.injEq] at h
@@ -1009,6 +1091,10 @@ theorem resolveDefs_noInsert : ∀ (d : SDefs) {s : Sig} (Λ : LabelTable) (nv :
           (fun _ _ _ h => STm.noConfusion h)] at h
         simp [STm.toPath?] at h
       | .bind _ _ _ _, ho, h =>
+        rw [resolveDefs_trm_path Λ nv d a T _ (fun _ _ _ h => STm.noConfusion h)
+          (fun _ _ _ h => STm.noConfusion h)] at h
+        simp [STm.toPath?] at h
+      | .inst _ _ _ _, ho, h =>
         rw [resolveDefs_trm_path Λ nv d a T _ (fun _ _ _ h => STm.noConfusion h)
           (fun _ _ _ h => STm.noConfusion h)] at h
         simp [STm.toPath?] at h
@@ -1115,6 +1201,31 @@ example : resolve Λab (.lam "x" (some .top) (.var "x")) =
 /-- Totality applies to the literal test. -/
 example : (resolveTm Λlit .nil litTest).isSome = true :=
   resolveTm_isSome litTest Λlit .nil (by decide) (by decide) (by decide)
+
+/-- The table of the class tests. -/
+private def Λc : LabelTable := [("a", .trm 0), ("C", .typ 0)]
+/-- `class C = ⊤` under `[s]` is `PDef.cls`, with no slot. -/
+example : resolveDefs Λc (NameEnv.nil.cons "s") (.cls .nil "C" .top) = some (.cons .nil (.cls (.typ 0) .top)) := by
+  decide
+/-- `ν(i) as s.C {a = i}` under `[s]`: the tagged `let`, the literal with an empty self type, and the
+ascription of the `let`'s variable to `s.C`, shifted past it. -/
+example : resolveTm Λc (NameEnv.nil.cons "s") (.inst "i" (.var "s") "C" (.trm .nil "a" none (.var "i"))) =
+    some (.«let» (.inst (.var .here) (.typ 0)) none (.new none (.cons .nil (.path (.trm 0) (.var .here))))
+      (.«let» .asc (some (.sel (.var (.there .here)) (.typ 0))) (.path (.var .here)) (.path (.var .here)))) := by
+  decide
+/-- `let s = ν(s) {d} in ν(i) as s.C {a = i}` with `d` a class definition or a type definition. -/
+private def tagProg (d : SDefs) : STm :=
+  .«let» "s" none (.obj "s" none d) (.inst "i" (.var "s") "C" (.trm .nil "a" none (.var "i")))
+/-- The tag names a class of the program: `resolveP` answers. -/
+example : (resolveP Λc (tagProg (.cls .nil "C" .top))).isSome = true := by decide
+/-- The tag names a type member that is no class: `resolveTm` answers and `resolveP` refuses. -/
+example : (resolveTm Λc .nil (tagProg (.typ .nil "C" .top))).isSome = true := by decide
+example : resolveP Λc (tagProg (.typ .nil "C" .top)) = none := by decide
+/-- Totality and no insertion apply to the class forms. -/
+example : (resolveTm Λc .nil (tagProg (.cls .nil "C" .top))).isSome = true :=
+  resolveTm_isSome (tagProg (.cls .nil "C" .top)) Λc .nil (by decide) (by decide) (by decide)
+example : ∀ p, resolveTm Λc .nil (tagProg (.cls .nil "C" .top)) = some p → p.inserted = 0 :=
+  fun p h => resolve_noInsert (tagProg (.cls .nil "C" .top)) Λc .nil p (by decide) h
 
 end Tests
 

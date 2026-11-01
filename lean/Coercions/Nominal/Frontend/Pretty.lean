@@ -36,9 +36,9 @@ This is the model's printer (`Paths/Frontend/Pretty.lean`) for the syntax of
 pDOT.  A literal is `ν(x : T) {d₁, …, dₙ}`, a type member `{A : S..U}`, and a
 `let` the resolver made for an ascription prints as the ascription.
 
-Plan XII N3 g1: an annotated or partial class definition prints as
-`class C = T`, as N2's arm of `ppDefWith` does, until N4 writes the class
-printers.
+Plan XII: a class definition prints as `class C = T` in every tree, and a `let`
+tagged `inst p C` around a literal and the ascription to `p.C` prints as the
+tagged literal `ν(x) as p.C {…}` (N4).
 -/
 
 namespace NominalFrontend
@@ -175,7 +175,7 @@ def ppDefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : Def s) : String 
   match d with
   | .typ A T => "type " ++ ppLabel Λ A ++ " = " ++ ppTyWith Λ nv T
   | .trm a r => ppLabel Λ a ++ " = " ++ ppRhsWith Λ nv r
-  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T
 termination_by structural d
 /-- The definitions of a literal, first definition first. -/
 def ppDefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : Defs s) : List String :=
@@ -204,7 +204,9 @@ def ppValWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (v : Val s) : String 
 
 These are the terms a compilation returns.  They print the self type of a
 literal and the written type of a `let`.  The `let` the resolver made for an
-ascription, `let z : U = t in z` tagged `asc`, prints as `(t : U)`. -/
+ascription, `let z : U = t in z` tagged `asc`, prints as `(t : U)`.  A `let`
+tagged `inst p C` around a literal and the ascription to `p.C` prints as
+`ν(x : T) as p.C {…}`. -/
 
 mutual
 /-- An annotated term in the paper's notation, at the precedence of its position. -/
@@ -218,6 +220,10 @@ def ppATmAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (t : ATm s) :
   | .new T ds =>
       let y := nv.fresh
       "ν(" ++ y ++ " : " ++ ppTyWith Λ (nv.cons y) T ++ ") " ++ braces (ppADefsList Λ (nv.cons y) ds)
+  | .«let» (.inst q C) none (.new T ds) (.«let» .asc (some _) (.path (.var .here)) (.path (.var .here))) =>
+      let y := nv.fresh
+      "ν(" ++ y ++ " : " ++ ppTyWith Λ (nv.cons y) T ++ ") as " ++ ppPathWith Λ nv q ++ "." ++ ppLabel Λ C ++ " "
+        ++ braces (ppADefsList Λ (nv.cons y) ds)
   | .«let» .asc (some U) t' (.path (.var .here)) =>
       "(" ++ ppATmAt Λ 0 nv t' ++ " : " ++ ppTyWith Λ nv U ++ ")"
   | .«let» _ ann t' u =>
@@ -241,7 +247,7 @@ def ppADefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : ADef s) : Strin
       let y := nv.fresh
       ppLabel Λ a ++ " = ν(" ++ y ++ " : " ++ ppTyWith Λ (nv.cons y) T ++ ") "
         ++ braces (ppADefsList Λ (nv.cons y) ds)
-  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T
 termination_by structural d
 /-- The annotated definitions of a literal, first definition first. -/
 def ppADefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : ADefs s) : List String :=
@@ -262,7 +268,9 @@ def ppATm (Λ : LabelTable) (t : ATm []) : String := ppATmWith Λ .nil t
 The syntax `resolveP` returns, whose slots may be empty.  An empty domain
 prints as `λx. t`, an empty self type as `ν(x) {…}`, and a written declared type
 of a lambda field as `a : U = λ…`.  The binding of an ascription prints as the
-ascription.  Every other `let` prints as a `let`, whatever its tag. -/
+ascription.  A `let` tagged `inst p C` around a literal and the ascription to
+`p.C` prints as `ν(x) as p.C {…}`.  Every other `let` prints as a `let`,
+whatever its tag. -/
 
 mutual
 /-- A partial term in the paper's notation, at the precedence of its position. -/
@@ -282,6 +290,13 @@ def ppPTmAt (Λ : LabelTable) {s : Sig} (p : Nat) (nv : NameEnv s) (t : PTm s) :
   | .new none ds =>
       let y := nv.fresh
       "ν(" ++ y ++ ") " ++ braces (ppPDefsList Λ (nv.cons y) ds)
+  | .«let» (.inst q C) none (.new (some T) ds) (.«let» .asc (some _) (.path (.var .here)) (.path (.var .here))) =>
+      let y := nv.fresh
+      "ν(" ++ y ++ " : " ++ ppTyWith Λ (nv.cons y) T ++ ") as " ++ ppPathWith Λ nv q ++ "." ++ ppLabel Λ C ++ " "
+        ++ braces (ppPDefsList Λ (nv.cons y) ds)
+  | .«let» (.inst q C) none (.new none ds) (.«let» .asc (some _) (.path (.var .here)) (.path (.var .here))) =>
+      let y := nv.fresh
+      "ν(" ++ y ++ ") as " ++ ppPathWith Λ nv q ++ "." ++ ppLabel Λ C ++ " " ++ braces (ppPDefsList Λ (nv.cons y) ds)
   | .«let» .asc (some U) t' (.path (.var .here)) =>
       "(" ++ ppPTmAt Λ 0 nv t' ++ " : " ++ ppTyWith Λ nv U ++ ")"
   | .«let» _ ann t' u =>
@@ -316,7 +331,7 @@ def ppPDefWith (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (d : PDef s) : Strin
   | .new a none ds =>
       let y := nv.fresh
       ppLabel Λ a ++ " = ν(" ++ y ++ ") " ++ braces (ppPDefsList Λ (nv.cons y) ds)
-  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T      -- N4 owns the class printer (plan XII D-16)
+  | .cls C T => "class " ++ ppLabel Λ C ++ " = " ++ ppTyWith Λ nv T
 termination_by structural d
 /-- The definitions of a partial literal, first definition first. -/
 def ppPDefsList (Λ : LabelTable) {s : Sig} (nv : NameEnv s) (ds : PDefs s) : List String :=
@@ -389,6 +404,7 @@ def ppSTmAt (p : Nat) (e : STm) : String :=
   | .alias x q u => parenIf (p > 0) ("alias " ++ x ++ " = " ++ ppSPath q ++ " in " ++ ppSTmAt 0 u)
   | .bind k x t u =>
       parenIf (p > 0) ("bind " ++ k.word ++ " " ++ x ++ " = " ++ ppSTmAt 1 t ++ " in " ++ ppSTmAt 0 u)
+  | .inst x q C d => "ν(" ++ x ++ ") as " ++ ppSPath q ++ "." ++ C ++ " " ++ braces (ppSDefsList d)
 termination_by structural e
 /-- The surface definitions of a literal, first definition first. -/
 def ppSDefsList (d : SDefs) : List String :=
@@ -397,6 +413,7 @@ def ppSDefsList (d : SDefs) : List String :=
   | .typ ds A T => ppSDefsList ds ++ ["type " ++ A ++ " = " ++ ppSTyAt 0 T]
   | .trm ds a none t => ppSDefsList ds ++ [a ++ " = " ++ ppSTmAt 0 t]
   | .trm ds a (some T) t => ppSDefsList ds ++ [a ++ " : " ++ ppSTyAt 0 T ++ " = " ++ ppSTmAt 0 t]
+  | .cls ds C T => ppSDefsList ds ++ ["class " ++ C ++ " = " ++ ppSTyAt 0 T]
 termination_by structural d
 end
 
@@ -673,6 +690,27 @@ example : ppRunErased Λ7 (compileAndRun {} 4 2 Λ7 E7_srcI) =
 /-- Nothing to print. -/
 example : ppRun [] none = "did not compile" ∧ ppRunErased [] none = "did not compile" ∧
     ppRunFC [] none = "did not compile" := by
+  decide +kernel
+
+/-- The table of the class checks. -/
+def ΛCl : LabelTable := [("C", .typ 0), ("a", .trm 0), ("mk", .trm 1)]
+
+/-- A class and a constructor that returns a tagged instance. -/
+def Tag_src : STm := pdc% ν(s) {class C = μ(z. {a : ⊤}) ∧ ⊤, mk : ∀(u : ⊤) s.C = λ(u : ⊤). ν(i) as s.C {a = u}}
+
+example : ppSTm Tag_src = "ν(s) {class C = μ(z. {a : ⊤}) ∧ ⊤, mk : ∀(u : ⊤) s.C = λ(u : ⊤). ν(i) as s.C {a = u}}" := by
+  decide +kernel
+
+/-- The partial term prints the tagged `let` and its ascription as the tagged literal. -/
+example : (resolveP ΛCl Tag_src).map (ppPTm ΛCl) =
+    some ("ν(x) {class C = μ(y. {a : ⊤}) ∧ ⊤, mk : ∀(y : ⊤) x.C = λ(y : ⊤). ν(z) as x.C {a = y}}") := by
+  decide +kernel
+
+/-- The fill prints the formed self types, the class's declaration `{C : ⊥..T}` among them. -/
+example : ppCompileE ΛCl (compileE {} ΛCl Tag_src) =
+    "ok: ν(x : {C : ⊥..μ(y. {a : ⊤}) ∧ ⊤} ∧ {mk : ∀(y : ⊤) x.C}) {class C = μ(y. {a : ⊤}) ∧ ⊤, "
+      ++ "mk = λ(y : ⊤). ν(z : {a : y.type}) as x.C {a = y}} "
+      ++ ": μ(x. {C : ⊥..μ(y. {a : ⊤}) ∧ ⊤} ∧ {mk : ∀(y : ⊤) x.C})" := by
   decide +kernel
 
 end PrettyChecks

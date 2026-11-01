@@ -58,6 +58,15 @@ far (`roundsF`).  A lambda field takes its least candidate (`leastE`), which the
 typer widens in the Scala mode.  No least one is `ambiguous`.  A round that
 picks no job is `cyclicRef` at a label on a cycle.
 
+## Classes (plan XII)
+
+A class definition `{class C = T}` has no slot.  Its declaration `{C : ⊥..T}` is known at once
+(`PDef.atOnce?`), so it is never a job, and `defW` keeps it.  A `let` tagged `inst p C`, the
+resolution of `ν(x) as p.C {ds}`, is not elaborated in parts: its slots are read off its text
+(`PTm.bare?`), its literal's self type is the declarations known at once, and the whole `let` goes
+to the typer, which carries the tags (`taggedSynF`, `taggedChkF`).  A nested literal passes when its
+self type is `tightC`, as the typer's `adnew` asks.
+
 ## Reasons and the index
 
 `PReason` is `Frontend.Reason.Reason Label TReason`.  A failed typing of a
@@ -70,14 +79,15 @@ the fuel.
 
 Plan XII N3 g1 passes the class forms through.  The tag is `LetTag s`, and a
 class definition `{class C = T}` has the arms of a type definition, declared
-at `{C : ⊥..T}` at once (`PDef.atOnce?`).  `ADef.why` and `runJobF` still read
-`tight`, so no verdict of the elaborator moves.
+at `{C : ⊥..T}` at once (`PDef.atOnce?`).  N4 has `ADef.why` and `runJobF` read
+`tightC`, as the typer's `adnew` does.
 
 Plan XII N3 g5 threads the class labels `K` (departure 5).  A result carries
 the certificates of D-17 at `K` and the empty tags, `nom` and `ss`, beside its
 derivation (`ECandK`, `EChk`), and `ECand` is the class-free `ECandK []`.  Each
-`let` builds its derivation by `CHasTy.aletN0` or `CHasTy.aletS0`, so a partial
-term whose `let` carries an `inst` tag is refused with `mismatch`.  A full term
+untagged `let` builds its derivation by `CHasTy.aletN0` or `CHasTy.aletS0`.  A
+partial term whose `let` carries an `inst` tag went to the refusal `mismatch` at
+N3, and goes to the typer whole from N4 on (section "Classes").  A full term
 goes to the typer whole, which threads the tags.  The entry point is
 `elabTopKF md ms K`, and `elabTopF md ms` is `elabTopKF md ms []`.
 -/
@@ -306,7 +316,7 @@ def ADef.why : {s : Sig} → ADef s → Ty s → List TReason
   | _, .lam b _ t, U => (match U with
       | .rcd (.trm _ (.all _ _)) => []
       | _ => [.fieldNotFun b]) ++ t.why
-  | _, .new b T ds, _ => (if (Ty.mu T).tight then [] else [.notTight b]) ++
+  | _, .new b T ds, _ => (if (Ty.mu T).tightC then [] else [.notTight b]) ++
       (ds.labels |> firstDup |>.toList.map .dupLabel) ++ ds.why T
 termination_by structural _ d => d
 def ADefs.why : {s : Sig} → ADefs s → Ty s → List TReason
@@ -976,6 +986,49 @@ def PDefs.atOnce? : {s : Sig} → PDefs s → Option (Ty s)
 termination_by structural _ ds => ds
 end
 
+mutual
+/-- The `ATm` of a partial term whose text gives every slot: a written slot as written, an empty
+self type as the declarations known at once (`PDefs.atOnce?`), a declared field type dropped.  It
+reads the literal of `ν(x) as p.C {ds}` (plan XII D-16), which the elaborator does not elaborate in
+parts. -/
+def PTm.bare? : {s : Sig} → PTm s → Option (ATm s)
+  | _, .path p => some (.path p)
+  | _, .app p q => some (.app p q)
+  | _, .lam (some S) t => t.bare?.map (.lam S)
+  | _, .lam none _ => none
+  | _, .new (some T) ds => ds.bare?.map (.new T)
+  | _, .new none ds =>
+      match PDefs.atOnce? ds, ds.bare? with
+      | some T, some a => some (.new T a)
+      | _, _ => none
+  | _, .«let» g ann t u =>
+      match t.bare?, u.bare? with
+      | some a, some b => some (.«let» g ann a b)
+      | _, _ => none
+termination_by structural _ t => t
+/-- The `ADef` of a definition whose text gives every slot. -/
+def PDef.bare? : {s : Sig} → PDef s → Option (ADef s)
+  | _, .typ A T => some (.typ A T)
+  | _, .path a p => some (.path a p)
+  | _, .lam a _ (some S) t => t.bare?.map (.lam a S)
+  | _, .lam _ _ none _ => none
+  | _, .new a (some T) ds => ds.bare?.map (.new a T)
+  | _, .new a none ds =>
+      match PDefs.atOnce? ds, ds.bare? with
+      | some T, some e => some (.new a T e)
+      | _, _ => none
+  | _, .cls C T => some (.cls C T)
+termination_by structural _ d => d
+/-- The `ADefs` of definitions whose text gives every slot. -/
+def PDefs.bare? : {s : Sig} → PDefs s → Option (ADefs s)
+  | _, .nil => some .nil
+  | _, .cons ds d =>
+      match ds.bare?, d.bare? with
+      | some a, some b => some (.cons a b)
+      | _, _ => none
+termination_by structural _ ds => ds
+end
+
 /-! ## Slot 2: jobs, rounds -/
 
 structure Job (s : Sig) where
@@ -1155,7 +1208,7 @@ def runJobF (K : List Label) {s : Sig} (Γ : Ctx s)
       Fu.bind (form (Γ.consSelf P) es) fun r =>
         match r with
         | .ok f =>
-            if (Ty.mu f.ty).tight then Fu.ret (.ok ⟨a, .new a none es, .new a f.ty f.defs.defs, .trm a (.mu f.ty)⟩)
+            if (Ty.mu f.ty).tightC then Fu.ret (.ok ⟨a, .new a none es, .new a f.ty f.defs.defs, .trm a (.mu f.ty)⟩)
             else Fu.ret (.error [.landed (.notTight a)])
         | .error rs => Fu.ret (.error rs)
   | _ => Fu.ret (.error [.mismatch])
@@ -1260,6 +1313,19 @@ def newWSynF {s : Sig} (Γ : Ctx s) (T : Ty (s,x)) (ds : PDefs (s,x)) (defs : Fu
     | some e => fullSynthAt md ms K Γ (.new (some T) ds) (.new T e.defs) (by simp [PTm.fills, slotAgrees, e.fills])
     | none => Fu.ret ([], r.2)
 
+/-- A partial `let` tagged `inst p C` (plan XII D-8, D-16): its slots are read off the text
+(`PTm.bare?`) and the whole `let` goes to the typer, which carries the tags that the seal of the
+instance at `p.C` reads.  A slot the text does not give is `missingParamType`. -/
+def taggedSynF {s : Sig} (Γ : Ctx s) (p : PTm s) : Fu (ESynth K Γ p) :=
+  match p.bare? with
+  | some a => if h : p.fills a = true then fullSynthAt md ms K Γ p a h else Fu.ret ([], [.mismatch])
+  | none => Fu.ret ([], [.missingParamType none])
+/-- `taggedSynF` checked at `G`. -/
+def taggedChkF {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) : Fu (ECheck K Γ p G) :=
+  match p.bare? with
+  | some a => if h : p.fills a = true then fullCheckAt md ms K Γ p a h G else Fu.ret (none, [.mismatch])
+  | none => Fu.ret (none, [.missingParamType none])
+
 end Literals
 
 /-! ## The elaborator
@@ -1285,7 +1351,7 @@ def elabN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : S
           | .new none ds => newSynF md ms K Γ ds (formN md ms K k Γ ds)
           | .«let» g none t u =>
               match hg : g.self with
-              | some _ => Fu.ret ([], [.mismatch])
+              | some _ => taggedSynF md ms K Γ (.«let» g none t u)
               | none =>
                   match argCallee? g none u, hu : u.full? with
                   | some f, some b =>
@@ -1303,7 +1369,7 @@ def elabN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : S
                   | _, _ => letNoneSynF md ms K (elabN md ms K k) Γ g hg t u
           | .«let» g (some W) t u =>
               match hg : g.self with
-              | some _ => Fu.ret ([], [.mismatch])
+              | some _ => taggedSynF md ms K Γ (.«let» g (some W) t u)
               | none =>
                   Fu.bind (chkN md ms K k Γ t W) fun r1 =>
                     match r1.1 with
@@ -1346,7 +1412,7 @@ def chkN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : Si
           | .new none ds => Fu.bind (newSynF md ms K Γ ds (formN md ms K k Γ ds)) (subsumeLit K Γ G)
           | .«let» g none t u =>
               match hg : g.self with
-              | some _ => Fu.ret (none, [.mismatch])
+              | some _ => taggedChkF md ms K Γ (.«let» g none t u) G
               | none =>
                   match argCallee? g none u, hu : u.full? with
                   | some f, some b =>
@@ -1364,7 +1430,7 @@ def chkN (md : Mode) (ms : List (List Label)) (K : List Label) : Nat → {s : Si
                   | _, _ => letNoneChkF md ms K (elabN md ms K k) (chkN md ms K k) Γ g hg t u G
           | .«let» g (some W) t u =>
               match hg : g.self with
-              | some _ => Fu.ret (none, [.mismatch])
+              | some _ => taggedChkF md ms K Γ (.«let» g (some W) t u) G
               | none =>
                   Fu.bind (chkN md ms K k Γ t W) fun r1 =>
                     match r1.1 with
@@ -1577,6 +1643,22 @@ theorem newWSynF_framed {s : Sig} (Γ : Ctx s) (T : Ty (s,x)) (ds : PDefs (s,x))
   · exact fullSynthAt_framed md ms K _ _ _ _
   · exact ret_framed _
 
+theorem taggedSynF_framed {s : Sig} (Γ : Ctx s) (p : PTm s) : Framed (taggedSynF md ms K Γ p) := by
+  unfold taggedSynF
+  split
+  · split
+    · exact fullSynthAt_framed md ms K _ _ _ _
+    · exact ret_framed _
+  · exact ret_framed _
+theorem taggedChkF_framed {s : Sig} (Γ : Ctx s) (p : PTm s) (G : Ty s) :
+    Framed (taggedChkF md ms K Γ p G) := by
+  unfold taggedChkF
+  split
+  · split
+    · exact fullCheckAt_framed md ms K _ _ _ _ _
+    · exact ret_framed _
+  · exact ret_framed _
+
 end Frames2
 
 /-! ## The elaborator is framed -/
@@ -1598,7 +1680,7 @@ theorem elab_framed (md : Mode) (ms : List (List Label)) (K : List Label) : ∀ 
         · exact newWSynF_framed md ms K _ _ _ (defsW_framed hC hF _ _ _ _)
         · exact newSynF_framed md ms K _ _ (hF _ _)
         · split
-          · exact ret_framed _
+          · exact taggedSynF_framed md ms K _ _
           · split
             · refine orElseW_framed (bind_framed (argGoalF_framed _ _ _) fun oF => ?_)
                 (letNoneSynF_framed md ms K hE _ _ _ _ _)
@@ -1610,7 +1692,7 @@ theorem elab_framed (md : Mode) (ms : List (List Label)) (K : List Label) : ∀ 
               · exact ret_framed _
             · exact letNoneSynF_framed md ms K hE _ _ _ _ _
         · split
-          · exact ret_framed _
+          · exact taggedSynF_framed md ms K _ _
           · refine bind_framed (hC _ _ _) fun r1 => ?_
             split
             · exact ret_framed _
@@ -1637,7 +1719,7 @@ theorem elab_framed (md : Mode) (ms : List (List Label)) (K : List Label) : ∀ 
             subsumeLit_framed _ _ _ _
         · exact bind_framed (newSynF_framed md ms K _ _ (hF _ _)) fun _ => subsumeLit_framed _ _ _ _
         · split
-          · exact ret_framed _
+          · exact taggedChkF_framed md ms K _ _ _
           · split
             · refine orElseW_framed (bind_framed (argGoalF_framed _ _ _) fun oF => ?_)
                 (letNoneChkF_framed md ms K hE hC _ _ _ _ _ _)
@@ -1649,7 +1731,7 @@ theorem elab_framed (md : Mode) (ms : List (List Label)) (K : List Label) : ∀ 
               · exact ret_framed _
             · exact letNoneChkF_framed md ms K hE hC _ _ _ _ _ _
         · split
-          · exact ret_framed _
+          · exact taggedChkF_framed md ms K _ _ _
           · refine bind_framed (hC _ _ _) fun r1 => ?_
             split
             · exact ret_framed _
@@ -1761,9 +1843,9 @@ private def crossP : PTm [] := .new none (.cons (.cons .nil
 
 example : elabWhy? .dot crossP = some (.cyclicRef lo) := by decide +kernel
 
-/-- `ν(x) {o = ν(y : {A : ⊥..⊤}) {type A = ⊤}}`: a nested self type that is not tight. -/
+/-- `ν(x) {o = ν(y : {A : ⊤..⊥}) {type A = ⊤}}`: a nested self type that is not tight. -/
 private def tightP : PTm [] := .new none (.cons .nil
-  (.new lo (some (.rcd (.typ tA .bot .top))) (.cons .nil (.typ tA .top))))
+  (.new lo (some (.rcd (.typ tA .top .bot))) (.cons .nil (.typ tA .top))))
 
 example : elabWhy? .dot tightP = some (.landed (.notTight lo)) := by decide +kernel
 
@@ -1783,6 +1865,41 @@ private def litGoalP : PTm [] := .«let» .asc (some (.rcd (.trm lf .top)))
   (.new none (.cons .nil (.path lf (.var .here)))) (.path (.var .here))
 
 example : elabWhy? .dot litGoalP = some (.landed .literalGoal) := by decide +kernel
+
+private abbrev tK : Label := .typ 1
+private abbrev tBody {s : Sig} : Ty s := .and (.mu (.rcd (.trm la .top))) .top
+
+private def elabTyK? (md : Mode) (K : List Label) (p : PTm []) : Option (Ty []) :=
+  match (elabTopKF md [] K defaultFuel p).1 with
+  | .ok c => some c.ty
+  | .error _ => none
+private def elabWhyK? (md : Mode) (K : List Label) (p : PTm []) : Option PReason :=
+  match (elabTopKF md [] K defaultFuel p).1 with
+  | .ok _ => none
+  | .error r => some r
+/-- `ν(x) {class K = μ(z. {a : ⊤}) ∧ ⊤, mk : ∀(u : ⊤) x.K = λ(u : ⊤). ν(i) as x.K {ds}}`, the
+instance's `let` tagged `g`. -/
+private def tagP (g : LetTag (([],x),x)) (ds : PDefs ((([],x),x),x)) : PTm [] := .new none (.cons (.cons .nil
+  (.cls tK tBody))
+  (.lam lm (some (.all .top (.sel (.var (.there .here)) tK))) (some .top)
+    (.«let» g none (.new none ds)
+      (.«let» .asc (some (.sel (.var (.there (.there .here))) tK)) (.path (.var .here)) (.path (.var .here))))))
+private def tagDs : PDefs ((([],x),x),x) := .cons .nil (.path la (.var (.there .here)))
+example : elabTyK? .dot [tK] (tagP (.inst (.var (.there .here)) tK) tagDs) =
+    some (.mu (.and (.rcd (.typ tK .bot tBody)) (.rcd (.trm lm (.all .top (.sel (.var (.there .here)) tK)))))) := by
+  decide +kernel
+/-- Untagged, the instance is no `x.K`. -/
+example : elabTyK? .dot [tK] (tagP .written tagDs) = none := by decide +kernel
+/-- A lambda field with an empty domain in a tagged literal. -/
+example : elabWhyK? .dot [tK] (tagP (.inst (.var (.there .here)) tK)
+    (.cons tagDs (.lam lf (some (.all .top .top)) none (.path (.var .here))))) = some (.missingParamType none) := by
+  decide +kernel
+/-- `ν(x) {o = ν(y) {class K = μ(z. {a : ⊤}) ∧ ⊤, f = λ(u : ⊤). u}}`: a nested job that declares a class
+passes `tightC` (departure 6). -/
+private def nestP : PTm [] := .new none (.cons .nil (.new lo none
+  (.cons (.cons .nil (.cls tK tBody)) (.lam lf none (some .top) (.path (.var .here))))))
+example : elabTyK? .dot [tK] nestP = some (.mu (.rcd (.trm lo (.mu (.and (.rcd (.typ tK .bot tBody))
+    (.rcd (.trm lf (.all .top .top)))))))) := by decide +kernel
 
 end TestsSlot23
 

@@ -54,6 +54,22 @@ counts than the pages' 7, 3 and 16: 9, 7 and 24.  Each ends at a final state
 with the erasure of the source run (`Ek_fc_end`), and one step fewer ends at a
 state that is not final (`Ek_fc_counts`).  `Ek_same` states that the two runs
 end at one erasure.  `Ek_shows` prints the erased end of both runs as one text.
+
+## The running example of plan XII
+
+`Run_src` is the running example of plan XII in `pdc%`: a stem `σ` with the trait `T`, the
+class `C` that extends it, their method forwarders and the constructor `new$C`, whose body is
+the tagged literal `ν(i) as σ.C {…}`, and the body `let y = σ.new$C σ.u.ℓself in (y : σ.T)`.
+It compiles at the body of `T` (`Run_type`), since `σ.T` mentions the let-bound `σ` and
+widens to its upper bound (D-21). The fill erases to `Run_prog` (`Run_fill`), which differs
+from E14 in the body of `new$C`, where the desugaring of the tag adds two `let`s
+(`Run_E14`). The source machine ends in 7 steps and the FCn machine in 19, at one erasure
+(`Run_same`, `Run_fc_end`). NOM-B holds at the program's class labels `T` and `C`
+(`Run_nominal`). A structural literal at `σ.C` outside or inside the stem is rejected, and so
+is the literal tagged outside the stem, where `σ` has no class reading. A tag at a type
+member that is no class is refused by resolution (`NotCls_unresolved`). Tags at a class of a
+nested object compile (`NestTag_src`, `SelfTag_src`), and an instance that lacks a field of
+the class body is rejected (`BadTag_reason`).
 -/
 
 namespace NominalFrontend.Examples
@@ -375,5 +391,195 @@ theorem E8_shows :
       "⟨x0 = λx. λy. λz. let w = y.f z in z, x1 = ν(x) {f = λy. y, me = x}, "
         ++ "x2 = λx. λy. let z = x.f y in y, x3 = λx. let y = x1.me.f x in x | x1⟩" := by
   decide +kernel
+
+/-! ## The running example of plan XII -/
+
+open Paths.FCdot (BVar)
+open Nominal.Source (Dec e14_lself e14_u e14_getT e14_vC e14_newC e14_v e14_get e14_w e14_T e14_C e14_L
+  e14_Tu e14_Ti e14_dsu e14_dsi fdec tdec ref0 ref1)
+
+/-- The labels of the running example, E14's (`Source/Programs.lean:1351-1373`). -/
+def Λ14 : LabelTable := [("ℓself", .trm 0), ("u", .trm 1), ("get$T", .trm 2), ("v$C", .trm 3),
+  ("new$C", .trm 4), ("v", .trm 5), ("get", .trm 6), ("w", .trm 7),
+  ("A", .typ 0), ("T", .typ 1), ("C", .typ 2), ("L", .typ 3)]
+
+/-- The running example of plan XII "The DOT notation (N4)", in `pdc%`, `$` names in guillemets. -/
+def Run_src : STm := pdc%
+  let σ = ν(σ) {
+    ℓself = σ,
+    u = ν(u') {ℓself = u', type A = ⊤},
+    class T = μ(this. {ℓself : this.type} ∧ {L : ⊥..⊤} ∧ {v : this.L} ∧ {get : ∀(y : ⊤) this.L}) ∧ ⊤,
+    «get$T» : ∀(this : σ.T) ∀(y : ⊤) this.L = λ(this : σ.T). λ(y : ⊤). this.v,
+    class C = μ(this. {ℓself : this.type} ∧ {w : ⊤} ∧ {L : ⊤..⊤} ∧ {v : this.L}) ∧ (σ.T ∧ ⊤),
+    «v$C» : ∀(this : σ.C) this.L = λ(this : σ.C). this.w,
+    «new$C» : ∀(w : ⊤) σ.C = λ(w : ⊤). let ℓ = ν(i) as σ.C {ℓself = i, w = w, type L = ⊤, v = w,
+      get : ∀(y : ⊤) i.L = λ(y : ⊤). let g = σ.«get$T» i in g y} in ℓ
+  } in let y = σ.«new$C» σ.u.ℓself in (y : σ.T)
+
+/-- The stem's definitions of `Run_src`. -/
+def runStem : SDefs := pdcDefs% {
+    ℓself = σ,
+    u = ν(u') {ℓself = u', type A = ⊤},
+    class T = μ(this. {ℓself : this.type} ∧ {L : ⊥..⊤} ∧ {v : this.L} ∧ {get : ∀(y : ⊤) this.L}) ∧ ⊤,
+    «get$T» : ∀(this : σ.T) ∀(y : ⊤) this.L = λ(this : σ.T). λ(y : ⊤). this.v,
+    class C = μ(this. {ℓself : this.type} ∧ {w : ⊤} ∧ {L : ⊤..⊤} ∧ {v : this.L}) ∧ (σ.T ∧ ⊤),
+    «v$C» : ∀(this : σ.C) this.L = λ(this : σ.C). this.w,
+    «new$C» : ∀(w : ⊤) σ.C = λ(w : ⊤). let ℓ = ν(i) as σ.C {ℓself = i, w = w, type L = ⊤, v = w,
+      get : ∀(y : ⊤) i.L = λ(y : ⊤). let g = σ.«get$T» i in g y} in ℓ }
+
+/-- `Run_src` is the stem `let` with the body `let y = σ.new$C σ.u.ℓself in (y : σ.T)`. -/
+theorem Run_src_stem : Run_src =
+    .«let» "σ" none (.obj "σ" none runStem) (pdc% let y = σ.«new$C» σ.u.ℓself in (y : σ.T)) := by decide
+
+/-- The structural literal at `σ.C` outside the stem (plan line 690). -/
+def StructOut_src : STm := .«let» "σ" none (.obj "σ" none runStem)
+  (pdc% let s : σ.C = (let ℓ = ν(o) {ℓself = o, w = σ, type L = ⊤, v = σ} in ℓ) in s)
+/-- The same literal inside the stem, as the body of `new$C`. -/
+def StructIn_src : STm := pdc%
+  let σ = ν(σ) {
+    ℓself = σ,
+    u = ν(u') {ℓself = u', type A = ⊤},
+    class T = μ(this. {ℓself : this.type} ∧ {L : ⊥..⊤} ∧ {v : this.L} ∧ {get : ∀(y : ⊤) this.L}) ∧ ⊤,
+    «get$T» : ∀(this : σ.T) ∀(y : ⊤) this.L = λ(this : σ.T). λ(y : ⊤). this.v,
+    class C = μ(this. {ℓself : this.type} ∧ {w : ⊤} ∧ {L : ⊤..⊤} ∧ {v : this.L}) ∧ (σ.T ∧ ⊤),
+    «v$C» : ∀(this : σ.C) this.L = λ(this : σ.C). this.w,
+    «new$C» : ∀(w : ⊤) σ.C = λ(w : ⊤). let s : σ.C = (let ℓ = ν(o) {ℓself = o, w = σ, type L = ⊤, v = σ} in ℓ) in s
+  } in let y = σ.«new$C» σ.u.ℓself in (y : σ.T)
+/-- The literal tagged outside the stem, where `σ` is let-bound and has no class reading. -/
+def TagOut_src : STm := .«let» "σ" none (.obj "σ" none runStem)
+  (pdc% let s : σ.C = ν(o) as σ.C {ℓself = o, w = σ, type L = ⊤, v = σ} in s)
+/-- A tag at a type member that is no class: resolution refuses it. -/
+def NotCls_src : STm := pdc% let m = ν(m) {type C = ⊤} in ν(i) as m.C {ℓself = i}
+
+/-- The body of the trait `T`, `∧` leaning right inside the `μ` as the notation writes it. -/
+abbrev run_BodyT {s : Sig} : Ty s :=
+  .and (.mu (.and (fdec e14_lself (.sngl ref0)) (.and (tdec e14_L .bot .top)
+    (.and (fdec e14_v (.sel ref0 e14_L)) (fdec e14_get (.all .top (.sel ref1 e14_L))))))) .top
+/-- The body of the class `C` at the stem `σp`. -/
+abbrev run_BodyC {s : Sig} (σp : Path s) : Ty s :=
+  .and (.mu (.and (fdec e14_lself (.sngl ref0)) (.and (fdec e14_w .top)
+    (.and (tdec e14_L .top .top) (fdec e14_v (.sel ref0 e14_L)))))) (.and (.sel σp e14_T) .top)
+/-- The stem's formed self type, in definition order, left nested. -/
+abbrev run_Tσ {s : Sig} : Ty (s,x) :=
+  .and (.and (.and (.and (.and (.and (fdec e14_lself (.sngl ref0)) (fdec e14_u (.mu e14_Tu)))
+    (tdec e14_T .bot run_BodyT))
+    (fdec e14_getT (.all (.sel ref0 e14_T) (.all .top (.sel ref1 e14_L)))))
+    (tdec e14_C .bot (run_BodyC ref0)))
+    (fdec e14_vC (.all (.sel ref0 e14_C) (.sel ref0 e14_L))))
+    (fdec e14_newC (.all .top (.sel ref1 e14_C)))
+/-- The stem's definitions as the fill erases them. -/
+def run_dsσ : Nominal.Source.Defs ([],x) :=
+  .cons (.cons (.cons (.cons (.cons (.cons (.cons .nil (.trm e14_lself (.defp ref0)))
+    (.trm e14_u (.defv (.new e14_Tu e14_dsu))))
+    (.cls e14_T run_BodyT))
+    (.trm e14_getT (.defv (.lam (.sel ref0 e14_T) (.val (.lam .top (.path (ref1.sel e14_v))))))))
+    (.cls e14_C (run_BodyC ref0)))
+    (.trm e14_vC (.defv (.lam (.sel ref0 e14_C) (.path (ref0.sel e14_w))))))
+    (.trm e14_newC (.defv (.lam .top (.lett (.lett (.val (.new e14_Ti e14_dsi)) (.lett (.path ref0) (.path ref0)))
+      (.path ref0)))))
+/-- The fill's erasure. -/
+def Run_prog : Nominal.Source.Tm [] :=
+  .lett (.val (.new run_Tσ run_dsσ))
+    (.lett (.app (ref0.sel e14_newC) ((ref0.sel e14_u).sel e14_lself)) (.lett (.path ref0) (.path ref0)))
+/-- The end of the source run, erased. -/
+abbrev runFinal : PDot.Runtime.Conf := PDot.Runtime.runFuel 4 7 (Nominal.Source.Conf.erase ⟨[], .nil, Run_prog⟩)
+
+/-- The constructor's body of the running example, a tagged literal bound by a `let`. -/
+def newCBody_src : STm := pdc% let ℓ = ν(i) as σ.C {ℓself = i, w = w, type L = ⊤, v = w,
+      get : ∀(y : ⊤) i.L = λ(y : ⊤). let g = σ.«get$T» i in g y} in ℓ
+/-- Its resolution under `σ, w` (plan lines 666-669). -/
+def newCBody_p : PTm (([],x),x) :=
+  .«let» .written none
+    (.«let» (.inst (.var (.there .here)) (.typ 2)) none
+      (.new none (.cons (.cons (.cons (.cons (.cons .nil (.path (.trm 0) (.var .here)))
+        (.path (.trm 7) (.var (.there .here)))) (.typ (.typ 3) .top)) (.path (.trm 5) (.var (.there .here))))
+        (.lam (.trm 6) (some (.all .top (.sel (.var (.there .here)) (.typ 3)))) (some .top)
+          (.«let» .written none (.app ((Path.var (.there (.there (.there .here)))).sel (.trm 2)) (.var (.there .here)))
+            (.app (.var .here) (.var (.there .here)))))))
+      (.«let» .asc (some (.sel (.var (.there (.there .here))) (.typ 2))) (.path (.var .here)) (.path (.var .here))))
+    (.path (.var .here))
+
+theorem Run_fill : (compile {} Λ14 Run_src).map (fun r => r.1.erase) = some Run_prog := by decide +kernel
+theorem Run_type : (compile {} Λ14 Run_src).map (fun r => r.2.ty) = some (run_BodyT : Ty []) := by decide +kernel
+theorem Run_compiles : (compile {} Λ14 Run_src).isSome = true := by decide +kernel
+theorem Run_checks : Nominal.FCn.checkTm .nil ((compile {} Λ14 Run_src).get Run_compiles).2.deriv.translate
+    ((compile {} Λ14 Run_src).get Run_compiles).2.ty.translate = true :=
+  compile_checks_get Run_compiles
+/-- NOM-B at the running example, at the class labels `T` and `C` of the program. -/
+theorem Run_nominal : ∃ a c, compileE {} Λ14 Run_src = .ok ⟨a, c⟩ ∧
+    c.ann.Nom [Nominal.Source.e14_T, Nominal.Source.e14_C] ∧ c.ann.SealsTagged := by
+  have h := Run_compiles
+  unfold compile at h
+  have hl : (resolveP Λ14 Run_src).map PTm.classLabels = some [Nominal.Source.e14_T, Nominal.Source.e14_C] := by
+    decide +kernel
+  cases hc : compileE {} Λ14 Run_src with
+  | error r =>
+    rw [hc] at h
+    simp [Except.toOption] at h
+  | ok r =>
+    obtain ⟨a, c⟩ := r
+    obtain ⟨p, hp, hn⟩ := compile_nominal_resolved hc
+    rw [hp] at hl
+    simp only [Option.map_some, Option.some.injEq] at hl
+    rw [hl] at hn
+    exact ⟨a, c, rfl, hn, compile_seal_sites hc⟩
+theorem Run_run : compileAndRun {} 4 7 Λ14 Run_src = some (Nominal.Source.runFuel 4 7 ⟨[], .nil, Run_prog⟩) :=
+  compileAndRun_of_fill Run_fill 4 7
+theorem Run_src_end : (Nominal.Source.runFuel 4 7 ⟨[], .nil, Run_prog⟩).erase = runFinal := by decide +kernel
+theorem Run_run_counts : (Nominal.Source.runFuel 4 6 ⟨[], .nil, Run_prog⟩).erase ≠ runFinal := by decide +kernel
+theorem Run_fc : (compileAndRunFC {} 19 Λ14 Run_src).map (fun r => r.2.erase) = some runFinal := by decide +kernel
+theorem Run_fc_final : (compileAndRunFC {} 19 Λ14 Run_src).any (fun r => Nominal.Translation.finalB r.2) = true := by
+  decide +kernel
+theorem Run_fc_counts : (compileAndRunFC {} 18 Λ14 Run_src).any (fun r => Nominal.Translation.finalB r.2) = false := by
+  decide +kernel
+theorem Run_fc_end : ∃ r, compileAndRunFC {} 19 Λ14 Run_src = some r ∧ r.2.Final ∧ r.2.erase = runFinal :=
+  compileAndRunFC_end Run_fc_final Run_fc
+/-- Both machines end at one erasure. -/
+theorem Run_same : (compileAndRun {} 4 7 Λ14 Run_src).map Nominal.Source.Conf.erase =
+    (compileAndRunFC {} 19 Λ14 Run_src).map (fun r => r.2.erase) := by
+  rw [Run_run, Run_fc]
+  simp [Run_src_end]
+theorem Run_shows : ppRunErased Λ14 (compileAndRun {} 4 7 Λ14 Run_src) =
+    "⟨x0 = ν(x) {ℓself = x, u = ν{ℓself = x.u}, get$T = λy. λz. y.v, v$C = λy. y.w, new$C = λy. let z = "
+      ++ "(let z = ν(z) {ℓself = z, w = y, v = y, get = λw. let u = x.get$T z in u w} in let w = z in w) in z}, "
+      ++ "x1 = ν(x) {ℓself = x, w = x0.u.ℓself, v = x0.u.ℓself, get = λy. let z = x0.get$T x in z y} | x1⟩" := by
+  rw [Run_run]
+  decide +kernel
+/-- E14 and the running example both check in FCn (`E14_checks`, `Run_checks`), and their runs end at
+erasures that differ in the body of `new$C` only, where the desugaring adds two `let`s. -/
+theorem Run_E14 : runFinal ≠ Nominal.Pages.E14.e14Final := by decide +kernel
+theorem Run_newC : resolveTm Λ14 ((NameEnv.nil.cons "σ").cons "w") newCBody_src = some newCBody_p := by decide
+theorem StructOut_rejected : (compileReason {} Λ14 StructOut_src).any (fun r => decide (r ≠ .limit)) = true := by
+  decide +kernel
+theorem StructIn_rejected : (compileReason {} Λ14 StructIn_src).any (fun r => decide (r ≠ .limit)) = true := by
+  decide +kernel
+theorem TagOut_rejected : (compileReason {} Λ14 TagOut_src).any (fun r => decide (r ≠ .limit)) = true := by
+  decide +kernel
+theorem NotCls_unresolved : resolveP Λ14 NotCls_src = none := by decide
+theorem NotCls_reason : compileReason {} Λ14 NotCls_src = some .mismatch := by decide +kernel
+
+/-- The labels of the programs with a class in a nested object (finding G-12). -/
+def ΛO : LabelTable := [("o", .trm 0), ("mk", .trm 1), ("a", .trm 2), ("mk2", .trm 3), ("C", .typ 0)]
+/-- The class in the nested object `o`, the constructor in the stem: the tag `σ.o.C`. -/
+def NestTag_src : STm := pdc% let σ = ν(σ) {o = ν(o) {class C = μ(z. {a : ⊤}) ∧ ⊤},
+  mk : ∀(u : ⊤) σ.o.C = λ(u : ⊤). ν(i) as σ.o.C {a = u}} in σ.mk σ
+/-- The constructor inside `o` itself: the tag `o.C` at the nested self. -/
+def SelfTag_src : STm := pdc% let σ = ν(σ) {o = ν(o) {class C = μ(z. {a : ⊤}) ∧ ⊤,
+  mk2 : ∀(u : ⊤) o.C = λ(u : ⊤). ν(i) as o.C {a = u}}} in σ.o.mk2 σ
+/-- An instance that claims `σ.o.C` and lacks the class body's field `a`. -/
+def BadTag_src : STm := pdc% let σ = ν(σ) {o = ν(o) {class C = μ(z. {a : ⊤}) ∧ ⊤},
+  mk : ∀(u : ⊤) σ.o.C = λ(u : ⊤). ν(i) as σ.o.C {mk = u}} in σ.mk σ
+theorem NestTag_compiles : (compile {} ΛO NestTag_src).isSome = true := by decide +kernel
+/-- The program's type is the class body: `σ.o.C` mentions the let-bound `σ` and widens (D-21). -/
+theorem NestTag_type : (compile {} ΛO NestTag_src).map (fun r => r.2.ty) =
+    some (.and (.mu (.rcd (.trm (.trm 2) .top))) .top) := by decide +kernel
+theorem NestTag_checks : Nominal.FCn.checkTm .nil ((compile {} ΛO NestTag_src).get NestTag_compiles).2.deriv.translate
+    ((compile {} ΛO NestTag_src).get NestTag_compiles).2.ty.translate = true :=
+  compile_checks_get NestTag_compiles
+theorem SelfTag_compiles : (compile {} ΛO SelfTag_src).isSome = true := by decide +kernel
+theorem SelfTag_checks : Nominal.FCn.checkTm .nil ((compile {} ΛO SelfTag_src).get SelfTag_compiles).2.deriv.translate
+    ((compile {} ΛO SelfTag_src).get SelfTag_compiles).2.ty.translate = true :=
+  compile_checks_get SelfTag_compiles
+theorem BadTag_reason : compileReason {} ΛO BadTag_src = some .mismatch := by decide +kernel
 
 end NominalFrontend.Examples

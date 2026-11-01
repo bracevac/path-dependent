@@ -62,6 +62,22 @@ A program with an empty slot can be rejected with "Missing parameter type",
 "Recursive value a needs type", or "The types of a have no least one". Only a
 program with an empty slot gets these three (`compileE_slot`).
 
+## Classes
+
+Plan XII adds two forms. A definition `class C = T` declares the class `C` with the body `T`,
+at `{C : ⊥..T}`, and its label joins the class labels of the run. A literal
+`ν(x) as p.C {d₁, …, dₙ}` is an instance of `p.C`. It resolves to a `let` tagged `inst p C`
+around the literal and an ascription to `p.C`, and the typer seals the instance at `p.C`
+through the class reading of `p`. The elaborator reads every slot of a tagged literal off
+its text, so its lambdas need written domains and its lambda fields written types. A field
+whose lambda returns a tagged literal needs its declared type, as in
+`mk : ∀(u : ⊤) s.C = λ(u : ⊤). ν(i) as s.C {a = u}`, since the candidate types of its
+lambda have no least one. Resolution refuses a tag whose label is the label of no class
+definition of the program. The running example of plan XII, a trait `T` and a class `C`
+that extends it, is `Run_src` in `Examples`. It compiles at the body of `T`, checks in FCn,
+runs on both machines to one erasure, and NOM-B holds at it. A structural literal at `σ.C`
+is rejected, and so is an instance that lacks a field of its class body.
+
 ## What the typer leaves out
 
 A pDOT-typable program that the typer does not type has no derivation that
