@@ -156,3 +156,14 @@ filter = { extension = ["scala"] }
 name = "ScalaCorpusPDot"
 roots = ["Coercions.ScalaCorpus.PDot"]
 needs = ["scala-pdot"]
+
+[[input_dir]]
+name = "scala-nominal"
+path = "scala/nominal"
+text = true
+filter = { extension = ["scala"] }
+
+[[lean_lib]]
+name = "ScalaCorpusNominal"
+roots = ["Coercions.ScalaCorpus.Nominal"]
+needs = ["scala-nominal"]

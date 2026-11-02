@@ -1,6 +1,7 @@
-# PDot.FCp: the coercion target
+# Nominal.FCn: the coercion target with classes
 
-FCp is the target of plan X (Part T).  Paths are terms, and path evidence `Γ ⊢ᵖ P : T` types the
+FCn is the target of plan XII: FCp, the target of plan X (Part T), with the class primitive of stage
+N1, described after this paragraph.  Paths are terms, and path evidence `Γ ⊢ᵖ P : T` types the
 path `P.path`.  Path equality `Γ ⊢ π : p ≃ q` is evidence, and the replacement of a path by its alias
 inside a type is the type equality `lift (h. T) π`.  A literal `obj (z : Tel) ds` declares a
 telescope of propositions: bounds `S ⊑ T`, fields `fld a T`, aliases `≈ q` and self bounds `is T`.
@@ -10,8 +11,8 @@ no subsumption.  Every use of subtyping is evidence that erases.
 
 The machine allocates at a `let` of a value, substitutes path evidence at a `let` of a path, and
 applies a path through its application view, as pDOT's `red_app` looks the closure up.  It has no
-projection step and never copies an object.  The erasure maps FCp into the runtime
-`../Runtime.lean`.  The metatheory reads closed evidence over a typed store `⊢ σ : Γ` through a
+projection step and never copies an object.  The erasure maps FCn into the runtime
+`../../PDot/Runtime.lean`, which the PDot tree shares.  The metatheory reads closed evidence over a typed store `⊢ σ : Γ` through a
 closed reading: the canonical walk `Γ.canon p`, with the one name `none` for every cyclic path,
 resolution `Γ.res T` and the normal type `Γ.norm T`.  The checker never computes them.
 
@@ -74,7 +75,7 @@ no typing (`Examples`), and the gate C0 stores are typed and their facts hold (`
 
 ## What it leaves out
 
-FCp types some terms that pDOT rejects: the reflexive singleton `sngl P P.path (refl P.path)`, the
+FCn types some terms that pDOT-C rejects: the reflexive singleton `sngl P P.path (refl P.path)`, the
 empty literal, and `lift` along a symmetric path equality (plan X, decision 21).  The theorems above
 hold of these terms too.  The machine takes the application view as a parameter, and only
 `appView` is proved deterministic and sound.

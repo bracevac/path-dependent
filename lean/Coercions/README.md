@@ -130,6 +130,18 @@ domain, a literal's self type and the declared type of a lambda field, and retur
 that the paths front end rejects compile here, among them a path as an argument (R7) and a
 singleton used at the type of its path (R2).  It is not a default target.
 
+**`Nominal/`** is pDOT-C, pDOT with classes and traits (plan XII), a copy of `PDot/` that adds one source
+definition, two source rules and a class primitive in the target, and leaves `PDot/` as plan X left it.  A
+class definition `{class C = T}` declares `C` with the bounds `⊥` and `T`, and the seal gives `T <: p.C` only
+inside the literal that defines `C`.  The target FCn is FCp with a class entry and a seal, and
+`Nominal.safety`, `Nominal.reachable_typed` and `Nominal.reachable_run` carry FCn's safety to pDOT-C as the
+PDot tree does for pDOT.  A class-free program types as in pDOT.  The front end, the library `NominalFrontend`
+in [Nominal/Frontend/](Nominal/Frontend/README.md), reads the notation under `pdc%` and Scala files with classes
+and traits.  Its search is nominal: every subtyping into a class type that it derives goes up through declared
+parents, aliases and `⊥`, and a compiled program seals a value at a class only at a constructor's instance.
+What the tree takes from Martres' thesis, and what it does otherwise, is a section of
+[Nominal/README.md](Nominal/README.md).  Library `Nominal`, a default target.
+
 ## Extensions
 
 Each extension copies a base tree, named in its `BASE` file, into a library of its own, keeps
@@ -195,7 +207,8 @@ file and an example program resolve to the same term.  The claim it backs is tha
 the front end accepts, scalac 3.8.4 accepts too, apart from the files of `disagree/`.  The kernel
 proves our side of each file.  scalac's side is tested by the harness `scripts/scala/Agree.lean` and
 not proved.  See [ScalaCorpus/README.md](ScalaCorpus/README.md) and
-[scala/README.md](../../scala/README.md).
+[scala/README.md](../../scala/README.md).  `ScalaCorpusPDot` and `ScalaCorpusNominal` do the same for the 78 files
+of `scala/pdot/` and the 109 files of `scala/nominal/`.
 
 ## Earlier targets, standalone
 

@@ -34,7 +34,12 @@ jobs:
           auto-config: false
           build: false
       - run: lake build Frontend CapturesFrontend CapturesCCFrontend ClassifiersFrontend PathsFrontend Oopsla16Frontend PDotFrontend PDotScalaRead PDotScala
-      - run: lake build ScalaCorpusVanilla ScalaCorpusPDot
+      - run: lake build NominalFrontend NominalScalaRead NominalScala
+      # One corpus module per step. A lean process that decides a corpus in the kernel peaks at 10.6 GB (vanilla)
+      # or 7.1 GB (pDOT), measured cold. Two at once exceed the 16 GB of the runner, which kills the step with
+      # exit code 143 (runs 40910837156 and 40909849834 on 2026-10-29).
+      - run: lake build ScalaCorpusVanilla
+      - run: lake build ScalaCorpusPDot
       - uses: coursier/setup-action@648df969f41ef15fda2baba8b37f9fa3d16390a3  # v3.0.4
         with:
           jvm: temurin:17
@@ -44,6 +49,8 @@ jobs:
       - run: git diff --exit-code scala/vanilla/TABLE.md
       - run: lake env lean --run scripts/scala/Agree.lean pdot scala/pdot
       - run: git diff --exit-code scala/pdot/TABLE.md
+      - run: lake env lean --run scripts/scala/Agree.lean nominal scala/nominal
+      - run: git diff --exit-code scala/nominal/TABLE.md
       - if: always()
         uses: actions/upload-artifact@v4
         with:

@@ -11,6 +11,7 @@ its headers say fails the build.
 |---|---|
 | `Vanilla` | the 169 files of `scala/vanilla/` by `scala_corpus`, the congruence lemmas and the template theorems |
 | `PDot` | the 78 files of `scala/pdot/` by `pdot_scala_corpus`, and the congruence lemmas |
+| `Nominal` | the 109 files of `scala/nominal/` by `nominal_scala_corpus`, and the congruence lemmas |
 
 ## Main theorems
 
@@ -26,6 +27,10 @@ its headers say fails the build.
 - `ScalaCorpus.PDot.<folder>.<Stem>.verdict`, for each of the 78 files: the kind of `PDotFrontend.Scala.outcome chars` is the one that the folder and the `// ours:` header fix.
 - `ScalaCorpus.PDot.compileE_congr`, `ScalaCorpus.PDot.compile_congr`: the two lemmas for the pDOT front end. No file of `scala/pdot/` has a `// same as:` header, so the module has no `same` theorem.
 - `#assert_axioms ScalaCorpus.PDot` ends the pDOT module, with the same check.
+- `ScalaCorpus.Nominal.<folder>.<Stem>.read`, for each of the 83 files the nominal reader takes: `readNominal` makes the term `prog`, the label table `table` and the module paths `modules` of the file's characters `chars`.
+- `ScalaCorpus.Nominal.<folder>.<Stem>.verdict`, for each of the 109 files: the kind of `NominalFrontend.Scala.outcome chars` is the one that the folder and the `// ours:` header fix.
+- `ScalaCorpus.Nominal.compileE_congr`, `ScalaCorpus.Nominal.compile_congr`: the two lemmas for the nominal front end. No file of `scala/nominal/` has a `// same as:` header.
+- `#assert_axioms ScalaCorpus.Nominal` ends the nominal module, with the same check.
 
 ## Building
 
@@ -38,3 +43,10 @@ changes, since the library needs the input directory `scala-vanilla` of
 Lake rebuilds it when a `.scala` file under `scala/pdot/` changes, through the
 input directory `scala-pdot`. `scala/pdot/TABLE.md` is not an input, so a new
 table rebuilds nothing.
+
+`lake build ScalaCorpusNominal` builds the nominal module in 6 min 18 s at a peak of
+8.3 GB, alone on the machine (plan XII, D-19). Most of it is the kernel's
+check of the compile decisions of the class programs. Lake rebuilds the module
+when a `.scala` file under `scala/nominal/` changes, through the input directory
+`scala-nominal`. CI does not build it. The kernel check of the module runs
+locally, and CI keeps the harness and the table check.

@@ -1,4 +1,4 @@
-# PDot.Source: pDOT as its Coq formalization states it
+# Nominal.Source: pDOT-C, pDOT as its Coq formalization states it, with classes
 
 This directory transcribes pDOT, the calculus of paths of any length, from its Coq formalization
 (`git.io/dotpaths`, the files `Definitions.v`, `Lookup.v`, `Reduction.v` and `Safety.v`).  Each
@@ -7,7 +7,8 @@ come in Coq's order.  The syntax constructors have Lean names, `Ty.sel` for `typ
 `dec_typ`, and so on, in Coq's order.  The
 binders are de Bruijn binders of the Paths target: a family is indexed by a signature `s`, and
 `(s,x)` adds one variable, `.here`.  Plan X (`plan-10-pdot.md`, Part S) states the design, and its
-section S.6 lists the changes of form.
+section S.6 lists the changes of form.  Plan XII (`plan-12-nominal.md`) adds the classes of pDOT-C,
+the paragraph after the next one.
 
 The syntax (`Syntax.lean`, `Binding.lean`) has the constructors of `Definitions.v:59-115` in their
 order.  Paths, signatures, labels, renamings and path substitutions are the Paths target's, imported
@@ -167,7 +168,7 @@ why Coq defines `infseq` coinductively (`Sequences.v:95-102`).  X0 only defines 
 
 | Lean | what it is |
 |---|---|
-| `PathSafe` (`Lookup.lean`) | `PathSafe γ p`: every lookup sequence from `p` ends at a value or can take a step.  It is the predicate of `PDot.safety` (`plan-10-pdot.md:43,52`), which X1 uses (`plan-10-pdot.md:337`).  It takes the place of the conclusion of `path_safety` (`Safety.v:442-447`), as `plan-10-pdot.md:52-55` says |
+| `PathSafe` (`Lookup.lean`) | `PathSafe γ p`: every lookup sequence from `p` ends at a value or can take a step.  It is the predicate of `Nominal.safety`, plan X's `PDot.safety` (`plan-10-pdot.md:43,52`), which X1 uses (`plan-10-pdot.md:337`).  It takes the place of the conclusion of `path_safety` (`Safety.v:442-447`), as `plan-10-pdot.md:52-55` says |
 
 ## Coq definitions not ported
 
@@ -175,9 +176,9 @@ None of these is a rule of the calculus.  Each is a device of Coq's safety proof
 each by a device of the target.  Because `inert`, `wf` and `well_typed` are not ported, the source
 cannot state the typed conclusion of Coq's `safety`, `G ⊢ u : T` with `γ ⫶ G`, `wf G` and `inert G`
 (`Safety.v:416-424`), nor the general `path_safety` for every typed path of a well-typed store
-(`Safety.v:442-447`).  `PDot.safety` states progress and the safety of the path in focus, which is
-the use Coq's own theorem makes of the lemma (`Safety.v:534`), and `PDot.reachable_typed` types the
-reached configuration in FCp instead.
+(`Safety.v:442-447`).  `Nominal.safety` states progress and the safety of the path in focus, which is
+the use Coq's own theorem makes of the lemma (`Safety.v:534`), and `Nominal.reachable_typed` types the
+reached configuration in FCn instead.
 
 | Coq | line | replaced by |
 |---|---|---|
@@ -185,8 +186,8 @@ reached configuration in FCp instead.
 | `record_typ` | `Definitions.v:503` | the same (I2) and (I3).  Distinct labels are `ds.hasnt` of `ty_defs_cons` at the source |
 | `inert_typ` | `Definitions.v:529` | store typing (I1) and (I2), plan X, "pDOT's proof devices" (`plan-10-pdot.md:917`) |
 | `record_has` | `Definitions.v:537` | the object view along the evidence from a location's annotation, plan X, "pDOT's proof devices" (`plan-10-pdot.md:920`) |
-| `inert` | `Definitions.v:552` | store typing `⊢ σ : Γ` of FCp, plan X, T.3 (`ST-Nil`, `ST-Lam`, `ST-Obj`, `plan-10-pdot.md:512-514`) and "pDOT's proof devices" (`plan-10-pdot.md:917`) |
-| `well_typed` | `Definitions.v:967` | store typing `⊢ σ : Γ` of FCp and `PDot.reachable_typed`, plan X, "Goal and the claim" (`plan-10-pdot.md:40-55`) and "The store invariant" (`plan-10-pdot.md:835-850`) |
+| `inert` | `Definitions.v:552` | store typing `⊢ σ : Γ` of FCn, plan X, T.3 (`ST-Nil`, `ST-Lam`, `ST-Obj`, `plan-10-pdot.md:512-514`) and "pDOT's proof devices" (`plan-10-pdot.md:917`) |
+| `well_typed` | `Definitions.v:967` | store typing `⊢ σ : Γ` of FCn and `Nominal.reachable_typed`, plan X, "Goal and the claim" (`plan-10-pdot.md:40-55`) and "The store invariant" (`plan-10-pdot.md:835-850`) |
 | `wf` | `PreciseTyping.v:734` | the forward `PA-Alias`, `DF-Path`'s typing of a path field's body and `lookup_step_typed`, plan X, "pDOT's proof devices" (`plan-10-pdot.md:918`) |
 
 ## Modules
@@ -203,5 +204,5 @@ reached configuration in FCp instead.
 | `Reduction.lean` | reduction, normal forms, extended reduction, divergence, determinism |
 | `Model.lean` | path models of a fixed context and their soundness |
 | `Examples.lean` | E9 to E11, E13, and the negative examples N1 to N5 |
-| `Programs.lean` | the programs E1 to E8, with the Coq lemmas `compiler_typecheck`, `list_typing`, `typecheck` |
-| `Erasure.lean` | erasure into the untyped runtime `../Runtime.lean`, with nested literals addressed by path, and the lockstep theorems `erase_lookup`, `erase_step`, `erase_reflect`, `erase_pathSafe` |
+| `Programs.lean` | the programs E1 to E8, with the Coq lemmas `compiler_typecheck`, `list_typing`, `typecheck`, and the class program E14 of plan XII |
+| `Erasure.lean` | erasure into the untyped runtime `../../PDot/Runtime.lean`, with nested literals addressed by path, and the lockstep theorems `erase_lookup`, `erase_step`, `erase_reflect`, `erase_pathSafe` |
