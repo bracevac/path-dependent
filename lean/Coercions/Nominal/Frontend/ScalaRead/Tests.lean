@@ -1086,7 +1086,7 @@ def linNames (s : String) (C : String) : Option (List String) :=
 
 /-! ## Classes and traits (N5): the printer -/
 
-/-- `scala/nominal/pos/Running.scala`, verbatim. -/
+/-- `scala/nominal/disagree/Running.scala` without its three header lines, verbatim. -/
 def running : String := "import scala.reflect.Selectable.reflectiveSelectable
 
 // from: notes-nominal/scratch-d1/sc/Running.scala, d1 Running
