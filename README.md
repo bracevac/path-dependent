@@ -3,6 +3,18 @@
 [![Lean proofs](https://github.com/bracevac/path-dependent/actions/workflows/lean.yml/badge.svg?branch=main)](https://github.com/bracevac/path-dependent/actions/workflows/lean.yml)
 [![Rocq proofs](https://github.com/bracevac/path-dependent/actions/workflows/rocq.yml/badge.svg?branch=main)](https://github.com/bracevac/path-dependent/actions/workflows/rocq.yml)
 
+*I know that you always think about me,  
+So let me thank thee,  
+For letting me live,  
+In your head, rent free.*
+
+*Your wrath, your spite, your envy,  
+Prove your blood is running low on T.  
+Come wake me up,  
+Should you have found  
+A semblance of humanity.*
+
+
 Most development happens first and foremost in Lean. Rocq versions are ports and a safety net to rule out Lean bugs
 and typically lag behind.
 
