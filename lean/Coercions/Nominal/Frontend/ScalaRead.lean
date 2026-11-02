@@ -12,7 +12,7 @@ The root of the `NominalScalaRead` library, the reader of the pDOT Scala subset
 of plan XI (stage XS1a).  It reads the characters of a `.scala` file into a
 tree of its own, on the lexer and the column rule of the vanilla reader
 `ScalaSyntax`, imported unchanged.  The modules of
-`lean/Coercions/PDot/Frontend/ScalaRead/`:
+`lean/Coercions/Nominal/Frontend/ScalaRead/`:
 
 * `Ast` is the syntax tree of the subset, with the position of every node that
   a check can refuse, paths of any length, and positions erased.

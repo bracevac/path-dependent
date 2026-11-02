@@ -14,8 +14,9 @@ import Coercions.Nominal.Translation.Examples
 import Coercions.Nominal.Translation.Pages
 
 /-!
-Import root for the translation of PDot: the pDOT source `Nominal.Source` into the coercion calculus
-FCn `Nominal.FCn`, plan X, Part TR, in `PDot/Translation/`.  Every function is structural recursion on
+Import root for the translation of the Nominal tree: the pDOT-C source `Nominal.Source` into the
+coercion calculus FCn `Nominal.FCn`, plan X, Part TR, with plan XII's two forms, in
+`Nominal/Translation/`.  Every function is structural recursion on
 its source object.  A function or theorem whose subject is a source object is declared in
 `Nominal.Source`, and a helper whose subject is a target object in `Nominal.Translation`.
 

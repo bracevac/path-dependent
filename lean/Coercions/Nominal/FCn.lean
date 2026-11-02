@@ -27,11 +27,11 @@ import Coercions.Nominal.FCn.Progress
 import Coercions.Nominal.FCn.ErasureMetatheory
 
 /-!
-Import root for the target of PDot: FCn, the coercion calculus of plan X, Part T, in
-`PDot/FCp/`.  FCn keeps FCdot's discipline.  Every inclusion is an explicit cast, evidence is a
-proof term whose endpoints typing assigns, object types are telescopes of propositions over a self,
-and template morphisms prove one telescope from another.  A term is a path with its typing
-evidence, and the machine is pDOT's.
+Import root for the target of the Nominal tree: FCn, plan X's FCp (Part T) with plan XII's class
+entry and seal, in `Nominal/FCn/`.  FCn keeps FCdot's discipline.  Every inclusion is an explicit
+cast, evidence is a proof term whose endpoints typing assigns, object types are telescopes of
+propositions over a self, and template morphisms prove one telescope from another.  A term is a
+path with its typing evidence, and the machine is pDOT's.
 
 The parts, in the order they land.  `Syntax` holds the families of T.1, renaming, path substitution
 and evidence substitution, and the functions of T.2 that live in the syntax.  `RenameLemmas` holds

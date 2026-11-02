@@ -5,7 +5,7 @@ import Coercions.Nominal.FCn.Syntax
 
 The composition laws of renaming and of the two substitutions, for every family of `Syntax.lean`.
 A law proved by recursion is one mutual block over the families of one inductive block, as in
-`PDot/Source/Binding.lean`.  The laws of `Path` and `PathSubst` are the Paths target's
+`Nominal/Source/Binding.lean`.  The laws of `Path` and `PathSubst` are the Paths target's
 (`Paths/FCdot/RenameLemmas.lean`, `Paths/FCdot/TypingPathSubst.lean`).
 
 The type-level families `Ty`, `Pr`, `Telescope`, `TyDefs`, `Block` and `Kids` get `rename_id`,

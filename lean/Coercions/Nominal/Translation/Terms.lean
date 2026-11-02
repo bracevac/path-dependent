@@ -14,7 +14,7 @@ into.
 A derivation at a path term translates to `path ⟦d⟧`, with `⟦d⟧` the path image `translatePath`.
 `ty_sub` at a path term is one of them, and `ty_sub` at any other term is a cast.
 
-FCn's definitions are a list with the newest last (`FCp/Syntax.lean:111-114`), so `DefTy.translate`
+FCn's definitions are a list with the newest last (`FCn/Syntax.lean:112-116`), so `DefTy.translate`
 takes the list so far and appends one (decision D8).  At `ty_def_all` the value is the lambda under
 the casts of the `ty_sub` steps that end the derivation, read by `Translation.toValue`, with a
 fallback that no derivation reaches (`HasTy.translate_lam_of_eq`).  At `ty_def_new` the nested

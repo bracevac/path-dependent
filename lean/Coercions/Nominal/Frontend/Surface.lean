@@ -346,9 +346,9 @@ end
 
 /-! ## Fields
 
-pDOT's right side of a field is a path or a value (`PDot/Source/Syntax.lean:61-62`),
+pDOT's right side of a field is a path or a value (`Nominal/Source/Syntax.lean:62-63`),
 and `ty_def_path` declares a path field at its singleton only
-(`PDot/Source/Typing.lean:69`).  So a field holds a path, a lambda or a
+(`Nominal/Source/Typing.lean:71`).  So a field holds a path, a lambda or a
 literal.  A written type sits on a lambda field, or on a path field `p` as
 exactly `p.type`.  A written type on a literal field is refused. -/
 

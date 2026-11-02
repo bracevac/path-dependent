@@ -5,9 +5,11 @@ import Coercions.Nominal.Source
 /-!
 # The programs of `Nominal.Source` in the notation
 
-Each program of `PDot/Source/Programs.lean` and `PDot/Source/Examples.lean` is
-written here in `pdc%`, with every self type and every domain written.  Each
-comes with a fixed label table, equal to the `abbrev`s of its source file.
+Each program of `Nominal/Source/Programs.lean` and `Nominal/Source/Examples.lean`
+is written here in `pdc%`, with every self type and every domain written.  The
+class program E14 is not written here (`Pipeline.lean:1005` gives it as a
+resolved term).  Each comes with a fixed label table, equal to the `abbrev`s of
+its source file.
 
 Two theorems follow each program, both by `decide +kernel`.  `Ek_side` says the
 program meets the four side conditions of `Surface.lean` under its table.
@@ -19,7 +21,7 @@ the left as the hand terms do, so an intersection of three declarations is
 written `(D₁ ∧ D₂) ∧ D₃`.  The label `Type` is written `«Type»`.
 
 The last section resolves the contexts of the path examples E9 to E11 and one
-path of E9.  They match `e9_G`, `e10_G` and `e11_G` of `PDot/Source/Examples.lean`.
+path of E9.  They match `e9_G`, `e10_G` and `e11_G` of `Nominal/Source/Examples.lean`.
 
 Nothing here is part of the metatheory.
 -/
@@ -28,9 +30,9 @@ namespace NominalFrontend.Sources
 
 open NominalFrontend
 
-/-! ## E1: pDOT's Fig. 1 (`Programs.lean:77-91`) -/
+/-! ## E1: pDOT's Fig. 1 (`Programs.lean:79-93`) -/
 
-/-- The labels of E1 (`Programs.lean:94-108`). -/
+/-- The labels of E1 (`Programs.lean:96-110`). -/
 def Λ1 : LabelTable := [("core", .trm 0), ("types", .trm 1), ("symbols", .trm 2), ("symb", .trm 3),
   ("tpe", .trm 4), ("Type", .typ 0), ("TypeRef", .typ 1), ("Symbol", .typ 2)]
 
@@ -54,9 +56,9 @@ theorem E1_side : E1_src.Scoped [] = true ∧ E1_src.LabelsIn Λ1 = true ∧
 theorem E1_resolves : (resolve Λ1 E1_src).map ATm.erase = some Nominal.Source.E1_prog := by
   decide +kernel
 
-/-! ## E2: the length-two path (`Programs.lean:153-160`) -/
+/-! ## E2: the length-two path (`Programs.lean:155-162`) -/
 
-/-- The labels of E2 (`Programs.lean:166-170`). -/
+/-- The labels of E2 (`Programs.lean:168-172`). -/
 def Λ2 : LabelTable := [("c", .trm 0), ("A", .typ 0), ("B", .typ 1)]
 
 /-- E2 in the notation. -/
@@ -70,9 +72,9 @@ theorem E2_side : E2_src.Scoped [] = true ∧ E2_src.LabelsIn Λ2 = true ∧
 theorem E2_resolves : (resolve Λ2 E2_src).map ATm.erase = some Nominal.Source.E2_prog := by
   decide +kernel
 
-/-! ## E3: `CompilerExample.v` (`Programs.lean:195-212`) -/
+/-! ## E3: `CompilerExample.v` (`Programs.lean:197-214`) -/
 
-/-- The labels of E3 (`Programs.lean:223-245`). -/
+/-- The labels of E3 (`Programs.lean:225-247`). -/
 def Λ3 : LabelTable := [("DottyCore", .typ 0), ("Tpe", .typ 1), ("Symbol", .typ 2), ("dottyCore", .trm 0),
   ("types", .trm 1), ("typeRef", .trm 2), ("symbols", .trm 3), ("symbol", .trm 4), ("symb", .trm 5),
   ("tpe", .trm 6), ("denotation", .trm 7), ("srcPos", .trm 8)]
@@ -108,9 +110,9 @@ theorem E3_side : E3_src.Scoped [] = true ∧ E3_src.LabelsIn Λ3 = true ∧
 theorem E3_resolves : (resolve Λ3 E3_src).map ATm.erase = some Nominal.Source.compiler_t := by
   decide +kernel
 
-/-! ## E4: `ListExample.v` (`Programs.lean:448-462`) -/
+/-! ## E4: `ListExample.v` (`Programs.lean:450-464`) -/
 
-/-- The labels of E4 (`Programs.lean:471-481`). -/
+/-- The labels of E4 (`Programs.lean:473-483`). -/
 def Λ4 : LabelTable := [("A", .typ 0), ("List", .typ 1), ("Nil", .trm 0), ("Cons", .trm 1),
   ("head", .trm 2), ("tail", .trm 3)]
 
@@ -134,9 +136,9 @@ theorem E4_side : E4_src.Scoped [] = true ∧ E4_src.LabelsIn Λ4 = true ∧
 theorem E4_resolves : (resolve Λ4 E4_src).map ATm.erase = some Nominal.Source.list_t := by
   decide +kernel
 
-/-! ## E5: `SingletonTypeExample.v` (`Programs.lean:669-679`) -/
+/-! ## E5: `SingletonTypeExample.v` (`Programs.lean:671-681`) -/
 
-/-- The labels of E5 (`Programs.lean:688-696`). -/
+/-- The labels of E5 (`Programs.lean:690-698`). -/
 def Λ5 : LabelTable := [("C", .typ 0), ("D", .typ 1), ("d", .trm 0), ("incr", .trm 1), ("decr", .trm 2)]
 
 /-- E5 in the notation. -/
@@ -154,9 +156,9 @@ theorem E5_side : E5_src.Scoped [] = true ∧ E5_src.LabelsIn Λ5 = true ∧
 theorem E5_resolves : (resolve Λ5 E5_src).map ATm.erase = some Nominal.Source.sngl_t := by
   decide +kernel
 
-/-! ## E6: gDOT's Fig. 2 in pDOT form (`Programs.lean:809-827`) -/
+/-! ## E6: gDOT's Fig. 2 in pDOT form (`Programs.lean:811-829`) -/
 
-/-- The labels of E6 (`Programs.lean:839-867`). -/
+/-- The labels of E6 (`Programs.lean:841-869`). -/
 def Λ6 : LabelTable := [("Option", .typ 0), ("Type", .typ 1), ("TypeTop", .typ 2), ("TypeRef", .typ 3),
   ("Symbol", .typ 4), ("A", .typ 5), ("types", .trm 0), ("symbols", .trm 1), ("newTypeTop", .trm 2),
   ("newTypeRef", .trm 3), ("symb", .trm 4), ("newSymbol", .trm 5), ("tpe", .trm 6), ("id", .trm 7),
@@ -192,9 +194,9 @@ theorem E6_side : E6_src.Scoped [] = true ∧ E6_src.LabelsIn Λ6 = true ∧
 theorem E6_resolves : (resolve Λ6 E6_src).map ATm.erase = some Nominal.Source.E6_prog := by
   decide +kernel
 
-/-! ## E7: a module alias used as a prefix (`Programs.lean:1102-1109`) -/
+/-! ## E7: a module alias used as a prefix (`Programs.lean:1104-1111`) -/
 
-/-- The labels of E7 (`Programs.lean:1116-1122`). -/
+/-- The labels of E7 (`Programs.lean:1118-1124`). -/
 def Λ7 : LabelTable := [("types", .trm 0), ("f", .trm 1), ("m", .trm 2), ("A", .typ 0)]
 
 /-- E7 in the notation. -/
@@ -209,9 +211,9 @@ theorem E7_side : E7_src.Scoped [] = true ∧ E7_src.LabelsIn Λ7 = true ∧
 theorem E7_resolves : (resolve Λ7 E7_src).map ATm.erase = some Nominal.Source.E7_prog := by
   decide +kernel
 
-/-! ## E8: replacement at an abstract member (`Programs.lean:1176-1182`) -/
+/-! ## E8: replacement at an abstract member (`Programs.lean:1178-1184`) -/
 
-/-- The labels of E8 (`Programs.lean:1193-1197`). -/
+/-- The labels of E8 (`Programs.lean:1195-1199`). -/
 def Λ8 : LabelTable := [("A", .typ 0), ("f", .trm 0), ("me", .trm 1)]
 
 /-- E8 in the notation. -/

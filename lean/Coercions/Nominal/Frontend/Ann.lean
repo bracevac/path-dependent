@@ -459,7 +459,7 @@ end
 The definitions of a literal are a spine from `nil`.  The self type of a
 literal with one definition is the declaration of that definition, and a longer
 spine `ds ▹ d` is declared by `T ∧ U`, with `T` for `ds` and `U` for `d`
-(`e1_dottyDefs` with `e1_Td`, `PDot/Source/Programs.lean:122,134`).  So
+(`e1_dottyDefs` with `e1_Td`, `Nominal/Source/Programs.lean:124,136`).  So
 `PDefs.fills` reads the self type from the right and has a base case for a
 spine of one definition. -/
 

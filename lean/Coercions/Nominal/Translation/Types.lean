@@ -20,7 +20,7 @@ Paths translation does (`Paths/DotToFCdot/Types.lean`).  `Ty.tel T` is `T.telAt 
 so the block is structural and `decide +kernel` evaluates a translation.
 
 A type member `{A : S..U}` gives two propositions, the lower bound first.  `FCn.Telescope.At` counts
-from the oldest proposition (`FCp/Syntax.lean:161-163`), so index 0 is the lower bound
+from the oldest proposition (`FCn/Syntax.lean:164-166`), so index 0 is the lower bound
 `⟦S⟧ ⊑ w∙A` and index 1 is the upper bound `w∙A ⊑ ⟦U⟧`.
 -/
 

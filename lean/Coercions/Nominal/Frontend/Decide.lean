@@ -15,7 +15,7 @@ Decision procedures for the side conditions of the pDOT typer.  This is plan XI
   equality runs in the kernel.  `ctxDecEq` names the instance.
 - Strengthening, the inverse of `Ty.weaken`: `Ty.unweaken` with
   `Ty.unweaken_iff`.  Avoidance uses it to take a type past a bound variable.
-  It reuses the partial renaming of the target (`PDot/FCp/Checker.lean`), and
+  It reuses the partial renaming of the target (`Nominal/FCn/Checker.lean`), and
   only the traversal of `Ty` and `Dec` is written here.
 - Replacement found: `Repl.find?` builds a `Repl` derivation, and
   `Repl.find?_isSome` says it answers exactly when the library's decider
@@ -23,7 +23,7 @@ Decision procedures for the side conditions of the pDOT typer.  This is plan XI
 - Labels a block lacks: `Defs.hasnt?`, with a `Decidable` instance for
   `Defs.hasnt` through it.
 
-`Ty.tight` (`PDot/Source/Repl.lean`) is already a Boolean and is reused as it
+`Ty.tight` (`Nominal/Source/Repl.lean`) is already a Boolean and is reused as it
 is.  Callers write `Ty.unweaken T`, not `T.unweaken`, since field notation on
 a `Nominal.Source.Ty` looks only in the namespace `Nominal.Source.Ty`.
 
@@ -149,7 +149,7 @@ theorem Ty.unweaken_iff {T : Ty (s,x)} {U : Ty s} : Ty.unweaken T = some U ↔ T
 
 `suffix?` reads `l = p.nomExt bs` and `r = q.nomExt bs` off `Path.nomDropPrefix`.
 `Repl.find?` has one case per constructor pair of `Ty.isRepl`
-(`PDot/Source/Repl.lean`), in the same order, and returns the derivation. -/
+(`Nominal/Source/Repl.lean`), in the same order, and returns the derivation. -/
 
 /-- `rpath` at a path written as an extension. -/
 def replSel {p q l r : Path s} {A : Label} {bs : List Label} (hl : l = p.nomExt bs) (hr : r = q.nomExt bs) :
@@ -298,7 +298,7 @@ theorem Repl.find?_iff {p q : Path s} {T T' : Ty s} :
   exact Nominal.Source.Ty.isRepl_iff
 /-! ## Labels a block lacks
 
-`Defs.hasnt` is a `Prop` (`PDot/Source/Syntax.lean`).  It is decided through
+`Defs.hasnt` is a `Prop` (`Nominal/Source/Syntax.lean`).  It is decided through
 `Option.isNone`, so no decision runs the derived equality of `Def`. -/
 
 /-- The block `ds` has no definition with label `l`. -/

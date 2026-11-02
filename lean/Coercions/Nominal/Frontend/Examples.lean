@@ -35,7 +35,7 @@ unmarked, `X_shows` prints the fill and its type, `X_compiles` is decided, and
   `x : μ(z. {a : z.type} ∧ {b : ⊤})`.  The paths front end rejects it with a type
   mismatch (facts §2.16).  pDOT types `x.a.b : x.b.type` by `ty_path_elim`.
 
-E10 and E11 of `PDot/Source/Examples.lean` are path typings under a context.
+E10 and E11 of `Nominal/Source/Examples.lean` are path typings under a context.
 Written as programs, the context entries become lambdas and each typing an
 annotated `let` or an ascription, and both compile.
 
@@ -44,7 +44,7 @@ annotated `let` or an ascription, and both compile.
 E5, E7 and E8 are compiled from `Ek_srcI` of `Pipeline.lean`, whose self types
 and lambda domains are erased where a goal or the definitions give them.  Their
 fills erase to the hand terms (`Ek_fill`), so `compileAndRun` runs the hand term,
-and the source run is the run of `PDot/Translation/Pages.lean` step for step:
+and the source run is the run of `Nominal/Translation/Pages.lean` step for step:
 4, 2 and 9 steps (`Ek_run`).  One step fewer ends at another erasure
 (`Ek_run_counts`).
 

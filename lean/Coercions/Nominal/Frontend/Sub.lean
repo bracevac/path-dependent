@@ -643,7 +643,7 @@ a check gives the units it used in the prototype. -/
 section Checks
 open Nominal.Source (e9_G e9_x e9_a e9_b e10_G e10_r e10_p e10_q e10_ty e11_G e11_p e11_a n4_G)
 
--- E9 (PDot/Source/Examples.lean:35-76): x.a.b : ⊤ and x.a.b : (x.b).type                         20, 20 units
+-- E9 (Nominal/Source/Examples.lean:35-76): x.a.b : ⊤ and x.a.b : (x.b).type                         20, 20 units
 example : answered (path? [] [] e9_G ((e9_x.sel e9_a).sel e9_b) .top) = true := by decide +kernel
 example : answered (path? [] [] e9_G ((e9_x.sel e9_a).sel e9_b) (.sngl (e9_x.sel e9_b))) = true := by decide +kernel
 -- E10 (:78-136): the four types of r                                                                2, 35, 58, 31
@@ -656,7 +656,7 @@ example : answered (path? [] [] (e11_G .top) e11_p (.rcd (.trm e11_a Ty.top.weak
 -- E11 at T = {B : ⊥..⊤}: the answer runs G5 (ty_rcd_intro) and ty_sngl, which ⊤ skips by S2         18
 example : answered (path? [] [] (e11_G (.rcd (.typ (.typ 0) .bot .top))) e11_p
     (.rcd (.trm e11_a (Ty.rcd (.typ (.typ 0) .bot .top)).weaken.weaken))) = true := by decide +kernel
--- N4 (:425-526): x : x.type has no answer, tank unmarked                                            6
+-- N4 (:428-530): x : x.type has no answer, tank unmarked                                            6
 example : rejected (path? [] [] (n4_G (.typ 0)) (.var .here) (.sngl (.var .here))) = true := by decide +kernel
 
 /-- `q : {B : ⊥..⊤}`, `p : q.type`. -/

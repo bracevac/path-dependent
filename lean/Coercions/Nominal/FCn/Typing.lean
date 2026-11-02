@@ -16,7 +16,7 @@ introduces.  `src`, `Tel` and `Tel'` of a morphism are under one self `w`, and t
 are under it too.
 
 The inversions go through equation forms that generalize the index, X0's route
-(`PDot/Source/Derived.lean`).  The last two theorems are Z9 for FCn morphisms: a singleton
+(`Nominal/Source/Derived.lean`).  The last two theorems are Z9 for FCn morphisms: a singleton
 telescope proves no bound and no other alias.
 -/
 
@@ -158,7 +158,7 @@ end
 /-! ## Inversions
 
 Each inversion lemma is proved through its equation form, which generalizes the index of the
-judgment by an equation (the route of `PDot/Source/Derived.lean`). -/
+judgment by an equation (the route of `Nominal/Source/Derived.lean`). -/
 
 theorem Value.HasType.obj_inv_of_eq : ∀ {Γ : Ctx s} {v : Value s} {U : Ty s}, Value.HasType Γ v U → ∀ (Tel : Telescope (s,x)) (ds : Defs (s,x)), v = .obj Tel ds → U = .mu Tel ∧ Defs.HasType (Γ.cons (.transparent (.mu Tel) ds.block)) (.var .here) ds (Tel.rename Rename.succ.lift)
   | _, _, _, .obj h, _, _, e => by cases e; exact ⟨rfl, h⟩

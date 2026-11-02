@@ -6,7 +6,7 @@ import Coercions.Nominal.FCn.Erasure
 # The translation erases to the source's erasure (plan X, Part TR.8, stage X6 group g3)
 
 FCn's erasure of the image of a derivation is the source's erasure of its term.  On the left `erase`
-is FCn's (`FCp/Erasure.lean:31-49`), on the right the source's (`Source/Erasure.lean:50-77`).
+is FCn's (`FCn/Erasure.lean:31-50`), on the right the source's (`Source/Erasure.lean:50-77`).
 `HasTy.translate_erase`, `DefTy.translate_erase` and `DefsTy.translate_erase` are one mutual theorem,
 structural over `HasTy`, `DefTy` and `DefsTy`, one case per source rule.  None reads a typing of the
 image.

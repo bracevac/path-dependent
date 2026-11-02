@@ -15,7 +15,7 @@ typing as membership, a path equality as `peq`, an inclusion as inclusion, a typ
 `teq`, a morphism as preservation of the propositions at a reachable path, and a side as inclusion
 under the self.  `LE-Pi` is the one rule with a premise in another context, and the field `pi`
 closes it, since no path is in a function type.  So the soundness proof is one structural
-recursion on the evidence block at the fixed `Γ`, as X0's (`PDot/Source/Model.lean`).
+recursion on the evidence block at the fixed `Γ`, as X0's in the source (`Nominal/Source/Model.lean`).
 
 A path that the model does not reach has no typing in `Γ` (`Model.reach_path`).
 -/

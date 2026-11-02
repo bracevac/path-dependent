@@ -7,7 +7,7 @@ import Coercions.Nominal.Translation.TypesLemmas
 plain binder `z : T` becomes `z : opaque ⟦T⟧`.  A self binder `z :ˢ T` becomes a binder `b` of any
 transparency whose type is `⟦μ(z. T)⟧`.  The plan writes the premise `b.ty = (⟦μ(z. T)⟧)↑`
 (`plan-10-pdot.md:716`).  The type of an FCn binding is in the outer signature and `Ctx.ty` weakens
-it (`FCp/Context.lean:28-39`), so here the premise is `b.ty = (Ty.mu T).translate` (decision D5 of
+it (`FCn/Context.lean:28-39`), so here the premise is `b.ty = (Ty.mu T).translate` (decision D5 of
 the groups file).  The translation emits no `defP`, so a binder may be opaque or transparent at any
 block.
 

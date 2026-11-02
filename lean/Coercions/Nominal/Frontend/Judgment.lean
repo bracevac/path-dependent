@@ -8,8 +8,8 @@ import Coercions.Nominal.Frontend.Sub
 The judgment `AHasTy` of the pDOT front end over the annotated terms `ATm`.
 This is plan XI (`plan-11-pdot-frontends.md`), its part "The annotated
 judgment (D-14)" and the "Reuse" row `Judgment`.  There is no model in the
-Paths front end.  Substitution follows `PDot/Source/Binding.lean` and the
-rules follow `PDot/Source/Typing.lean`.
+Paths front end.  Substitution follows `Nominal/Source/Binding.lean` and the
+rules follow `Nominal/Source/Typing.lean`.
 
 - `AHasTy`, `ADefTy` and `ADefsTy` are one mutual block of `Type`-valued
   families.  There is one rule per former of `ATm`, `ADef` and `ADefs`, and

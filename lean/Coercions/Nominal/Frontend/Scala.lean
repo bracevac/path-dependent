@@ -6,7 +6,7 @@ import Coercions.Nominal.Frontend.ScalaClasses
 /-!
 # Scala programs in the pDOT front end
 
-The reader of `PDot/Frontend/ScalaRead/` turns the characters of a `.scala` file into a `File` and
+The reader of `Nominal/Frontend/ScalaRead/` turns the characters of a `.scala` file into a `File` and
 checks its names and scopes.  This module maps that tree to the surface syntax of the pDOT front end,
 an `STm` (plan XI, "The Scala mapping, one case per construct").
 
@@ -1169,7 +1169,7 @@ def memberDefsD : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ds : ADefs s}
   | _, _, _, _, _, _, _ => .ok
 termination_by structural _ _ _ _ _ d => d
 /-- The written slots of one definition of a partial term.  A nested literal's definitions are opened at `r.sel b`,
-as `adnew` types them (`PDot/Frontend/Judgment.lean:123-126`). -/
+as `adnew` types them (`Nominal/Frontend/Judgment.lean:144-146`). -/
 def memberDefD : {s : Sig} → {Γ : Ctx s} → {r : Path s} → {ad : ADef s} → {D : Dec s} →
     ADefTy Γ r ad D → PDef s → MemberCheck
   | _, Γ, _, _, _, .adtyp, .typ _ T => memberTy Γ T
