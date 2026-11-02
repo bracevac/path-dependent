@@ -193,16 +193,16 @@ outcome seals only at tagged variables, with the class order of each seal in the
 certificate `Nom`. The printers give a class definition and a tagged literal the
 gap `gapClass`.
 
-The corpus is `scala/nominal/`, 109 files, which `scala/README.md` describes.
+The corpus is `scala/nominal/`, 115 files, which `scala/README.md` describes.
 The module `Coercions.ScalaCorpus.Nominal` judges each file in the kernel from
 its bytes when `lake build ScalaCorpusNominal` builds it. The harness
 `scripts/scala/Agree.lean` compiles each file with scalac 3.8.4 and writes
 `scala/nominal/TABLE.md`, and CI fails when that table changes.
 
 The claim is plan IX's: outside `disagree/`, every corpus file that this front
-end accepts, scalac 3.8.4 accepts. It is tested on these 109 files and not
+end accepts, scalac 3.8.4 accepts. It is tested on these 115 files and not
 proved. It holds for the pinned compiler only, and it compares verdicts, not
-types. 46 files are agree-accept, 33 agree-reject and 26 outside. The
+types. 49 files are agree-accept, 36 agree-reject and 26 outside. The
 4 files of `disagree/` are the exceptions, each with its cause, and each is
 ours-stricter. AndCall needs a rule from an intersection of method types to a
 method of the intersection (And-Fun), FunStructParam a subtyping from a `μ` to
@@ -212,10 +212,10 @@ ours-stricter in the Scala mode: plan XI's row writes an untyped let for
 singleton of the block `val` `q` has no widening.
 No file is ours-looser. N holds: each file that scalac
 rejects fails exactly on its `// error` lines. A check of `ScalaClasses`
-rejects 7 of the `neg` files with scalac's message, shortened for
-OV-Abstract, and the typer the other 26. Every file of the corpus declares a
-class or a trait, so no pos file has a fill. Of the 83 files the reader
-takes, 81 round trips stop at the gap `gapClass`, and the harness admits them
+rejects 9 of the `neg` files with scalac's message, shortened for
+OV-Abstract, and the typer the other 27. Every file of the corpus declares a
+class or a trait, so no pos file has a fill. Of the 89 files the reader
+takes, 87 round trips stop at the gap `gapClass`, and the harness admits them
 by F-C. The round trips of AbstractNew and NewTrait do not resolve, since `new`
 of a trait or an abstract class names a constructor that no class has, and F-C
 admits them too, since a check rejects both files first. So R checks no printer

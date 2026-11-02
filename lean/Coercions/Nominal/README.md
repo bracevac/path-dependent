@@ -47,7 +47,7 @@ change.
   (`Source/Programs.lean`), its image is checked in FCn with two class entries and three seals
   (`E14_checks`), and it runs on both machines to one runtime configuration (`Pages.E14`).  The
   same program written in the notation, `Run_src` in `Frontend/Examples.lean`, is compiled by the
-  front end at the body of the trait, checked in FCn and run.  109 Scala files under
+  front end at the body of the trait, checked in FCn and run.  115 Scala files under
   `scala/nominal/` are judged in the kernel against their headers (`ScalaCorpus/Nominal.lean`).
 
 ## What it leaves out
@@ -98,7 +98,7 @@ OV-Abstract.  See
 
 `lake build Nominal` builds the calculus, and `Nominal` is a default target.  `lake build
 NominalFrontend NominalScalaRead NominalScala` builds the front ends.  `lake build
-ScalaCorpusNominal` judges the corpus in 6 min 18 s at a peak of 8.3 GB (plan XII, D-19).  The path
+ScalaCorpusNominal` judges the corpus in 6 min 35 s at a peak of 9.5 GB (plan XII, D-19).  The path
 layer is imported from `Paths/FCdot` and the runtime from `PDot/`, and neither tree changes.  The
 tree has no `sorry`, `axiom`, `native_decide`, `partial`, `unsafe`, `implemented_by`, Mathlib or
 `aesop`.  The roots `Frontend.lean`, `Frontend/ScalaRead.lean` and `Frontend/ScalaCmd.lean` end
