@@ -22,7 +22,7 @@ files, 33 in `pos/`, 15 in `neg/`, 8 in `disagree/` and 22 in `outside/`, with t
 vanilla corpus.  Its center is the module idioms that pDOT is for: nested objects, `val` aliases of module paths,
 parameters at `x.type`, and paths of length two in types.  The module `Coercions.ScalaCorpus.PDot` judges every
 file in the kernel when `lake build ScalaCorpusPDot` builds it.  The harness runs as `lake env lean --run
-scripts/scala/Agree.lean pdot scala/pdot`, after `lake build Frontend PDotFrontend PDotScala`, and writes
+scripts/scala/Agree.lean pdot scala/pdot`, after `lake build Frontend PDotFrontend PDotScala NominalFrontend NominalScala`, and writes
 [`pdot/TABLE.md`](pdot/TABLE.md).  33 files are agree-accept, 15 agree-reject and 22 outside.  The other eight are
 the files of `disagree/`.  Three are ours-looser.  In DepCo scalac compares the domains of dependent function
 types by equality and pDOT compares them contravariantly.  In Mid scalac checks an argument against one function
@@ -37,6 +37,23 @@ rejects the fills of Recursion and UnstableSngl.  The row of each of these seven
 no fill, since its printed fill has the shape on which scalac crashes (R-K).  All 57 files that the reader takes
 read back the same.  Of the 28 example programs, PQ reads back the same, 25 have no Scala form, and R2 and E11
 read back to another term, for the cause that the table gives.
+
+**`nominal/`** is the corpus of the nominal Scala front end, `lean/Coercions/Nominal/Frontend/` (plan XII).  It
+holds 115 files, 49 in `pos/`, 36 in `neg/`, 4 in `disagree/` and 26 in `outside/`, with the headers and
+markers of the other corpora.  Every file declares a class or a trait, and every file the reader takes declares
+them in the wrapper object or in a nested object: constructors, parents and traits, overriding, abstract members, type members with bounds, and classes
+reached through paths.  The module `Coercions.ScalaCorpus.Nominal` judges every file in the kernel when `lake
+build ScalaCorpusNominal` builds it.  The harness runs as `lake env lean --run scripts/scala/Agree.lean nominal
+scala/nominal` and writes [`nominal/TABLE.md`](nominal/TABLE.md).  49 files are agree-accept, 36 agree-reject
+and 26 outside.  A check of the classes rejects 9 of the `neg` files with scalac's message, shortened
+for OV-Abstract, and the typer rejects the other 27.  The 4 files of `disagree/` are ours-stricter, each with its cause, and no file is
+ours-looser.  The printers give a class program no Scala form, so no pos file has a fill, and 87 of the round trips
+of the 89 files the reader takes stop at that gap (F-C).  The round trips of AbstractNew and NewTrait do not
+resolve, since each writes `new` of a trait or an abstract class, which a check rejects first, and F-C admits
+them too.  So R checks no printer on this corpus.  The type that the table writes for an `ok` file is the type after the file's stem is
+avoided, as in the other corpora.  So a class selection prints as the class's body, and a parameter at a class
+type can print as `Nothing`.  Of the 29 example programs, 1 reads back the same (PQ), 26 have no Scala form, and
+2 read back to another term (R2 and E11).
 
 **`pos/`** holds the files that both judges accept.  Its one header is `// same as: <example>`, which names
 an example program of the front end and makes the kernel prove that file and example resolve to the same
@@ -59,12 +76,14 @@ equal scalac's diagnostics as multisets of lines and kinds.
 
 To add a file, write it in the folder that its two verdicts name, with the headers of that folder and no
 markers, and run the harness.  Its `FAIL` line names the lines where scalac reports, and the markers go there.
-Then `lake build ScalaCorpusVanilla` gives the kernel's verdict.  A header that contradicts our outcome fails
+Then the corpus library of the folder, `lake build ScalaCorpusVanilla` for `vanilla/`, gives the kernel's
+verdict.  A header that contradicts our outcome fails
 the build with an error that names the file.  Run the harness again until it prints `0 failures`, and commit
 the table it wrote with the file.
 
 The harness [`scripts/scala/Agree.lean`](../scripts/scala/Agree.lean) runs from the repository root, after
-`lake build Frontend PDotFrontend PDotScala`, as `lake env lean --run scripts/scala/Agree.lean vanilla scala/vanilla`.
+`lake build Frontend PDotFrontend PDotScala NominalFrontend NominalScala`, as `lake env lean --run scripts/scala/Agree.lean
+vanilla scala/vanilla`.
 It needs scalac 3.8.4 on the `PATH` and fails on another version.  It runs our front end on every file.  scalac
 compiles the pos files and the fills our front end accepts in one run, and every other file alone, four at a
 time, with a deadline of 120 s per run.  It checks the headers, the markers, the claim, the fills (F, the

@@ -1,6 +1,8 @@
 import Coercions.Frontend
 import Coercions.PDot.Frontend
 import Coercions.PDot.Frontend.ScalaCmd
+import Coercions.Nominal.Frontend
+import Coercions.Nominal.Frontend.ScalaCmd
 
 /-!
 # The harness of the Scala front ends
@@ -48,9 +50,13 @@ claim, the end of each run and the version of scalac.  F applies the claim to
 the fills: a fill is agree-accept, or it is ours-stricter, agree-reject or
 refuse-differently and has a cause the front end names.  The vanilla cause is
 a written self type printed as an ascribed literal (XV1 D-12).  The pDOT
-causes are F-L and F-W (plan XI, XS3).  R asks every file the reader takes to
-read back the same, and every example program to read back the same, to have
-no Scala form, or to differ for the cause its front end records.  Each failed
+causes are F-L and F-W (plan XI, XS3).  The nominal front end (plan XII) has
+F-L and F-W and the gap F-C: a class program's fill has no Scala form, since
+its printers give a class definition and a tagged literal the reason
+`NominalFrontend.Scala.gapClass`.  R asks every file the reader takes to read
+back the same, or in the nominal front end to be admitted by F-C, and every
+example program to read back the same, to have no Scala form, or to differ for
+the cause its front end records.  Each failed
 check prints one line `FAIL <subject>: <what>`.  They replace XV2's shell
 scripts `scalac-run.sh`, `check-folders.sh` and `check-markers.sh`.
 -/
@@ -268,8 +274,140 @@ def pdot : FrontEnd where
   causeWord := "with a cause F-L or F-W"
   causeText := "have a cause of plan XI XS3.  F-L: the fill drops every written self type, so a lambda field prints with no declared type.  F-W: a `let` the elaborator inserted prints as a `val` with no written type, which scalac widens.  F admits a fill of another class than agree-accept only with a cause, and its row names it."
 
+/-- The answer of a round trip of the nominal front end as the table writes it. -/
+def nominalTripText : NominalFrontend.Scala.Trip → String
+  | .same => "same"
+  | .gap why => s!"gap: {why}"
+  | .unreadable err => s!"unreadable {err.pos.line}:{err.pos.col}: {err.msg}"
+  | .differs => "differs"
+  | .unresolved => "unresolved"
+
+/-- Whether R admits the round trip of a file of the nominal corpus (F-C).  It
+reads back the same, or it stops at the gap of a class program
+(`NominalFrontend.Scala.gapClass`, plan XII N6), or a check of the classes
+rejected the file first (`checked`) and the round trip does not resolve, for
+any reason.  In the corpus the reason is `new` of a trait or an abstract class. -/
+def nominalTripAdmits (checked : Bool) : NominalFrontend.Scala.Trip → Bool
+  | .same => true
+  | .gap why => why == NominalFrontend.Scala.gapClass
+  | .unresolved => checked
+  | _ => false
+
+mutual
+/-- Whether an elaborated term of the nominal front end holds a lambda field (F-L). -/
+def nomLamField : {s : Paths.FCdot.Sig} → NominalFrontend.ATm s → Bool
+  | _, .path _ => false
+  | _, .app _ _ => false
+  | _, .lam _ t => nomLamField t
+  | _, .new _ ds => nomLamFieldDefs ds
+  | _, .«let» _ _ t u => nomLamField t || nomLamField u
+/-- Whether elaborated definitions of the nominal front end hold a lambda field. -/
+def nomLamFieldDefs : {s : Paths.FCdot.Sig} → NominalFrontend.ADefs s → Bool
+  | _, .nil => false
+  | _, .cons ds d => nomLamFieldDefs ds || nomLamFieldDef d
+/-- Whether an elaborated definition of the nominal front end is or holds a lambda field. -/
+def nomLamFieldDef : {s : Paths.FCdot.Sig} → NominalFrontend.ADef s → Bool
+  | _, .typ _ _ => false
+  | _, .path _ _ => false
+  | _, .lam _ _ _ => true
+  | _, .new _ _ ds => nomLamFieldDefs ds
+  | _, .cls _ _ => false
+end
+
+mutual
+/-- Whether an elaborated term of the nominal front end holds a `let` the elaborator inserted (F-W). -/
+def nomInserted : {s : Paths.FCdot.Sig} → NominalFrontend.ATm s → Bool
+  | _, .path _ => false
+  | _, .app _ _ => false
+  | _, .lam _ t => nomInserted t
+  | _, .new _ ds => nomInsertedDefs ds
+  | _, .«let» tag _ t u => tag == .arg || tag == .recv || nomInserted t || nomInserted u
+/-- Whether elaborated definitions of the nominal front end hold an inserted `let`. -/
+def nomInsertedDefs : {s : Paths.FCdot.Sig} → NominalFrontend.ADefs s → Bool
+  | _, .nil => false
+  | _, .cons ds d => nomInsertedDefs ds || nomInsertedDef d
+/-- Whether an elaborated definition of the nominal front end holds an inserted `let`. -/
+def nomInsertedDef : {s : Paths.FCdot.Sig} → NominalFrontend.ADef s → Bool
+  | _, .typ _ _ => false
+  | _, .path _ _ => false
+  | _, .lam _ _ t => nomInserted t
+  | _, .new _ _ ds => nomInsertedDefs ds
+  | _, .cls _ _ => false
+end
+
+/-- The causes of a fill of the nominal front end, as `pdotCause`. -/
+def nominalCause (a : NominalFrontend.ATm []) : Option String :=
+  match nomLamField a, nomInserted a with
+  | true, true => some "F-L, F-W"
+  | true, false => some "F-L"
+  | false, true => some "F-W"
+  | false, false => none
+
+/-- A text that `ScalaSyntax.Print.name` wrote byte by byte, read back as UTF-8.
+The Scala printer writes a name as its bytes, one character each, so the hidden
+label `ℓx$C` of a plain parameter prints as three characters.  This gives the
+label back.  A text with a character past 255, or with bytes that are no UTF-8,
+is kept as it is. -/
+def utf8Text (s : String) : String :=
+  if s.toList.all (·.toNat < 256) then
+    (String.fromUTF8? (ByteArray.mk (s.toList.map fun c => c.toNat.toUInt8).toArray)).getD s
+  else s
+
+/-- The programs of the nominal front end written in `pdc%`: the 28 of
+`pdotExamples` under their names in `NominalFrontend`, and the running example
+`Run_src` of plan XII with its table `Λ14` (`Examples.lean`). -/
+def nominalExamples : List (String × NominalFrontend.LabelTable × NominalFrontend.STm × Option String) :=
+  open NominalFrontend.Sources NominalFrontend.ElabChecks NominalFrontend.Examples in
+  [("E1", Λ1, E1_src, none), ("E2", Λ2, E2_src, none), ("E3", Λ3, E3_src, none), ("E4", Λ4, E4_src, none),
+   ("E5", Λ5, E5_src, none), ("E6", Λ6, E6_src, none), ("E7", Λ7, E7_src, none), ("E8", Λ8, E8_src, none),
+   ("E13", Λ13, E13_src, none), ("N1", ΛN1, N1_src, none), ("N2", ΛN2, N2_src, none),
+   ("N3", ΛN3, N3_src, none),
+   ("E1I", Λ1, E1_srcI, none), ("E2I", Λ2, E2_srcI, none), ("E3I", Λ3, E3_srcI, none),
+   ("E4I", Λ4, E4_srcI, none), ("E5I", Λ5, E5_srcI, none), ("E6I", Λ6, E6_srcI, none),
+   ("E7I", Λ7, E7_srcI, none), ("E8I", Λ8, E8_srcI, none), ("E13I", Λ13, E13_srcI, none),
+   ("R2", ΛPQ, R2_src, some "an application that is a lambda body reads back with the widening bind of D-13"),
+   ("PQ", ΛPQ, PQ_src, none), ("R7", ΛR7, R7_src, none), ("E7w", Λ7, E7w_src, none),
+   ("E9l", Λ9, E9l_src, none), ("E10", Λ10, E10_src, none),
+   ("E11", Λ11, E11_src, some "a μ whose binder does not occur prints as its body (plan IX S-15)"),
+   ("Run", Λ14, Run_src, none)]
+
+/-- The nominal front end (plan XII), the pDOT one with classes and traits.
+`ours` is `pdot`'s with the functions of `NominalFrontend`, and its type in
+Scala is read back by `utf8Text`.  A class program
+has no fill, and R admits its round trip by F-C (`nominalTripAdmits`). -/
+def nominal : FrontEnd where
+  name := "nominal"
+  ours stem cs :=
+    let o := NominalFrontend.Scala.outcome cs
+    let checked := match o with
+      | .checked .. => true
+      | _ => false
+    let trip := match NominalFrontend.Scala.readNominal cs with
+      | .ok (e, Λ, _) =>
+        let t := NominalFrontend.Scala.roundTrip Λ e
+        some (nominalTripText t, nominalTripAdmits checked t)
+      | .error _ => none
+    match o with
+    | .ok Λ r =>
+      { kind := o.kind.word, text := "ok : " ++ NominalFrontend.ppTy Λ r.2.ty,
+        scala := some (utf8Text (NominalFrontend.Scala.tyText Λ r.2.ty)),
+        fill := some ((NominalFrontend.Scala.fillToScala Λ r.1).map fun F =>
+          renameMain (stem ++ "Fill").toList false (NominalFrontend.ScalaRead.print F)),
+        fillCause := nominalCause r.1, trip }
+    | _ => { kind := o.kind.word, text := o.text, scala := none, fill := none, fillCause := none, trip }
+  examples := nominalExamples.map fun (n, Λ, e, known) =>
+    match NominalFrontend.Scala.roundTrip Λ e, known with
+    | .same, _ => (n, "same", true)
+    | .gap why, _ => (n, s!"gap: {why}", true)
+    | .differs, some why => (n, s!"differs: {why}", true)
+    | t, _ => (n, nominalTripText t, false)
+  gaps := NominalFrontend.Scala.gapReasons
+  causeName := "a cause F-L or F-W"
+  causeWord := "with a cause F-L or F-W"
+  causeText := "have a cause of plan XI XS3.  F-L: the fill drops every written self type, so a lambda field prints with no declared type.  F-W: a `let` the elaborator inserted prints as a `val` with no written type, which scalac widens.  F-C (plan XII): a class program's fill has no Scala form, so a pos file with a class has no fill, and its round trip stops at the same gap, or does not resolve when a check of the classes rejects the file.  F admits a fill of another class than agree-accept only with a cause, and its row names it."
+
 /-- The front ends the command line names. -/
-def frontEnds : List FrontEnd := [vanilla, pdot]
+def frontEnds : List FrontEnd := [vanilla, pdot, nominal]
 
 /-! ## The runner -/
 
