@@ -68,6 +68,8 @@ inductive AtomT (Γ : Ctx s) (γ : PDot.Runtime.Store s) : Atom s → Ty s → T
   | pair : FormT Γ γ F S (.mu Tel) → FormT Γ γ G S (.mu Tel') → AtomT Γ γ (.pair F G) S (.mu (Tel ++ Tel'))
   | bnd : Tel.At i (.is T.weaken) → AtomT Γ γ (.bnd i) (.mu Tel) T
   | into : FormT Γ γ F S T → AtomT Γ γ (.into F) S (.mu (.cons .nil (.is T.weaken)))
+  | seal : Γ.clsAt p C = some U → AtomT Γ γ (.seal p C) U (.sel p C)                -- AT-Seal
+  | unseal : Γ.clsOf (.sel p C) = some U → AtomT Γ γ (.unseal p C) (.sel p C) U    -- AT-Unseal
 inductive FormT (Γ : Ctx s) (γ : PDot.Runtime.Store s) : Form s → Ty s → Ty s → Prop
   | nil : FormT Γ γ .nil T T
   | cons : AtomT Γ γ A S M → FormT Γ γ F M T → FormT Γ γ (.cons A F) S T
@@ -103,7 +105,10 @@ inductive ViewT (Γ : Ctx s) (γ : PDot.Runtime.Store s) : Path s → Ty s → V
   | obj : VEntriesT Γ γ r Tel V → Live γ r → ViewT Γ γ r (.mu Tel) (.obj V)
   | fn : Value.HasType Γ v X → v.isLam = true → FnFormT Γ γ F X (.pi S U) → Live γ r →
       RLam γ r v → ViewT Γ γ r (.pi S U) (.fn v F)
-  | none : Γ.next (.sel p A) = none → Live γ r → ViewT Γ γ r (.sel p A) .none
+  | none : Γ.next (.sel p A) = none → Γ.clsOf (.sel p A) = none → Live γ r →
+      ViewT Γ γ r (.sel p A) .none                                                -- VT-None
+  | inst : Γ.clsOf (.sel p C) = some U → ViewT Γ γ r (Γ.res U) W → Live γ r →
+      ViewT Γ γ r (.sel p C) (.inst W)                                            -- VT-Inst
 inductive VEntriesT (Γ : Ctx s) (γ : PDot.Runtime.Store s) : Path s → Telescope (s,x) → VEntries s → Prop
   | nil : VEntriesT Γ γ r .nil .nil
   | cons : VEntriesT Γ γ r Tel V → VEntryT Γ γ r pr e → VEntriesT Γ γ r (.cons Tel pr) (.cons V e)
@@ -140,7 +145,8 @@ variable {Γ : Ctx s} {γ : PDot.Runtime.Store s}
 theorem ViewT.live : ViewT Γ γ r R W → Live γ r
   | .obj _ h => h
   | .fn _ _ _ h _ => h
-  | .none _ h => h
+  | .none _ _ h => h
+  | .inst _ _ h => h
 
 theorem ViewT.not_bot : ¬ ViewT Γ γ r .bot W := by
   intro h; cases h
@@ -157,7 +163,28 @@ theorem ViewT.fn_inv (h : ViewT Γ γ r R (.fn v F)) :
 
 theorem ViewT.none_inv (h : ViewT Γ γ r R .none) : ∃ p A, R = .sel p A ∧ Γ.next (.sel p A) = Option.none ∧ Live γ r := by
   cases h with
-  | none hn hl => exact ⟨_, _, rfl, hn, hl⟩
+  | none hn _ hl => exact ⟨_, _, rfl, hn, hl⟩
+
+/-- The inversion of VT-None with both of its premises: the selection takes no step of resolution and
+names no class. -/
+theorem ViewT.none_inv_cls (h : ViewT Γ γ r R .none) :
+    ∃ p A, R = .sel p A ∧ Γ.next (.sel p A) = Option.none ∧ Γ.clsOf (.sel p A) = Option.none ∧ Live γ r := by
+  cases h with
+  | none hn hc hl => exact ⟨_, _, rfl, hn, hc, hl⟩
+
+/-- The inversion of VT-Inst. -/
+theorem ViewT.inst_inv (h : ViewT Γ γ r R (.inst W)) :
+    ∃ p C U, R = .sel p C ∧ Γ.clsOf (.sel p C) = some U ∧ ViewT Γ γ r (Γ.res U) W ∧ Live γ r := by
+  cases h with
+  | inst hc hW hl => exact ⟨_, _, _, rfl, hc, hW, hl⟩
+
+/-- The view at a class selection is an instance view whose content is a view at the body.  The
+second premise of VT-None excludes the view `none` here. -/
+theorem ViewT.cls_inv {p : Path s} {C : Label} {U : Ty s} (h : ViewT Γ γ r (.sel p C) W)
+    (hc : Γ.clsOf (.sel p C) = some U) : ∃ W', W = .inst W' ∧ ViewT Γ γ r (Γ.res U) W' := by
+  cases h with
+  | none _ hn _ => rw [hc] at hn; cases hn
+  | inst hc' hW _ => rw [hc] at hc'; cases hc'; exact ⟨_, rfl, hW⟩
 
 theorem ViewT.mu_inv (h : ViewT Γ γ r (.mu Tel) W) : ∃ V, W = .obj V ∧ VEntriesT Γ γ r Tel V := by
   cases h with

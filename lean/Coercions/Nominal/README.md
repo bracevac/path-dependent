@@ -54,9 +54,10 @@ change.
 
 - The nominality theorem is about the derivations that the front end's search builds.  It is not
   stated over the declarative `Sub`, where a binder at `⊥` or an alias with bounds at `C` puts `⊤`
-  below `p.C`, nor over closed evidence in a typed FCn store, where `defAt` reads a class entry
-  (plan XII, "What is not claimed").  So in this first version a class is transparent to FCn's
-  closed reading.  A later stage NT stops that reading at classes.
+  below `p.C`, nor over closed evidence in a typed FCn store, where a forged instance meets every
+  canonical form of the class primitive (plan XII, "What is not claimed").  Stage NT stops FCn's
+  closed reading at classes, so a class is opaque outside its seal, and proves those canonical forms
+  in `FCn/ClassForms.lean`.  They are no nominality theorem.
 - No theorem says that a closed path at a class type in a reachable state is a constructor's
   allocation.  That provenance theorem is the later stage NR.
 - Type parameters, `super`, anonymous and local classes, classes inside classes, `object o extends
