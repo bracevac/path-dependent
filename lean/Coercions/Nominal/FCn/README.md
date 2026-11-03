@@ -32,7 +32,21 @@ below a class from a type not below it holds a seal (`le_below`, `le_below_sealF
 literals around it (`seal_scope`).  These are not nominality.  A forged instance meets each of them,
 since LE-Seal holds at every class of a stored literal (`ClassEx.Store1.forge`), and `seal_scope`
 says nothing of a state whose store holds a literal (`ClassEx.Forge`).  Plan XII states nominality
-at the source, and the provenance of a value at a class type is the later stage NR.
+at the source.  Stage NR proves the provenance of a value at a class type at run time.
+
+Stage NR proves the run-time provenance of class instances.  An allocation record gives each store
+variable the keys `(q, C)` at which the scope that allocated it sealed it, `q` the seal's owner path,
+and every owner is older than the variable it seals.  The predicate `State.SealsAtCtors` admits a
+seal only at the head of a path cast at a store variable whose record holds its key, or at the
+binder of a `let` of a value or a literal's self.  It holds of the initial state of a program that
+meets `Tm.InitSeals` and is preserved by every rule of the machine with records `AStep`
+(`Provenance`), and `appView` meets its hypothesis (`ProvenanceViews`).  A `member` read adds no
+seal to a normal form.  So in a reachable state of a typed program that meets `Tm.InitSeals`, a
+path of every former but `sel` and `unfold` that meets the predicate under the run's records and is
+typed at a class selection names, up to `canon`, a store variable whose record holds a class below
+it (`provenance`, `ProvenanceClass`).  The path in focus meets the predicate with no hypothesis
+(`provenance_focus`).  The parameter forgery of `ClassEx.Forge` and a module method that seals a
+literal it captures both fail `Tm.InitSeals` (`ProvEx.ForgeRun`, `ProvEx.CapRun`).
 
 ## What is proved
 
@@ -79,6 +93,13 @@ On the machine `Step appView`:
   it reaches is typed and proves no `⊤ ≤ ⊥`.  The typing of the term is needed: an untyped program
   runs to a store holding N3's dangling literal, and that store has no typing
   (`X5Ex.DanglingRun.store_untyped`).  `Steps.consistent` says the same from any typed state.
+- `reachable_sealsAtCtors_appView`: every state that a program meeting `Tm.InitSeals` reaches meets
+  the predicate under the records of its run, and every owner of those records is older than its
+  variable.
+- `provenance`: in such a state of a typed program, a path of every former but `sel` and `unfold`
+  that meets the predicate under the run's records and is typed at a class selection `p∙C` names,
+  up to `canon`, a store variable whose allocation sealed it at a class below `C`.
+- `provenance_focus`: the same of the path in focus, with no hypothesis on its seals.
 
 The checker decides typing: `checkTm_iff` and `checkPath_iff`, from soundness and completeness for
 every judgment of the two typing blocks, evidence and terms.  The negative examples N1 to N3 have
@@ -91,6 +112,9 @@ FCn types some terms that pDOT-C rejects: the reflexive singleton `sngl P P.path
 empty literal, and `lift` along a symmetric path equality (plan X, decision 21).  The theorems above
 hold of these terms too.  The machine takes the application view as a parameter, and only
 `appView` is proved deterministic and sound.
+
+The provenance corollary is not proved at a field selection `sel` or at `unfold`, and the records
+live beside the machine, not in the store.
 
 ## Modules
 
@@ -125,3 +149,7 @@ hold of these terms too.  The machine takes the application view as a parameter,
 | `Preservation` | `preservation'`, `Steps.typed` |
 | `Progress` | `progress`, `not_stuck` |
 | `ErasureMetatheory` | `erase_reflect'`, `reachable_consistent`, `Steps.consistent` |
+| `Provenance` | owners, keys and allocation records, the predicate `sealsOK` and its seal sites, the machine with records `AStep`, `AStep.sealsAtCtors`, `reachable_sealsAtCtors` |
+| `ProvenanceViews` | forms and views meet the predicate, `appView_sealsOK` |
+| `ProvenanceClass` | every seal of a normal form is a seal of the evidence's head (`Hnf.sf`), the fragment, `frag_provenance`, `provenance`, `provenance_focus` |
+| `ProvenanceExamples` | the machine with records computed, N1's class program, two forging runs, a cast constructor, the application heads, a function instance |

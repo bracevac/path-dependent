@@ -143,6 +143,7 @@ the run, the label of a class definition.
 - `path?_nominal`: an answer to `q : p.C` comes from a view of `q` that factors through `p.C`, or `q` is a tagged instance of a class below `C` (`SealAt`). `path?_structural`: a path whose views are all structural and that is no tagged variable has no answer at `p.C`.
 - `compile_nominal_resolved` and `compile_nominal` (NOM-B): every step into a class type of a compiled derivation carries its certificate. `compile_seal_sites`: every seal of a compiled derivation is the last step of a path answer at a tagged variable.
 - In `Examples`: `Run_src`, the running example of plan XII, compiles at the body of `T`, checks in FCn, and runs on both machines to one erasure.
+- In `Provenance`: the running example and the tagged nested and self classes meet the provenance predicate's initial condition, a factory's two classes of one label are told apart by the owner of the seal, an instance read through a path field is named up to `canon`, and every focus path at a class type of these runs is in the corollary's fragment.
 
 ## The Scala front end
 
@@ -233,6 +234,7 @@ their kinds there, except `outside/Tree.scala`, which it compiles.
 | `Pipeline` | `compileE`, `compile`, `checkAt`, `compileLanded`, the two drivers, the theorems, the nominality theorems NOM-A and NOM-B, and the checks of E1 to E8, E13 and N1 to N4 |
 | `Pretty` | printers of surface, partial, annotated and source terms, types, reasons and runs |
 | `Examples` | the paths programs compiled, E10 and E11 as programs, the runs of E5, E7 and E8 on both machines, and the running example `Run_src` of plan XII |
+| `Provenance` | the provenance predicate on the running example, the tagged classes, a factory of two classes of one label, an instance read through a path field, and the corollary's fragment on these runs |
 | `ScalaClasses` | the implementer `mimpl`, the effective member, the members of an instance, the superclass, and the checks of the classes and of `new` |
 | `Scala` | the mapping from the reader's tree to `STm` with classes and traits, `readNominal`, `outcome` with the checks of `ScalaClasses`, the member check R-M and its three theorems, `ofScala_tags`, `scala_seal_sites`, the printers `toScala` and `fillToScala`, and `roundTrip` |
 | `ScalaTests` | checks of the mapping, the outcomes, the member check, the printers and the round trips, by `#eval expect` |

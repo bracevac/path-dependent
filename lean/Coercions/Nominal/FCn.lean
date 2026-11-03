@@ -27,6 +27,10 @@ import Coercions.Nominal.FCn.ClassExamples
 import Coercions.Nominal.FCn.Preservation
 import Coercions.Nominal.FCn.Progress
 import Coercions.Nominal.FCn.ErasureMetatheory
+import Coercions.Nominal.FCn.Provenance
+import Coercions.Nominal.FCn.ProvenanceViews
+import Coercions.Nominal.FCn.ProvenanceClass
+import Coercions.Nominal.FCn.ProvenanceExamples
 
 /-!
 Import root for the target of the Nominal tree: FCn, plan X's FCp (Part T) with plan XII's class
@@ -50,5 +54,6 @@ simulation `erase_step` under a sound application view, and the shuffle steps th
 erasure.  `Checker` holds the checker of T.8, structural and sound, and `CheckerCompleteness` holds
 its completeness with `checkTm_iff`.  `Examples` decides the binder example and the twins of N2 and
 N3 with it.  `ClassForms` holds the canonical forms of the class primitive and `ClassExamples` its
-stores.
+stores.  `Provenance`, `ProvenanceViews` and `ProvenanceClass` hold the run-time provenance of class
+instances, and `ProvenanceExamples` its runs.
 -/
