@@ -1,8 +1,5 @@
 import scala.reflect.Selectable.reflectiveSelectable
 
-// ours: rejected
-// scalac: ok
-// cause: plan XI's row writes `val w: q.type = q.self2(p)` as an untyped let, since the block does not end in `w`, the Scala mode widens the binder of an untyped let, and the singleton of the block val `q` has no widening, so the candidate is dropped (plan XI D-13, stage N6 departure 16). A block that ends in `w` gets the typed let and is accepted
 // from: notes-nominal/scratch-d1/sc/Running.scala, d1 Running
 object Running {
   trait Shape {

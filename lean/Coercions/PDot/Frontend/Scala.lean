@@ -33,6 +33,11 @@ path and then each later step in turn (D-10).  `bind .widen ·v` binds an applic
 body or a block result with no written type around it, and the right side of an untyped block `val`
 that is no path.
 
+A block `val x: T = e` with a written type reads as `let x : ⟦T⟧ = ⟦e⟧ in ⟦r⟧`, a typed `let`, which
+binds `x` at `⟦T⟧` in both modes: a written type is never widened.  A literal `e` reads under `T`
+(D-16), and when the block does not return `x` its `let` is untyped, since the literal form carries
+the type.
+
 Three flags of `tmS` place these.  `wr` says that a written type stands around the term.  `res` says
 that the term is a lambda body or a block result.  `under` is the written type a literal stands under,
 since a literal is only read under one (D-16).
@@ -55,7 +60,7 @@ theorems say that an `ok` outcome is the compilation of the term `readPDot` give
 derivation checks in FCp, and that its term is safe.
 
 The printers go the other way.  `toScala` prints a surface term as a `File` and checks it with the
-reader, or gives the reason it has no Scala form, one of ten (`gapReasons`).  `fillToScala` prints
+reader, or gives the reason it has no Scala form, one of nine (`gapReasons`).  `fillToScala` prints
 the elaborated term with every slot written.  `roundTrip` prints a term, reads the text back, and
 compares the two resolutions.  The printed wrapper is `Main`.  The stem's binder prints as `Main`, an
 object's binder as the object's name when it is not the innermost template, the innermost template's
@@ -440,7 +445,7 @@ def statsS (c : MCtx) (wr : Bool) (ss : Stats) : Except Err STm :=
         pure (.«let» x none e' r')
       else do
         let e' ← tmS c true false none e
-        pure (.«let» x none (.asc e' T') r')
+        pure (.«let» x (some T') e' r')
 termination_by structural ss
 /-- The members of a template, appended to `ds`. -/
 def memsS (c : MCtx) (ds : SDefs) (ms : Mems) : Except Err SDefs :=
@@ -819,8 +824,6 @@ def gapMuBody : String := "a μ whose body is not one refinement has no Scala fo
 def gapMuOuter : String := "a μ named from inside an inner template has no Scala form: the inner `this` hides it (plan IX S-13)"
 /-- Why a literal's binder named inside a dependent function type has no Scala form. -/
 def gapLitOuter : String := "a literal named from inside a dependent function type has no Scala form (plan IX S-13)"
-/-- Why a typed `let` whose body is not its variable has no Scala form. -/
-def gapLetType : String := "`let x : U = t in u` with `u` not `x` has no Scala form (plan IX S-11)"
 /-- Why a `bind` outside the shapes of the mapping has no Scala form. -/
 def gapBind : String := "an inserted binding outside the shapes of the mapping has no Scala form"
 /-- Why a field that holds no path, lambda or object has no Scala form. -/
@@ -828,9 +831,9 @@ def gapField : String := "a field that holds no path, lambda or object has no Sc
 /-- Why a literal ascribed directly has no Scala form. -/
 def gapAscLiteral : String := "a literal ascribed directly reads back as `let ℓ = ν(s) {…} in (ℓ : T)` (D-16)"
 
-/-- The ten reasons of the printers, in the order of their definitions. -/
+/-- The nine reasons of the printers, in the order of their definitions. -/
 def gapReasons : List String :=
-  [gapSelfType, gapUntypedLiteral, gapSelfField, gapMuBody, gapMuOuter, gapLitOuter, gapLetType, gapBind,
+  [gapSelfType, gapUntypedLiteral, gapSelfField, gapMuBody, gapMuOuter, gapLitOuter, gapBind,
    gapField, gapAscLiteral]
 
 /-! ### The context of the printer -/
@@ -1139,22 +1142,15 @@ def tmP (c : PCtx) (block : List String) (e : STm) : Except String Stats :=
     let nested := block.contains x
     let r ← tmP c (if nested then [x] else x :: block) u
     pure (joinVal nested x T' rhs r)
-  | .«let» x (some U) t u =>
-    if isVar x u then do
-      let t' ← tmP c [] t
-      let U' ← tyP' c U
-      let rhs := match litFormType t with
-        | some T => if decide (T = U) then (splitAsc (toTmP t')).2 else toTmP t'
-        | none => toTmP t'
-      let nested := block.contains x
-      let r ← tmP c (if nested then [x] else x :: block) u
-      pure (joinVal nested x (some U') rhs r)
-    else if c.fill then do
-      let t' ← tmP c [] t
-      let U' ← tyP' c U
-      let r ← tmP c [x] u
-      pure (.last (.asc .zero (.block .zero (.val .zero x none (toTmP t') r)) U'))
-    else throw gapLetType
+  | .«let» x (some U) t u => do
+    let t' ← tmP c [] t
+    let U' ← tyP' c U
+    let rhs := match litFormType t with
+      | some T => if decide (T = U) then (splitAsc (toTmP t')).2 else toTmP t'
+      | none => toTmP t'
+    let nested := block.contains x
+    let r ← tmP c (if nested then [x] else x :: block) u
+    pure (joinVal nested x (some U') rhs r)
   | .alias x p u => do
     let p' ← pathP c p
     let nested := block.contains x

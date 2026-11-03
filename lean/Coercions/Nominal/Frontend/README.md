@@ -202,14 +202,11 @@ its bytes when `lake build ScalaCorpusNominal` builds it. The harness
 The claim is plan IX's: outside `disagree/`, every corpus file that this front
 end accepts, scalac 3.8.4 accepts. It is tested on these 115 files and not
 proved. It holds for the pinned compiler only, and it compares verdicts, not
-types. 49 files are agree-accept, 36 agree-reject and 26 outside. The
-4 files of `disagree/` are the exceptions, each with its cause, and each is
+types. 50 files are agree-accept, 36 agree-reject and 26 outside. The
+3 files of `disagree/` are the exceptions, each with its cause, and each is
 ours-stricter. AndCall needs a rule from an intersection of method types to a
 method of the intersection (And-Fun), FunStructParam a subtyping from a `μ` to
-a record (Bind1), and ThisTypeOverride a subtyping that widens a singleton. Running is
-ours-stricter in the Scala mode: plan XI's row writes an untyped let for
-`val w: q.type = q.self2(p)`, the Scala mode widens its binder, and the
-singleton of the block `val` `q` has no widening.
+a record (Bind1), and ThisTypeOverride a subtyping that widens a singleton.
 No file is ours-looser. N holds: each file that scalac
 rejects fails exactly on its `// error` lines. A check of `ScalaClasses`
 rejects 9 of the `neg` files with scalac's message, shortened for

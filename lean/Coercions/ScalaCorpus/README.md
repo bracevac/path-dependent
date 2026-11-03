@@ -44,8 +44,8 @@ Lake rebuilds it when a `.scala` file under `scala/pdot/` changes, through the
 input directory `scala-pdot`. `scala/pdot/TABLE.md` is not an input, so a new
 table rebuilds nothing.
 
-`lake build ScalaCorpusNominal` builds the nominal module in 6 min 35 s at a peak of
-9.5 GB, alone on the machine (plan XII, D-19). Most of it is the kernel's
+`lake build ScalaCorpusNominal` builds the nominal module in 6 min 20 s at a peak of
+12.0 GB, alone on the machine (plan XII, D-19). Most of it is the kernel's
 check of the compile decisions of the class programs. Lake rebuilds the module
 when a `.scala` file under `scala/nominal/` changes, through the input directory
 `scala-nominal`. CI does not build it. The kernel check of the module runs

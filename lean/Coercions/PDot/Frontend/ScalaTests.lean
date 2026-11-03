@@ -166,7 +166,7 @@ def oT : SDefs := .trm (sd "σ") "o" none (.obj n1 none (.typ (sd n1) "T" .top))
   some (.lam "f" (some (.all "_" .top .top))
     (.bind .widen "·v" (.app (.var "f") (.var "f")) (.«let» "y" none (.var "·v") (.var "y"))))) "block val of a term"
 #eval expect (term ["val program = (f: Any => Any) => { val y: Any = f(f); f }"] ==
-  some (.lam "f" (some (.all "_" .top .top)) (.«let» "y" none (.asc (.app (.var "f") (.var "f")) .top) (.var "f"))))
+  some (.lam "f" (some (.all "_" .top .top)) (.«let» "y" (some .top) (.app (.var "f") (.var "f")) (.var "f"))))
   "typed block val"
 #eval expect (term ["val program = (f: Any => Any) => { val y: Any = f(f); y }"] ==
   some (.lam "f" (some (.all "_" .top .top)) (.«let» "y" (some .top) (.app (.var "f") (.var "f")) (.var "y"))))
@@ -347,8 +347,8 @@ def gapOf (e : STm) : Option String :=
 #eval expect (gapOf (.obj "x" none (sd "x")) == some gapUntypedLiteral) "a bare literal"
 #eval expect (gapOf (.«let» "ℓ" none (.obj "z" (some .top) (sd "z")) (.asc (.var "ℓ") .top)) == some gapSelfType)
   "a written self type"
-#eval expect (gapOf (.lam "x" (some .top) (.«let» "y" (some .top) (.var "x") (.var "x"))) == some gapLetType)
-  "a typed let with another body"
+#eval expect (gapOf (.lam "x" (some .top) (.«let» "y" (some .top) (.var "x") (.var "x"))) == none)
+  "a typed let with another body has a Scala form"
 #eval expect (gapOf (.«let» "ℓ" none (.obj "z" none .nil) (.asc (.var "ℓ") .top)) == some gapSelfField)
   "a literal without ℓself"
 
