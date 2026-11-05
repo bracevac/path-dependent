@@ -43,8 +43,8 @@ fuelled by the number of classes of the file plus one, a cycle answering `none`)
 type and a parent's arguments are read outside the body (`headEnv`), as scalac reads them.  A parent is
 reached through objects (`refEnv?`).  An instance of a class has the kind `inst`.  The walk adds R-CN, R-PP,
 R-CI, R-LB, R-VT, R-PA, R-BN on term and type names, R-D on overloading, and plan XI's R-Y and R-C in class
-bodies, and `labels` adds the hidden labels of each class (`hiddenNames`): `new$K`, `m$K`, `ℓx$K` and the
-override witnesses.
+bodies, and `labels` adds the hidden labels of each class (`hiddenNames`): `new$K`, `super$K`, `m$K`, `ℓx$K`
+and the override witnesses.
 -/
 
 namespace NominalFrontend.ScalaRead
@@ -590,6 +590,14 @@ def clsVal? (e : List Entry) (a : String) : Option Tm :=
     | some (_ :: L) => (declTrm? a L).bind fun (e', _) => (clsOf? e').bind (·.body.valRhs? a)
     | _ => none
 
+/-- The term member `a` of an instance of the class at the head of `e`, selected on a path other than `this`:
+the first class of `L(K)` that has it.  A parameter written without `val` is no member (G-3), so a plain
+parameter of the class does not hide a member that it inherits. -/
+def memTrm? (e : List Entry) (a : String) : Option (List Entry × CTrm) :=
+  match linOf e with
+  | some L => declTrm? a L
+  | none => (clsOf? e).bind fun d => (d.findMem a).map (e, ·)
+
 /-- Whether the class at the head of `e` inherits the term member `a` from a class of `L(K)` other than itself. -/
 def inheritsTrm (e : List Entry) (a : String) : Bool :=
   match linOf e with
@@ -709,7 +717,15 @@ def kindPath : Nat → List Entry → Option PathKind → Path → PathKind
     | some k, some t =>
       if t.declaresTrm x then kindSel n k x else kindVar n env x
     | _, _ => kindVar n env x
-  | n + 1, env, sk, .sel q _ a => kindSel n (kindPath n env sk q) a
+  | n + 1, env, sk, .sel q _ a =>
+    match q, kindPath n env sk q with
+    | .this _, k => kindSel n k a
+    | _, .inst e =>
+      match memTrm? e a with
+      | some (e', .val T) => tyKind n (if isParamOf e' a then headEnv e' else e') T
+      | some (_, .defn m) => .meth m
+      | none => kindSel n (.inst e) a
+    | _, k => kindSel n k a
 /-- The kind of a variable, by its referent. -/
 def kindVar : Nat → List Entry → String → PathKind
   | 0, _, _ => .unstable
@@ -1078,6 +1094,12 @@ def CMems.bodied : CMems → List String
 
 /-- `new$C`, the constructor of `C` (D-8). -/
 def newName (C : String) : String := "new$" ++ C
+/-- `super$C`, the field that types the arguments `C` gives its first parent: for a class with no constructor
+each argument whose check does not hold by its form, for a class with a constructor each unstable argument, each
+argument of a `val` parameter that a class of `L(C)` overrides, and each argument whose parameter's type names a
+parameter of these two kinds.  `super` is reserved, so no
+member or parameter name meets it. -/
+def superName (C : String) : String := "super$" ++ C
 /-- `f$C`, the module function or the witness of the member `f` of `C` (D-9, D-10). -/
 def modName (f C : String) : String := f ++ "$" ++ C
 /-- `ℓx$C`, the hidden field of the plain parameter `x` of `C` (D-11). -/
@@ -1110,13 +1132,47 @@ def witTyp (K : String) (As : List String) (L : List (List Scope.Entry)) : List 
       else []
     | none => []
 
-/-- The hidden labels of the class at the head of `e`: `new$C` for a concrete class, `m$C` for each member
-with a right side, `ℓx$C` for each plain parameter, then the witness labels along `L(C)`. -/
+/-- Whether the first parent of a class is given arguments. -/
+def ClsDecl.parentArgs (d : ClsDecl) : Bool :=
+  match d.parents with
+  | .cons _ (.cons ..) _ => true
+  | _ => false
+
+/-- Whether an argument is a selection `q.a`, the only form an unstable path (D-10) takes. -/
+def Args.anySel : Args → Bool
+  | .nil => false
+  | .cons (.path (.sel ..)) _ => true
+  | .cons _ r => r.anySel
+
+/-- Whether the first parent of a class is given an argument that is a selection. -/
+def ClsDecl.parentSelArg (d : ClsDecl) : Bool :=
+  match d.parents with
+  | .cons _ as _ => as.anySel
+  | _ => false
+
+/-- Whether the first parent `D` of the class at the head of `e` is given arguments and has a `val` parameter
+that another class of `L = L(C)` declares, so that `C`'s instance may hold an override of it. -/
+def parentValDeclared (e : List Scope.Entry) (L : List (List Scope.Entry)) (d : ClsDecl) : Bool :=
+  match d.parents with
+  | .cons P (.cons ..) _ =>
+    match (Scope.refEnv? e.tail P).bind fun eD => (Scope.clsOf? eD).map (eD, ·) with
+    | some (eD, D) => D.params.any fun y => y.isVal && otherDeclares L (Scope.clsKey eD) y.name
+    | none => false
+  | _ => false
+
+/-- The hidden labels of the class at the head of `e`: `new$C` for a concrete class, then `super$C` when its
+first parent is given an argument that is a selection or has a `val` parameter another class of `L(C)`
+declares (`parentValDeclared`), `super$C` for another class whose first parent is given arguments, `m$C` for each member with a right side, `ℓx$C` for each plain parameter, then the witness labels
+along `L(C)`.  The mapping writes `super$C` for a subset of these classes (`superS`), so every label it writes
+is in the table. -/
 def clsHidden (e : List Scope.Entry) : List (String × Bool) :=
   match Scope.clsOf? e with
   | some d =>
     let L := (Scope.linOf e).getD [e]
-    (if d.kind = .concrete then [(newName d.name, false)] else []) ++
+    (if d.kind = .concrete then
+       (newName d.name, false) ::
+         (if d.parentSelArg || parentValDeclared e L d then [(superName d.name, false)] else [])
+     else if d.parentArgs then [(superName d.name, false)] else []) ++
       d.body.bodied.map (fun m => (modName m d.name, false)) ++
       d.params.filterMap (fun x => if x.isVal then none else some (hidName x.name d.name, false)) ++
       L.flatMap (witTrm d.name L) ++ witTyp d.name d.body.typNames L.tail
@@ -1427,10 +1483,11 @@ def ambiguous (e : List Entry) (x : String) : Bool :=
        | _ => false)
   | _ => false
 
-/-- R-PA: `a` is a plain parameter of the class whose instance `k` is. -/
+/-- R-PA: `a` is a plain parameter of the class whose instance `k` is, and the class inherits no member `a`.
+Selected on an instance, an inherited member `a` is no plain parameter (`memTrm?`). -/
 def plainOf (k : PathKind) (a : String) : Bool :=
   match k with
-  | .inst e => ((clsOf? e).map (·.plain a)).getD false
+  | .inst e => ((clsOf? e).map (·.plain a)).getD false && !inheritsTrm e a
   | _ => false
 
 /-- Whether the key `k` is in a list. -/

@@ -713,7 +713,8 @@ def PathCo.Frag : PathCo s → Prop
 
 /-- **The corollary on the fragment.**  Over a typed store, a path of the fragment that meets the
 predicate and is typed at a type below the class `C` names, up to `canon`, a store variable `y` whose
-allocation sealed it at the class `q∙D` itself (its record holds `(q, D)`), and `q∙D` is below `C`. -/
+record holds the key `(q, D)`, and `q∙D` is below `C`.  Under the records of a run the key says that
+the scope that allocated `y` permits a seal of `y` at `q∙D`, in code that may be dormant. -/
 theorem frag_provenance {σ : Store s} {Γ : Ctx s} (hσ : Store.Typed σ Γ) {A : Alloc s} {c : Path s} {C : Label} :
     ∀ (P : PathCo s) {T : Ty s}, PathCo.Frag P → PathCo.sealsOK A P = true → PathCo.HasType Γ P T →
       Below Γ c C T → ∃ y q D, Γ.canon P.path = Γ.canon (.var y) ∧ A y (q, D) = true ∧ Below Γ c C (.sel q D)
@@ -771,11 +772,15 @@ theorem reachable_sealsAtCtors_appView {t : Tm []} {s' : Sig} {st : State s'} (h
       A.OwnersOlder :=
   reachable_sealsAtCtors appView_sealsOK ht run
 
-/-- **The provenance theorem, at a class selection**, for a reachable state of the machine `Step appView`.  A
-typed program that meets the initial condition reaches only states whose allocation records `A` (the
-function of the run that `AStep` computes) have this property: every owner is older than the variable it
-seals, and a path of the fragment that meets the predicate under `A` and is typed at a class selection
-`p∙C` names, up to `canon`, a store variable `y` whose allocation sealed it at a class `q∙D` below `C`. -/
+/-- **The provenance theorem, at a class selection**, for a reachable state of the machine `Step appView`.
+Take a typed program that meets the initial condition and a state it reaches.  `AStep` computes the
+allocation records `A` of the state along the run, and two runs to the state compute one record
+(`ASteps.alloc_unique` with `appView_det`).  Every owner is older than the variable whose record holds its
+key.  A path of the fragment that meets the predicate under `A` and is typed at a class selection `p∙C`
+names, up to `canon`, a store variable `y` whose record holds a key `(q, D)` with `q∙D` below `C`.  `A` is
+computed along the run before the path is chosen.  A key says that the scope that
+allocated `y` permits a seal of `y` at `q∙D`, in code that may be dormant.  It is no log of executed
+constructors or executed seal uses (`ProvEx.Dormant` in `ProvenanceExamples`). -/
 theorem provenance {t : Tm []} {T₀ : Ty []} (ht : Tm.HasType .nil t T₀) (hi : Tm.InitSeals t = true) {s' : Sig}
     {st : State s'} (run : Steps appView ⟨.nil, .nil, t⟩ st) :
     ∃ (A : Alloc s') (Γ : Ctx s'), ASteps appView ⟨⟨.nil, .nil, t⟩, Alloc.empty⟩ ⟨st, A⟩ ∧

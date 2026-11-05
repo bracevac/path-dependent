@@ -32,21 +32,41 @@ below a class from a type not below it holds a seal (`le_below`, `le_below_sealF
 literals around it (`seal_scope`).  These are not nominality.  A forged instance meets each of them,
 since LE-Seal holds at every class of a stored literal (`ClassEx.Store1.forge`), and `seal_scope`
 says nothing of a state whose store holds a literal (`ClassEx.Forge`).  Plan XII states nominality
-at the source.  Stage NR proves the provenance of a value at a class type at run time.
+at the source.  Stage NR proves a run-time statement.  Take a reachable state of a typed program
+that meets `Tm.InitSeals`, and a path of its fragment that meets the provenance predicate under the
+run's records and is typed at a class.  Up to `canon`, the path names a store variable whose
+allocation record holds a key below that class.
 
-Stage NR proves the run-time provenance of class instances.  An allocation record gives each store
-variable the keys `(q, C)` at which the scope that allocated it sealed it, `q` the seal's owner path,
-and every owner is older than the variable it seals.  The predicate `State.SealsAtCtors` admits a
-seal only at the head of a path cast at a store variable whose record holds its key, or at the
-binder of a `let` of a value or a literal's self.  It holds of the initial state of a program that
-meets `Tm.InitSeals` and is preserved by every rule of the machine with records `AStep`
-(`Provenance`), and `appView` meets its hypothesis (`ProvenanceViews`).  A `member` read adds no
-seal to a normal form.  So in a reachable state of a typed program that meets `Tm.InitSeals`, a
-path of every former but `sel` and `unfold` that meets the predicate under the run's records and is
-typed at a class selection names, up to `canon`, a store variable whose record holds a class below
-it (`provenance`, `ProvenanceClass`).  The path in focus meets the predicate with no hypothesis
-(`provenance_focus`).  The parameter forgery of `ClassEx.Forge` and a module method that seals a
-literal it captures both fail `Tm.InitSeals` (`ProvEx.ForgeRun`, `ProvEx.CapRun`).
+Stage NR proves the run-time provenance of class instances in terms of allocation records.  An
+allocation record gives each store variable a set of keys `(q, C)`, `q` the seal's owner path, and
+every owner is older than the variable whose record holds its key.  At `MS-LetVal` the new variable
+gets the record `allocLbl u v`.  It holds the keys of the seal sites of the variable in the
+continuation `u` and at the self of the literal `v`, inside lambda bodies too.  So a key says that
+the allocating scope permits a seal of the variable at `q∙C`, in code that may be dormant.  The
+predicate `State.SealsAtCtors` admits a seal only at the head of a path cast at a store variable
+whose record holds its key, or at the binder of a `let` of a value or a literal's self.  It holds of
+the initial state of a program that meets `Tm.InitSeals` and is preserved by every rule of the
+machine with records `AStep` (`Provenance`), and `appView` meets its hypothesis (`ProvenanceViews`).
+A `member` read adds no seal to a normal form.  Take a reachable state of a typed program that
+meets `Tm.InitSeals`, and a path of every former but `sel` and `unfold` that meets the predicate
+under the run's records and is typed at a class selection.  Up to `canon`, the path names a store
+variable whose record holds a key `(q, D)` with `q∙D` below the class (`provenance`,
+`ProvenanceClass`).  The path in focus meets the predicate with no hypothesis (`provenance_focus`).
+The parameter forgery of `ClassEx.Forge` and a module method that seals a literal it captures both
+fail `Tm.InitSeals` (`ProvEx.ForgeRun`, `ProvEx.CapRun`).
+
+An allocation record tracks the class seal sites permitted by the allocating scope, including sites
+inside dormant code.  It is not by itself a log of executed constructors or executed seal uses.
+Three facts fix the reading of the theorem.  The records depend on FCn evidence and are not in
+general recoverable from an erased runtime configuration.  Two programs with identical erased runs
+can have different records.  `ProvEx.Dormant` checks both: a lambda that is never called and holds
+a seal site of an instance puts a key in the instance's record (`trace_erase_eq`, `keys_on`,
+`keys_off`).  The substantive result is that one record environment is computed along the run
+before the queried path is chosen.  `provenance` gives the records `A` before it quantifies over
+the path.  Two runs to one state compute one record (`ASteps.alloc_unique`).  The invariant of the
+records survives every step of the machine (`AStep.sealsAtCtors`).  The construction of an
+application view and the normalization of evidence keep it too (`appView_sealsOK`, `Hnf.ok`).  So
+the record is not chosen after the run to fit a class conclusion.
 
 ## What is proved
 
@@ -96,9 +116,14 @@ On the machine `Step appView`:
 - `reachable_sealsAtCtors_appView`: every state that a program meeting `Tm.InitSeals` reaches meets
   the predicate under the records of its run, and every owner of those records is older than its
   variable.
+- `ASteps.alloc_unique`: over a deterministic view, two runs from one state to one machine state
+  compute one record.  A run that returns to a state adds no variable and keeps the record.  The
+  machine with records is deterministic (`AStep.det`).
 - `provenance`: in such a state of a typed program, a path of every former but `sel` and `unfold`
   that meets the predicate under the run's records and is typed at a class selection `p∙C` names,
-  up to `canon`, a store variable whose allocation sealed it at a class below `C`.
+  up to `canon`, a store variable whose record holds a key `(q, D)` with `q∙D` below `C`.  The key
+  says that the allocating scope permits a seal of the variable at `q∙D`, in code that may be
+  dormant.
 - `provenance_focus`: the same of the path in focus, with no hypothesis on its seals.
 
 The checker decides typing: `checkTm_iff` and `checkPath_iff`, from soundness and completeness for
@@ -114,7 +139,9 @@ hold of these terms too.  The machine takes the application view as a parameter,
 `appView` is proved deterministic and sound.
 
 The provenance corollary is not proved at a field selection `sel` or at `unfold`, and the records
-live beside the machine, not in the store.
+live beside the machine, not in the store.  No run-time class tag, pattern matching or constructor
+authenticity is claimed.  A result of that kind needs a notion of constructor event defined
+independently of `allocLbl` membership.
 
 ## Modules
 
@@ -149,7 +176,7 @@ live beside the machine, not in the store.
 | `Preservation` | `preservation'`, `Steps.typed` |
 | `Progress` | `progress`, `not_stuck` |
 | `ErasureMetatheory` | `erase_reflect'`, `reachable_consistent`, `Steps.consistent` |
-| `Provenance` | owners, keys and allocation records, the predicate `sealsOK` and its seal sites, the machine with records `AStep`, `AStep.sealsAtCtors`, `reachable_sealsAtCtors` |
+| `Provenance` | owners, keys and allocation records, the predicate `sealsOK` and its seal sites, the machine with records `AStep`, its determinism `AStep.det` and `ASteps.alloc_unique`, `AStep.sealsAtCtors`, `reachable_sealsAtCtors` |
 | `ProvenanceViews` | forms and views meet the predicate, `appView_sealsOK` |
 | `ProvenanceClass` | every seal of a normal form is a seal of the evidence's head (`Hnf.sf`), the fragment, `frag_provenance`, `provenance`, `provenance_focus` |
-| `ProvenanceExamples` | the machine with records computed, N1's class program, two forging runs, a cast constructor, the application heads, a function instance |
+| `ProvenanceExamples` | the machine with records computed, N1's class program, two forging runs, a cast constructor, the application heads, a function instance, a dormant seal |

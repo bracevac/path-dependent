@@ -46,13 +46,14 @@ change.
 - `provenance`, `provenance_focus` (`FCn/ProvenanceClass.lean`): in a reachable state of a typed FCn
   program that meets `Tm.InitSeals`, a path at a class selection, of every former but a field
   selection and `unfold`, that meets the provenance predicate under the run's records names up to
-  `canon` a store variable whose allocation sealed it at a class below its class.  The path in focus
-  meets the predicate.
+  `canon` a store variable whose record holds a key at a class below its class.  The key says that
+  the allocating scope permits a seal of the variable at that class, in code that may be dormant
+  (`ProvEx.Dormant` in `FCn/ProvenanceExamples.lean`).  The path in focus meets the predicate.
 - The examples.  E14, a trait and a class that extends it, is typed by hand
   (`Source/Programs.lean`), its image is checked in FCn with two class entries and three seals
   (`E14_checks`), and it runs on both machines to one runtime configuration (`Pages.E14`).  The
   same program written in the notation, `Run_src` in `Frontend/Examples.lean`, is compiled by the
-  front end at the body of the trait, checked in FCn and run.  115 Scala files under
+  front end at the body of the trait, checked in FCn and run.  193 Scala files under
   `scala/nominal/` are judged in the kernel against their headers (`ScalaCorpus/Nominal.lean`).
 
 ## What it leaves out
@@ -67,12 +68,23 @@ change.
   meet its initial condition, and the initial condition is checked on named compiled programs
   (`Frontend/Provenance.lean`).  That every program the front end compiles meets it is not stated:
   the front end's certificates record the tagged variable of a seal, not that the seal's owner is
-  older.  The corollary is not proved at a field selection or at `unfold`.
+  older.  The corollary is not proved at a field selection or at `unfold`.  An allocation record
+  is not by itself a log of executed constructors or executed seal uses, so no run-time class tag
+  and no constructor authenticity is claimed.
 - Type parameters, `super`, anonymous and local classes, classes inside classes, `object o extends
   T`, overloading, parents not reached through objects, cyclic inheritance and imports are outside
   the Scala subset.  The reader refuses each with a rule and a position.
 - The typer's fuel stays `2 ^ 15`.  A chain of four classes, each with a constructor argument and a
-  method, answers `limit`, and so does a diamond of five classes that scalac accepts.
+  method, answers `limit`, and so does a diamond of five classes that scalac accepts.  The field
+  `super$K` that checks the parent arguments of a class costs fuel from the same tank.  A file whose
+  argument obligations do not hold by their form can answer `limit` where scalac accepts it.  An
+  abstract class `K(x)` that gives its parent the unstable `x.y`, with a concrete `L(z) extends
+  K(z)`, answers `limit` and is `ok` at `2 ^ 22` with 38565 units.  Six abstract classes that each
+  give their parent a subclass argument three times answer `limit` and are `ok` there with 97226
+  units.  A file that scalac rejects can answer `limit` too, where a failing subtyping goes through
+  module aliases in nested objects: a parent's parameter at an alias of one class, given an
+  argument at an alias of another class, answers `limit` and is `rejected` at `2 ^ 22` with 45000
+  to 105000 units.
 - What the PDot tree leaves out holds here too: pDOT's disjunctive safety and its own preservation
   are not stated, and FCn types some terms that pDOT-C rejects, among them `x : x.type`.
 
@@ -98,10 +110,11 @@ premise `ClsAgree`, and carries FCn's safety to pDOT-C.  Its examples check and 
 `NominalScala`, which are not default targets.  A program is written under `pdc%`, with the class
 forms `class C = T` and `ν(x) as p.C {ds}`, or as a `.scala` file whose classes and traits the
 mapping turns into class definitions, module functions, witnesses, constructors with tagged
-instances and forwarders.  The search carries the certificates of NOM-A, and the checks of
-`ScalaClasses` reject scalac's override and shape errors with scalac's message, shortened for
-OV-Abstract.  See
-[Frontend/README.md](Frontend/README.md).
+instances and forwarders.  The search carries the certificates of NOM-A.  The checks of `ScalaClasses`
+reject scalac's override and shape errors with scalac's message, shortened for OV-Abstract and
+OV-Private.  OV-Private rejects a plain constructor parameter named in a member's signature.  Its
+second walk at an alias removes the report only where scalac's does, on the corpus and on the
+review probes.  That is tested, not proved.  See [Frontend/README.md](Frontend/README.md).
 
 ## Building
 
@@ -178,4 +191,5 @@ What differs, and why.
 - Mechanization.  His translation proofs are on paper (p.124).  Ours are Lean theorems with axioms
   at most `propext` and `Quot.sound`.
 - Local classes (p.122), wildcards and capture (p.123), pattern matching (p.123): out of this
-  version.  Pattern matching needs a run-time class identity, which the provenance of NR prepares.
+  version.  Pattern matching needs a notion of constructor event defined independently of
+  `allocLbl` membership.  The records of NR track permitted seal sites, not executed constructors.

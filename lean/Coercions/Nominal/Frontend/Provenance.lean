@@ -5,10 +5,10 @@ import Coercions.Nominal.Translation.Provenance
 # Run-time provenance of the front end's class programs (plan XII, stage NR)
 
 The images of the running example and of the tagged nested and self classes meet the initial
-condition.  A factory of modules declares two classes of one label: the record names the module whose
-constructor ran, and the instance's evidence moved to the other module fails the predicate.  An
-instance read through a path field is an `alias` whose path is a selection: the corollary names its
-store variable up to `canon`.  Every focus path at a class type of these runs is in the fragment.
+condition.  A factory of modules declares two classes of one label: the record of the instance holds
+its key at the module whose constructor body allocates it, and the instance's evidence moved to the
+other module fails the predicate.  An instance read through a path field is an `alias` whose path is
+a selection: the corollary names its store variable up to `canon`.  Every focus path at a class type of these runs is in the fragment.
 -/
 
 namespace NominalFrontend.ProvEx
@@ -50,7 +50,7 @@ def t : Tm [] := ((compile {} ΛO Fac_src).get compiles).2.deriv.translate
 theorem init : Tm.InitSeals t = true := by decide +kernel
 theorem every_state : arunAll 60 (startA t) = List.replicate 22 true := by decide +kernel
 theorem final : State.finalB (arun 60 (startA t)).2.st = true := by decide +kernel
-/-- The instance `i` (index 0) is sealed at `ma∙C` (`ma` of index 2), and at no other owner. -/
+/-- The record of the instance `i` (index 0) holds `(ma, C)` (`ma` of index 2), and no key at another owner. -/
 theorem keys : storeKeys (arun 60 (startA t)).1 (arun 60 (startA t)).2.A [.typ 0] = [[(2, .typ 0)], [], [], []] := by
   decide +kernel
 

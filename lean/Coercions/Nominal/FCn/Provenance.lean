@@ -4,10 +4,13 @@ import Coercions.Nominal.FCn.Preservation
 # Run-time provenance: the predicate and its preservation (plan XII, stage NR)
 
 Which store variables a reachable state may hold at a class type.  An allocation record
-`A : Alloc s` gives each store variable the keys `(q, C)` at which the scope that allocated it seals
-it, `q` the owner path and `C` the class label.  `Alloc.consO` admits an owner under a binder only
-when it is the weakening of an owner below the binder, so an owner is always older than the variable
-it seals.
+`A : Alloc s` gives each store variable a set of keys `(q, C)`, `q` the owner path and `C` the class
+label.  A key says that the scope that allocated the variable permits a seal of it at `q∙C`, in code
+that may be dormant.  `allocLbl` reads the seal sites of the code, inside lambda bodies too.  A
+record is no log of executed constructors or of executed seal uses (`ProvEx.Dormant` in
+`ProvenanceExamples`).  `Alloc.consO` admits an owner under a binder only when
+it is the weakening of an owner below the binder, so an owner is always older than the variable
+whose record holds its key.
 
 The predicate `sealsOK ξ` over every family of terms and evidence admits a seal `seal q C` only at
 the head of the evidence of a path cast `cast P e` whose path `P.path` is a variable `y` with
@@ -16,7 +19,9 @@ no seal.  The binder of a `let` of a value and the self of a literal admit every
 owner.  `State.SealsAtCtors` is the predicate over a state.  The machine with records `AStep` has one
 rule per rule of `Step` and records `allocLbl u v` at `MS-LetVal`.  `AStep.sealsAtCtors` keeps the
 predicate at every rule, for every application view that meets `AppView.SealsOK`, and
-`reachable_sealsAtCtors` reads it at every state a program meeting `Tm.InitSeals` reaches.
+`reachable_sealsAtCtors` reads it at every state a program meeting `Tm.InitSeals` reaches.  The
+machine with records is deterministic once the application view is (`AStep.det`).  Two runs from
+one state to one machine state compute one record (`ASteps.alloc_unique`).
 -/
 
 namespace Nominal.FCn
@@ -51,8 +56,9 @@ def Key.weaken (k : Key s) : Key (s,x) := (k.1.weaken, k.2)
 def Key.rename (k : Key s₁) (ρ : Rename s₁ s₂) : Key s₂ := (k.1.rename ρ, k.2)
 def Key.subst (k : Key s₁) (σ : CoSubst s₁ s₂) : Key s₂ := (k.1.subst σ.paths, k.2)
 
-/-- `A y (q, C)`: the scope that allocated the store variable `y` seals it at the class `q∙C`.  At a
-code binder: a seal at `q∙C` may be written at the binder. -/
+/-- `A y (q, C)`: the scope that allocated the store variable `y` permits a seal of `y` at the class
+`q∙C`, in code that may be dormant.  At a code binder: a seal at `q∙C` may be written at the
+binder. -/
 abbrev Alloc (s : Sig) := BVar s .var → Key s → Bool
 
 /-- Every label: the binder of a `let` of a value, the self of a literal. -/
@@ -61,7 +67,8 @@ def Lbl.any : Label → Bool := fun _ => true
 def Lbl.none : Label → Bool := fun _ => false
 
 /-- One more variable, with record `b` over keys below it.  Every owner must be a weakening: an owner
-that mentions the new variable, or a variable bound after the one it seals, is never admitted. -/
+that mentions the new variable, or a variable bound after the variable whose record holds the key,
+is never admitted. -/
 def Alloc.consO (A : Alloc s) (b : Key s → Bool) : Alloc (s,x) := fun y k =>
   match Path.lower k.1 with
   | none => false
@@ -266,8 +273,9 @@ def Value.selfLbl : Value s → Key s → Bool
   | .obj _ ds => fun k => Defs.sealSite ds .here k.weaken
   | _ => fun _ => false
 
-/-- The record of the variable that `MS-LetVal` allocates for `let z = val v in u`: the seals `u` puts
-at `z` and those the literal's definitions put at its self, each with its owner. -/
+/-- The record of the variable that `MS-LetVal` allocates for `let z = val v in u`: the seal sites of
+`z` in `u` and of the literal's self in its definitions, each with its owner.  A site counts inside a
+lambda body that never runs. -/
 def allocLbl (u : Tm (s,x)) (v : Value s) : Key s → Bool :=
   fun k => Tm.sealSite u .here k.weaken || Value.selfLbl v.core k
 
@@ -353,6 +361,66 @@ theorem AStep.alloc_det {V : AppView} {g : AState s} {g₁ g₂ : AState s'} (h�
     (h₂ : AStep V g g₂) : g₁.A = g₂.A := by
   cases h₁ <;> cases h₂ <;> rfl
 
+/-- The machine with records is deterministic once the application view is. -/
+theorem AStep.det {V : AppView} (hV : V.Det) {g : AState s} {g₁ : AState s₁} {g₂ : AState s₂}
+    (h₁ : AStep V g g₁) (h₂ : AStep V g g₂) : s₁ = s₂ ∧ HEq g₁ g₂ := by
+  obtain ⟨rfl, he⟩ := Step.det hV h₁.step h₂.step
+  have hA := AStep.alloc_det h₁ h₂
+  obtain ⟨st₁, A₁⟩ := g₁
+  obtain ⟨st₂, A₂⟩ := g₂
+  cases eq_of_heq he
+  cases hA
+  exact ⟨rfl, HEq.rfl⟩
+
+/-- A step keeps the signature and the record, or adds one variable. -/
+theorem AStep.sig_cases {V : AppView} {g : AState s} {g' : AState s'} (h : AStep V g g') :
+    (s = s' ∧ HEq g.A g'.A) ∨ s'.length = s.length + 1 := by
+  cases h <;> first | exact .inl ⟨rfl, HEq.rfl⟩ | exact .inr rfl
+
+/-- A run never shortens the signature, and a run that keeps its length keeps the record. -/
+theorem ASteps.sig_le {V : AppView} {g : AState s} {g' : AState s'} (h : ASteps V g g') :
+    s.length ≤ s'.length ∧ (s.length = s'.length → s = s' ∧ HEq g.A g'.A) := by
+  induction h with
+  | refl => exact ⟨Nat.le_refl _, fun _ => ⟨rfl, HEq.rfl⟩⟩
+  | tail _ h ih =>
+      rcases AStep.sig_cases h with ⟨rfl, hA⟩ | e
+      · exact ⟨ih.1, fun e => (ih.2 e).elim fun hs hA' => ⟨hs, hA'.trans hA⟩⟩
+      · exact ⟨by omega, fun e' => absurd e' (by omega)⟩
+
+/-- A run is empty or starts with a step. -/
+theorem ASteps.head_cases {V : AppView} {g : AState s} {g' : AState s'} (h : ASteps V g g') :
+    (s = s' ∧ HEq g g') ∨ ∃ (s₁ : Sig) (g₁ : AState s₁), AStep V g g₁ ∧ ASteps V g₁ g' := by
+  induction h with
+  | refl => exact .inl ⟨rfl, HEq.rfl⟩
+  | tail _ h ih =>
+      rcases ih with ⟨rfl, he⟩ | ⟨s₁, g₁, h₁, hr⟩
+      · cases eq_of_heq he
+        exact .inr ⟨_, _, h, .refl⟩
+      · exact .inr ⟨s₁, g₁, h₁, .tail hr h⟩
+
+/-- Two runs from one state of a deterministic machine: one extends the other. -/
+theorem ASteps.prefix {V : AppView} (hV : V.Det) {g : AState s} {g₁ : AState s₁} {g₂ : AState s₂}
+    (h₁ : ASteps V g g₁) (h₂ : ASteps V g g₂) : ASteps V g₁ g₂ ∨ ASteps V g₂ g₁ := by
+  induction h₁ with
+  | refl => exact .inl h₂
+  | tail _ h ih =>
+      rcases ih h₂ with hf | hb
+      · rcases ASteps.head_cases hf with ⟨rfl, he⟩ | ⟨s₃, g₃, h₃, hr⟩
+        · cases eq_of_heq he
+          exact .inr (.tail .refl h)
+        · obtain ⟨rfl, he⟩ := AStep.det hV h h₃
+          cases eq_of_heq he
+          exact .inl hr
+      · exact .inr (.tail hb h)
+
+/-- The record of a reachable state is unique: two runs from one state to one machine state compute
+one record.  A run that returns to a state adds no variable, so it keeps the record. -/
+theorem ASteps.alloc_unique {V : AppView} (hV : V.Det) {g : AState s} {st : State s'}
+    {A₁ A₂ : Alloc s'} (h₁ : ASteps V g ⟨st, A₁⟩) (h₂ : ASteps V g ⟨st, A₂⟩) : A₁ = A₂ := by
+  rcases ASteps.prefix hV h₁ h₂ with h | h
+  · exact eq_of_heq ((ASteps.sig_le h).2 rfl).2
+  · exact (eq_of_heq ((ASteps.sig_le h).2 rfl).2).symm
+
 theorem ASteps.steps {V : AppView} {g : AState s} {g' : AState s'} (h : ASteps V g g') : Steps V g.st g'.st := by
   induction h with
   | refl => exact .refl
@@ -376,7 +444,7 @@ theorem Path.root_weaken : ∀ (q : Path s), (q.weaken : Path (s,x)).root = .the
   | .var _ => rfl
   | .sel q _ => Path.root_weaken q
 
-/-- An allocation record whose every owner is older than the variable it seals. -/
+/-- An allocation record whose every owner is older than the variable whose record holds its key. -/
 def Alloc.OwnersOlder (A : Alloc s) : Prop := ∀ y k, A y k = true → BVar.dbIdx y < BVar.dbIdx k.1.root
 
 theorem Alloc.OwnersOlder.consO {A : Alloc s} (hA : A.OwnersOlder) (b : Key s → Bool) :
@@ -1440,7 +1508,7 @@ theorem init_sealsAtCtors {t : Tm []} (ht : Tm.InitSeals t = true) :
 
 /-- **The reachable-state theorem**: every state that a program meeting the initial condition reaches
 has allocation records, the function of the run that `AStep` computes, under which it meets the
-predicate and every owner is older than the variable it seals. -/
+predicate and every owner is older than the variable whose record holds its key. -/
 theorem reachable_sealsAtCtors {V : AppView} (hV : AppView.SealsOK V) {t : Tm []} {s' : Sig} {st : State s'}
     (ht : Tm.InitSeals t = true) (run : Steps V ⟨.nil, .nil, t⟩ st) :
     ∃ A : Alloc s', ASteps V ⟨⟨.nil, .nil, t⟩, Alloc.empty⟩ ⟨st, A⟩ ∧ State.SealsAtCtors A st = true ∧
