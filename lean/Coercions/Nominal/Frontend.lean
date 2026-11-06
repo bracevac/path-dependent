@@ -13,6 +13,7 @@ import Coercions.Nominal.Frontend.Elab
 import Coercions.Nominal.Frontend.Pipeline
 import Coercions.Nominal.Frontend.Pretty
 import Coercions.Nominal.Frontend.Examples
+import Coercions.Nominal.Frontend.Provenance
 
 /-!
 # The pDOT front end

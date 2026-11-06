@@ -99,3 +99,4 @@ literal with another annotation and the same erasure may be typed.
 | `Safety` | the invariant `Simulated`, `lockstep`, `Nominal.reachable_run`, `Nominal.reachable_typed`, `Nominal.safety` |
 | `Examples` | the evaluators `Source.runFuel` and `Translation.runOf`, the checker on E1 to E11, E13 and E14, E12's lookup at three levels, N1 to N5 on both sides |
 | `Pages` | the runs of E5, E7, E8 and E14 on the source and on the machine with their step counts, one namespace each |
+| `Provenance` | E14's image meets the initial condition of the provenance predicate, every state of its run meets it, and the instance is keyed at the trait and the class |

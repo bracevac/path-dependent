@@ -43,6 +43,11 @@ change.
   is the last step of a path answer at a tagged variable.  For a Scala file, `ofScala_tags` says
   that the mapping writes a tag only on a constructor's instance literal, and `scala_seal_sites`
   puts the three together for an `ok` outcome.
+- `provenance`, `provenance_focus` (`FCn/ProvenanceClass.lean`): in a reachable state of a typed FCn
+  program that meets `Tm.InitSeals`, a path at a class selection, of every former but a field
+  selection and `unfold`, that meets the provenance predicate under the run's records names up to
+  `canon` a store variable whose allocation sealed it at a class below its class.  The path in focus
+  meets the predicate.
 - The examples.  E14, a trait and a class that extends it, is typed by hand
   (`Source/Programs.lean`), its image is checked in FCn with two class entries and three seals
   (`E14_checks`), and it runs on both machines to one runtime configuration (`Pages.E14`).  The
@@ -58,8 +63,11 @@ change.
   canonical form of the class primitive (plan XII, "What is not claimed").  Stage NT stops FCn's
   closed reading at classes, so a class is opaque outside its seal, and proves those canonical forms
   in `FCn/ClassForms.lean`.  They are no nominality theorem.
-- No theorem says that a closed path at a class type in a reachable state is a constructor's
-  allocation.  That provenance theorem is the later stage NR.
+- The provenance theorem of stage NR (`FCn/ProvenanceClass.lean`) is proved for FCn programs that
+  meet its initial condition, and the initial condition is checked on named compiled programs
+  (`Frontend/Provenance.lean`).  That every program the front end compiles meets it is not stated:
+  the front end's certificates record the tagged variable of a seal, not that the seal's owner is
+  older.  The corollary is not proved at a field selection or at `unfold`.
 - Type parameters, `super`, anonymous and local classes, classes inside classes, `object o extends
   T`, overloading, parents not reached through objects, cyclic inheritance and imports are outside
   the Scala subset.  The reader refuses each with a rule and a position.

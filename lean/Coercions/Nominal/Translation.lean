@@ -12,6 +12,7 @@ import Coercions.Nominal.Translation.Erasure
 import Coercions.Nominal.Translation.Safety
 import Coercions.Nominal.Translation.Examples
 import Coercions.Nominal.Translation.Pages
+import Coercions.Nominal.Translation.Provenance
 
 /-!
 Import root for the translation of the Nominal tree: the pDOT-C source `Nominal.Source` into the
@@ -33,5 +34,5 @@ translation and the opening inversions.  `Terms` holds the images of terms (TR.6
 typing the next part reads.  `TermsTyped` shows the images typed in related contexts,
 `HasTy.translate_typed` and `DefsTy.translate_typed`, with the examples E3, E8, E13 and N5.
 `Erasure` shows that the image of a derivation erases to the source's erasure of its term,
-`HasTy.translate_erase`.
+`HasTy.translate_erase`.  `Provenance` runs E14's image on the machine with allocation records.
 -/
