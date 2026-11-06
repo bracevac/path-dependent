@@ -5,7 +5,7 @@ import Coercions.Nominal.FCn.ProvenanceExamples
 # Run-time provenance of E14's image (plan XII, stage NR)
 
 E14's image meets the initial condition, every state of its run meets the predicate, and the
-constructor records its instance at the trait and at the class.
+record of the instance holds a key at the trait and one at the class.
 -/
 
 namespace Nominal.Translation.ProvEx
@@ -20,7 +20,8 @@ theorem init : Tm.InitSeals Nominal.Source.E14_d.translate = true := by decide +
 theorem every_state : arunAll 40 (startA Nominal.Source.E14_d.translate) = List.replicate 10 true := by decide +kernel
 theorem final : State.finalB (arun 40 (startA Nominal.Source.E14_d.translate)).2.st = true := by
   decide +kernel
-/-- The instance `ℓ` is sealed at `σ∙T` and `σ∙C`, `σ` the module (index 1): the constructor seals it at both. -/
+/-- The record of the instance `ℓ` holds `(σ, T)` and `(σ, C)`, `σ` the module (index 1): the
+constructor's body has a seal site of `ℓ` at each. -/
 theorem keys : storeKeys (arun 40 (startA Nominal.Source.E14_d.translate)).1
     (arun 40 (startA Nominal.Source.E14_d.translate)).2.A [Nominal.Source.e14_T, Nominal.Source.e14_C] =
     [[(1, Nominal.Source.e14_T), (1, Nominal.Source.e14_C)], []] := by decide +kernel

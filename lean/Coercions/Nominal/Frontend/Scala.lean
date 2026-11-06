@@ -89,8 +89,12 @@ by its path from the stem (`clsSubst`).  A type member that `K` inherits from tw
 declare gets the witnesses `ovc` of their pairwise consistency.  A witness whose obligation holds by its
 form is left out.
 `new p.K(ē)` is `let ·n = ⟦p⟧.new$K ē in ·n`, `this` in a body is `this.ℓself`, and a plain parameter
-`x` is the hidden field `ℓx$K`.  The mapping refuses two shapes as outside: more than one argument
-for one parameter, which scalac tuples, and a parent's argument that is no path.  `outcome` runs the checks of
+`x` is the hidden field `ℓx$K`.  That a signature through `ℓx$K` is expressible in FCn does not make the
+Scala signature legal: the check OV-Private of `ScalaClasses.lean` refuses a member of `K` whose signature
+names `x`, unless OV-Private's second walk at an alias removes the report.  Where it makes no second walk,
+it refuses.  The check runs after the mapping and before the typer.  The mapping refuses two shapes as
+outside: more than one argument for one parameter, which scalac tuples, and a parent's argument that is no
+path.  `outcome` runs the checks of
 `ScalaClasses.lean` before the typer and answers `rejected` with scalac's text (`Outcome.checked`).
 `ofScala_tags` says that the mapping writes a tag only on the instance literal of a constructor, and
 `scala_seal_sites` that an `ok` outcome seals only at tagged variables.  The printers give a class
@@ -102,7 +106,7 @@ namespace NominalFrontend.Scala
 open ScalaSyntax (Pos Err)
 open Paths.FCdot (Sig BVar Label Rename Path PathSubst)
 open NominalFrontend.ScalaRead (File Mems Stats Decls Bound Param ClsDecl ClassRef CMems Args newName modName hidName
-  witName)
+  witName superName)
 open Paths.FCdot (Label)
 open NominalFrontend.ScalaRead.Scope (Entry lookup lookupTyp thisOf kindPath clsOf? clsKey memCls headEnv lookupCls
   clsKind refEnv?)
@@ -129,6 +133,14 @@ def fwdVar : String := "·g"
 def witVar : String := "·w"
 /-- The parameter of the constructor of a class without parameters (D-8, Ctor-Nil). -/
 def nilVar : String := "·c"
+/-- The binder of an argument at the type of its parameter in `super$K`. -/
+def supVar : String := "·s"
+/-- The name of the argument of the parent's parameter `y` in `super$K`. -/
+def supArg (y : String) : String := "·p" ++ y
+/-- The name of the parameter `x` of `K` in the lambda of `super$K`, when an obligation names an outer `x`. -/
+def supKeep (x : String) : String := "·k" ++ x
+/-- The name of the outer variable `x` in the obligations of `super$K`, when `K` has a parameter `x`. -/
+def supOut (x : String) : String := "·o" ++ x
 
 /-- The binder of a template at depth `d`: `σ` for the stem, `ν'`, `ν''`, … below it. -/
 def tmplName : Nat → String
@@ -194,6 +206,16 @@ def tyMentions (b : String) : SType → Bool
   | .mu _ T => tyMentions b T
   | .all _ S T => tyMentions b S || tyMentions b T
   | .and S T => tyMentions b S || tyMentions b T
+
+/-- Whether `b` is the root of a path in a type outside every binder of that name. -/
+def tyFree (b : String) : SType → Bool
+  | .top | .bot => false
+  | .typ _ S T => tyFree b S || tyFree b T
+  | .fld _ T => tyFree b T
+  | .sngl p | .sel p _ => decide (pathRoot p = b)
+  | .mu x T => !decide (x = b) && tyFree b T
+  | .all x S T => tyFree b S || (!decide (x = b) && tyFree b T)
+  | .and S T => tyFree b S || tyFree b T
 
 /-- Whether `b` is the root of a path in an optional type. -/
 def tyOptMentions (b : String) : Option SType → Bool
@@ -307,6 +329,20 @@ def termPath (c : MCtx) (q : ScalaRead.Path) : Except Err STm :=
     match (kindPath c.fuel c.env none q).word, q with
     | .obj, _ | .lit, _ | .inst, .this _ => pure (.proj (pathTm q') selfName)
     | _, _ => pure (pathTm q')
+
+/-- The path of an unstable chain `bind .unstable ·u q (…)`, read back (D-10). -/
+def unstPath? (q : SPath) : STm → Option SPath
+  | .var _ => some q
+  | .proj (.var _) a => some (q.sel a)
+  | .bind .unstable _ (.proj (.var _) a) r => unstPath? (q.sel a) r
+  | _ => none
+
+/-- The path that a term of `termPath` stands for: the term when it is a path, else the unstable prefix with the
+steps after it read back.  The instance literal holds that path for a parent's argument (`argPath`), and the
+field `super$K` checks the argument bound first. -/
+def termPathOf? : STm → Option SPath
+  | .bind .unstable _ t r => t.toPath?.bind (unstPath? · r)
+  | t => t.toPath?
 
 /-! ## Types -/
 
@@ -690,7 +726,9 @@ def argAt : Nat → Args → Option ScalaRead.Tm
 /-- `arg(K, D, y)` (plan 811 to 812): the parameter `y` itself at `K`, else the `j`-th argument of the first
 parent of the class `E` of `L(K)` whose first parent is `D`, `y` the `j`-th parameter of `D`, read in the head
 context of `E` with each parameter of `E` replaced by its argument and the stem and objects around `E` by their
-paths.  Fuelled by the length of `L(K)`. -/
+paths.  An unstable argument (D-10) is the path it reads back to (`termPathOf?`): the literal holds the
+argument's value, and the field `super$E` of the class `E` that gives it checks it bound first.  Fuelled by the
+length of `L(K)`. -/
 def argPath (c : MCtx) (eK : List Entry) (L : List (List Entry)) : Nat → List Entry → String → Option SPath
   | 0, _, _ => none
   | n + 1, eD, y =>
@@ -705,7 +743,7 @@ def argPath (c : MCtx) (eK : List Entry) (L : List (List Entry)) : Nat → List 
               match argAt j as with
               | some (.path q) =>
                 match termPath { c with env := headEnv eE } q with
-                | .ok t => t.toPath?.map fun p =>
+                | .ok t => (termPathOf? t).map fun p =>
                     substRoot ((dE.params.filterMap fun x => (argPath c eK L n eE x.name).map (x.name, ·)) ++
                       relSubst eE eK) p
                 | .error _ => none
@@ -785,7 +823,10 @@ def instMem (c : MCtx) (eK : List Entry) (L : List (List Entry)) (i : String) (a
 
 /-- `Inst(K) = ν(i) as z.K {ℓself = i, insts(K)}`, the members in the order of `names(K)` (plan 800 to 810).
 The literal stands bare, since resolution binds it already (`Resolve.lean:378-382`).  An argument the parents do
-not give reads as `σ`: the class checks reject such a file first. -/
+not give reads as `σ`: the class checks reject such a file first.  An argument that is an unstable path is held
+as that path (`argPath`), and `super$E` checks it, `E` the class that gives it (`superS`).  A `val` parameter
+that a class of `L(K)` overrides holds the override (`instMem`), and `super$K` checks the argument `K` gives it
+(`supOverridden`). -/
 def instS (c : MCtx) (d : ClsDecl) : Except Err STm := do
   let eK := (c.push (.tmpl (.cls d))).env
   let i := binderOf eK
@@ -804,6 +845,170 @@ def ctorS (c : MCtx) (d : ClsDecl) (ds : SDefs) : Except Err SDefs := do
   let inst ← instS c d
   let ps' := if ps.isEmpty then [(nilVar, SType.top)] else ps
   pure (.trm ds (newName d.name) (some (allChain ps' (.sel (.var (binderOf c.env)) d.name))) (lamChain ps' inst))
+
+/-- `alias x₁ = p₁ in … alias xₙ = pₙ in b`. -/
+def aliasChain : List (String × SPath) → STm → STm
+  | [], b => b
+  | (x, p) :: r, b => .alias x p (aliasChain r b)
+
+/-- `let ·s : T₁ = ·py₁ in … let ·s : Tₙ = ·pyₙ in ·s`: each argument at the type of its parameter. -/
+def supChecks : List (String × SType) → STm
+  | [] => .var supVar
+  | (y, T) :: r => .«let» supVar (some T) (.var (supArg y)) (supChecks r)
+
+/-- The arguments of the first parent, each bound to `·py` for the parameter `y` it gives, in the class's head
+context `hc` as `ctorS` reads them: an alias when the argument maps to a path, a `let` otherwise. -/
+def supBinds (hc : MCtx) : List ScalaRead.CParam → Args → STm → Except Err STm
+  | y :: ys, .cons (.path q) r, b => do
+    let t ← termPath hc q
+    let rest ← supBinds hc ys r b
+    match t.toPath? with
+    | some p => pure (.alias (supArg y.name) p rest)
+    | none => pure (.«let» (supArg y.name) none t rest)
+  | _, _, b => pure b
+
+/-- The parameters of `D` given an unstable argument (D-10), read in the head context `hc`. -/
+def argsUnst (hc : MCtx) : List ScalaRead.CParam → Args → List String
+  | y :: ys, .cons (.path q) r => (if (termUnst? hc.fuel hc.env q).isSome then [y.name] else []) ++ argsUnst hc ys r
+  | _, _ => []
+
+/-- The parameters of `D` given an argument that maps to a path, each with that path, read in the head context
+`hc`. -/
+def argsSubst (hc : MCtx) : List ScalaRead.CParam → Args → List (String × SPath)
+  | y :: ys, .cons (.path q) r =>
+    (match termPath hc q with
+     | .ok t => (t.toPath?.map (y.name, ·)).toList
+     | .error _ => []) ++ argsSubst hc ys r
+  | _, _ => []
+
+/-- The substitution of `supByForm`: each parameter of `D` at its argument's path, then `rel`, when every
+parameter of `D` is given an argument that maps to a path, else empty. -/
+def supSubst (hc : MCtx) (ys : List ScalaRead.CParam) (as : Args) (rel : List (String × SPath)) :
+    List (String × SPath) :=
+  if (argsSubst hc ys as).length = ys.length then argsSubst hc ys as ++ rel else []
+
+/-- The names that the binders of a type bind. -/
+def tyBinders : SType → List String
+  | .top | .bot | .sngl _ | .sel _ _ => []
+  | .typ _ S T | .and S T => tyBinders S ++ tyBinders T
+  | .fld _ T => tyBinders T
+  | .mu x T => x :: tyBinders T
+  | .all x S T => x :: (tyBinders S ++ tyBinders T)
+
+/-- Whether the obligation of the parameter `y` of `D` at its type `T` holds by its form: `σA` gives `y` a
+parameter `x` of `K`, the type of `x` in `ps` is `T` with the substitution `σA` applied, no binder of `T`
+has the name of a root of a path of `σA`, so the substitution captures nothing, and every parameter of `K`
+that `T` names is a name that `σA` replaces, so no outer variable of `T` reads as a parameter of `K`.  `σA` is
+empty unless every parameter of `D` is given an argument that maps to a path. -/
+def supByForm (ps : List (String × SType)) (σA : List (String × SPath)) (y : String) (T : SType) : Bool :=
+  match lookupS y σA with
+  | some (.var x) =>
+    !((tyBinders T).any fun b => σA.any fun bp => decide (pathRoot bp.2 = b)) &&
+      (ps.all fun xS => (lookupS xS.1 σA).isSome || !tyFree xS.1 T) &&
+      decide (ps.lookup x = some (substRoots σA T))
+  | _ => false
+
+/-- The conjuncts of a type at its top: the parts of an intersection, else the type itself. -/
+def andParts : SType → List SType
+  | .and S T => andParts S ++ andParts T
+  | T => [T]
+
+/-- Whether a conjunct of the type of the parameter `y` of `D` holds by its form: it is a singleton `q.type`
+whose root `σS` replaces, and `q` with `σS` applied is the path `σS` gives `y`.  `σS` gives each parameter of `D`
+whose argument maps to a path that path, and the stem and objects around `D` their paths.  The obligation is
+then `p : p.type` for the stable path `p`, which scalac concludes and which the front end refuses by design
+(N4). -/
+def snglByForm (σS : List (String × SPath)) (y : String) : SType → Bool
+  | .sngl q =>
+    match lookupS (pathRoot q) σS, lookupS y σS with
+    | some _, some p => decide (substRoot σS q = p)
+    | _, _ => false
+  | _ => false
+
+/-- The type of the parameter `y` of `D` without its conjuncts that hold by their form (`snglByForm`), `none`
+when every conjunct does.  A type with no such conjunct comes back unchanged. -/
+def supDropSngl (σS : List (String × SPath)) (y : String) (T : SType) : Option SType :=
+  let Us := andParts T
+  if Us.any (snglByForm σS y) then
+    match Us.filter fun U => !snglByForm σS y U with
+    | [] => none
+    | Vs => some (andL Vs)
+  else some T
+
+/-- The `val` parameters of the first parent `D` (at `eD`) whose implementer in `L = L(K)` is not `D`: a class
+or trait of `L(K)` overrides them, so the instance literal of `K` holds the override and not the argument. -/
+def supOverridden (eD : List Entry) (D : ClsDecl) (L : List (List Entry)) : List String :=
+  (D.params.filter fun y => y.isVal &&
+    ((Classes.mimpl y.name L).map fun eP => !decide (clsKey eP = clsKey eD)).getD false).map (·.name)
+
+/-- The parameters of `K` whose names are roots in an obligation of `super$K`.  Such a root is a variable
+outside the class, since the parameters of `D` are replaced already, and the lambda of `super$K` would capture
+it. -/
+def supCaptured (ps Ts : List (String × SType)) : List String :=
+  (ps.map (·.1)).filter fun x => Ts.any fun yT => tyFree x yT.2
+
+/-- The parameters of `K` for the lambda of `super$K`: each name of `cap` renamed to `·kx`, each type read with
+the renamings of the parameters before it, as `lamChain` scopes them. -/
+def supParams (cap : List String) : List (String × SType) → List (String × SPath) → List (String × SType)
+  | [], _ => []
+  | (x, S) :: r, σ =>
+    if cap.contains x then (supKeep x, substRoots σ S) :: supParams cap r ((x, .var (supKeep x)) :: σ)
+    else (x, substRoots σ S) :: supParams cap r (dropS x σ)
+
+/-- `super(K)` after `ds`, for a class `K` whose first parent `D` is given arguments (review Priority 1):
+`super$K : Πs(params K, ⊤) = Λs(params K, binds(args, checks))`.  The parameters of `K` are read in the head
+context as `ctorS` reads them.  Each argument is bound to the name of the parameter of `D` it gives, and is
+checked at that parameter's type, read in the head context of `D` with the parameters of `D` at their
+arguments and the stem and objects around `D` at their paths.  The field builds no instance and carries no tag,
+so a class without a constructor stays without one.
+For a class without a constructor (`conc = false`) every obligation is checked, except one that holds by its
+form (`supByForm`).  For a class with a constructor (`conc = true`) the typing of its instance literal checks
+the other arguments, so only these are checked here: an unstable argument (D-10), an argument of a `val`
+parameter of `D` that a class of `L(K)` overrides (`supOverridden`), and an argument whose parameter's type
+names a parameter of these two kinds.  The literal holds the unstable path, and the check here binds it first,
+as scalac reads it as an unknown value.  The literal holds the override of an overridden parameter, so the
+argument appears there nowhere.  In both modes a singleton conjunct `q.type` of an obligation is left out when
+`q` and the argument map to the same path (`supDropSngl`).  With no obligation left the field is left out.  A parameter of `K` whose name is an outer root of an obligation (`supCaptured`) is bound as `·kx`, the
+outer variable is aliased to `·ox` and the name `x` back to `·kx`, so the lambda captures nothing. -/
+def superS (c : MCtx) (d : ClsDecl) (conc : Bool) (ds : SDefs) : Except Err SDefs :=
+  match d.parents with
+  | .cons P as _ =>
+    match (refEnv? c.env P).bind fun eD => (clsOf? eD).map (eD, ·) with
+    | some (eD, D) =>
+      if Classes.argsNil as || D.params.isEmpty then pure ds
+      else do
+        let eK := (c.push (.tmpl (.cls d))).env
+        let hc : MCtx := { c with env := headEnv eK }
+        let unst := argsUnst hc D.params as
+        let ovr := supOverridden eD D (Classes.linD eK)
+        if conc && unst.isEmpty && ovr.isEmpty then pure ds
+        else do
+          let ps ← d.params.mapM fun x => do
+            let S ← tyS hc x.ty
+            pure (x.name, S)
+          let rel := relSubst eD eK
+          let σA := supSubst hc D.params as rel
+          let σD := D.params.map (fun y => (y.name, SPath.var (supArg y.name))) ++ rel
+          let Rs ← D.params.mapM fun y => do
+            let T ← tyS { c with env := headEnv eD } y.ty
+            pure (y.name, T)
+          let σS := argsSubst hc D.params as ++ rel
+          let keep := unst ++ ovr
+          let Ts := ((Rs.filter fun yT => unst.contains yT.1 || (conc && ovr.contains yT.1) ||
+              (conc && keep.any fun u => tyFree u yT.2) || (!conc && !supByForm ps σA yT.1 yT.2)).filterMap
+              fun yT => (supDropSngl σS yT.1 yT.2).map fun T => (yT.1, substRoots σD T))
+          if Ts.isEmpty then pure ds
+          else do
+            let cap := supCaptured ps Ts
+            let σO := cap.map fun x => (x, SPath.var (supOut x))
+            let body ← supBinds hc D.params as (supChecks (Ts.map fun yT => (yT.1, substRoots σO yT.2)))
+            let qs := supParams cap ps []
+            let qs' := if qs.isEmpty then [(nilVar, SType.top)] else qs
+            let body' := aliasChain (cap.map fun x => (supOut x, .var x))
+              (aliasChain (cap.map fun x => (x, .var (supKeep x))) body)
+            pure (.trm ds (superName d.name) (some (allChain qs' .top)) (lamChain qs' body'))
+    | none => pure ds
+  | .nil => pure ds
 
 /-- The shapes the mapping refuses at a class head: a first parent with one parameter given more arguments,
 which scalac tuples into it (probe P02), and an argument of a parent that is no path. -/
@@ -982,7 +1187,7 @@ def memsS (c : MCtx) (ds : SDefs) (ms : Mems) : Except Err SDefs :=
     let ds₁ ← clsDefS c d ds
     let ds₂ ← cmemsS (c.push (.tmpl (.cls d))) (binderOf c.env) C ds₁ b
     let ds₃ ← witnessesS c d ds₂
-    let ds₄ ← if k = .concrete then ctorS c d ds₃ else pure ds₃
+    let ds₄ ← if k = .concrete then ctorS c d ds₃ >>= superS c d true else superS c d false ds₃
     memsS c ds₄ r
 termination_by structural ms
 /-- The module functions and `val` witnesses of a class body after `ds`, in text order, each under the receiver
@@ -1622,6 +1827,58 @@ theorem ctorS_tags {c : MCtx} {d : ScalaRead.ClsDecl} {ds ds' : SDefs} (h : ctor
   cases h
   simp [defsTags, hd, lamChain_ctor, instS_tags ht]
 
+theorem aliasChain_tags : (xs : List (String × SPath)) → (b : STm) → tmTags (aliasChain xs b) = tmTags b
+  | [], _ => rfl
+  | _ :: xs, b => by simp [aliasChain, tmTags, aliasChain_tags xs b]
+
+theorem supChecks_tags : (Ts : List (String × SType)) → tmTags (supChecks Ts) = true
+  | [] => by simp [supChecks, tmTags]
+  | _ :: r => by simp [supChecks, tmTags, supChecks_tags r]
+
+theorem supBinds_tags {hc : MCtx} : (ys : List ScalaRead.CParam) → (as : Args) → ∀ {b e : STm},
+    supBinds hc ys as b = .ok e → tmTags b = true → tmTags e = true
+  | [], _, b, e, h, hb => by
+    simp only [supBinds] at h
+    cases h
+    exact hb
+  | _ :: _, .nil, b, e, h, hb => by
+    simp only [supBinds] at h
+    cases h
+    exact hb
+  | y :: ys, .cons t r, b, e, h, hb => by
+    cases t with
+    | path q =>
+      simp only [supBinds] at h
+      obtain ⟨t', ht, h⟩ := bind_ok h
+      obtain ⟨rest, hr, h⟩ := bind_ok h
+      have tr := supBinds_tags ys r hr hb
+      split at h <;> cases h <;> simp [tmTags, tr, termPath_tags ht]
+    | _ =>
+      simp only [supBinds] at h
+      cases h
+      exact hb
+
+theorem superS_tags {c : MCtx} {d : ScalaRead.ClsDecl} {conc : Bool} {ds ds' : SDefs}
+    (h : superS c d conc ds = .ok ds') (hd : defsTags (binderOf c.env) ds = true) :
+    defsTags (binderOf c.env) ds' = true := by
+  unfold superS at h
+  split at h
+  · split at h
+    · split at h
+      · cases h; exact hd
+      · dsimp only at h
+        split at h
+        · cases h; exact hd
+        · obtain ⟨_, -, h⟩ := bind_ok h
+          obtain ⟨_, -, h⟩ := bind_ok h
+          split at h
+          · cases h; exact hd
+          · obtain ⟨body, hb, h⟩ := bind_ok h
+            cases h
+            simp [defsTags, hd, lamChain_tags, aliasChain_tags, supBinds_tags _ _ hb (supChecks_tags _)]
+    · cases h; exact hd
+  · cases h; exact hd
+
 theorem litForm_tags (z : String) (ds : SDefs) (T : SType) : tmTags (litForm z ds T) = defsTags z ds := by
   simp [litForm, tmTags]
 
@@ -1772,8 +2029,10 @@ theorem memsS_tags : (ms : ScalaRead.Mems) → ∀ {c : MCtx} {ds ds' : SDefs}, 
     have t₃ := witnessesS_tags h₃ t₂
     split at h
     · obtain ⟨d₄, h₄, h⟩ := bind_ok h
-      exact memsS_tags r h (ctorS_tags h₄ t₃)
-    · exact memsS_tags r h t₃
+      obtain ⟨d₅, h₅, h₄⟩ := bind_ok h₄
+      exact memsS_tags r h (superS_tags h₄ (ctorS_tags h₅ t₃))
+    · obtain ⟨d₄, h₄, h⟩ := bind_ok h
+      exact memsS_tags r h (superS_tags h₄ t₃)
 theorem cmemsS_tags : (ms : ScalaRead.CMems) → ∀ {cK : MCtx} {z' z K : String} {ds ds' : SDefs},
     cmemsS cK z K ds ms = .ok ds' → defsTags z' ds = true → defsTags z' ds' = true
   | .nil, cK, z', z, K, ds, ds', h, hd => by
@@ -2102,13 +2361,6 @@ def splitAsc : ScalaRead.Tm → Option ScalaRead.Ty × ScalaRead.Tm
 def tmPath? : STm → Option SPath
   | .var x => some (.var x)
   | .proj t a => (tmPath? t).map (·.sel a)
-  | _ => none
-
-/-- The path of an unstable chain `bind .unstable ·u q (…)`, read back (D-10). -/
-def unstPath? (q : SPath) : STm → Option SPath
-  | .var _ => some q
-  | .proj (.var _) a => some (q.sel a)
-  | .bind .unstable _ (.proj (.var _) a) r => unstPath? (q.sel a) r
   | _ => none
 
 /-- The written type of the literal form `let ℓ = ν(z) {ds} in (ℓ : T)`. -/

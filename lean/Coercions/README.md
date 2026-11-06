@@ -208,7 +208,7 @@ the front end accepts, scalac 3.8.4 accepts too, apart from the files of `disagr
 proves our side of each file.  scalac's side is tested by the harness `scripts/scala/Agree.lean` and
 not proved.  See [ScalaCorpus/README.md](ScalaCorpus/README.md) and
 [scala/README.md](../../scala/README.md).  `ScalaCorpusPDot` and `ScalaCorpusNominal` do the same for the 78 files
-of `scala/pdot/` and the 115 files of `scala/nominal/`.
+of `scala/pdot/` and the 193 files of `scala/nominal/`.
 
 ## Earlier targets, standalone
 

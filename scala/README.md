@@ -39,16 +39,16 @@ read back the same.  Of the 28 example programs, PQ and E10 read back the same, 
 E11 read back to another term, for the cause that the table gives.
 
 **`nominal/`** is the corpus of the nominal Scala front end, `lean/Coercions/Nominal/Frontend/` (plan XII).  It
-holds 115 files, 50 in `pos/`, 36 in `neg/`, 3 in `disagree/` and 26 in `outside/`, with the headers and
+holds 193 files, 76 in `pos/`, 83 in `neg/`, 8 in `disagree/` and 26 in `outside/`, with the headers and
 markers of the other corpora.  Every file declares a class or a trait, and every file the reader takes declares
 them in the wrapper object or in a nested object: constructors, parents and traits, overriding, abstract members, type members with bounds, and classes
 reached through paths.  The module `Coercions.ScalaCorpus.Nominal` judges every file in the kernel when `lake
 build ScalaCorpusNominal` builds it.  The harness runs as `lake env lean --run scripts/scala/Agree.lean nominal
-scala/nominal` and writes [`nominal/TABLE.md`](nominal/TABLE.md).  50 files are agree-accept, 36 agree-reject
-and 26 outside.  A check of the classes rejects 9 of the `neg` files with scalac's message, shortened
-for OV-Abstract, and the typer rejects the other 27.  The 3 files of `disagree/` are ours-stricter, each with its cause, and no file is
-ours-looser.  The printers give a class program no Scala form, so no pos file has a fill, and 87 of the round trips
-of the 89 files the reader takes stop at that gap (F-C).  The round trips of AbstractNew and NewTrait do not
+scala/nominal` and writes [`nominal/TABLE.md`](nominal/TABLE.md).  76 files are agree-accept, 83 agree-reject
+and 26 outside.  A check of the classes rejects 41 of the `neg` files with scalac's message, shortened
+for OV-Abstract and OV-Private, and the typer rejects the other 42.  The 8 files of `disagree/` are ours-stricter, each with its cause, and no file is
+ours-looser.  The printers give a class program no Scala form, so no pos file has a fill, and 165 of the round trips
+of the 167 files the reader takes stop at that gap (F-C).  The round trips of AbstractNew and NewTrait do not
 resolve, since each writes `new` of a trait or an abstract class, which a check rejects first, and F-C admits
 them too.  So R checks no printer on this corpus.  The type that the table writes for an `ok` file is the type after the file's stem is
 avoided, as in the other corpora.  So a class selection prints as the class's body, and a parameter at a class

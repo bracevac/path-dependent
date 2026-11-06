@@ -181,39 +181,121 @@ member inherited from two classes), and, for a concrete class, the constructor
 the members of the linearization in order: hidden fields `ℓx$D` of plain
 parameters, `val` parameters at the arguments the parents pass, type members at
 the first alias or the meet of the upper bounds, path `val`s, and forwarders
-that call the implementer's module function at `i`. `new p.K(ē)` is
+that call the implementer's module function at `i`. Typing that literal checks
+each argument that the class gives its first parent and that maps to a path,
+except the argument of a `val` parameter that a class or trait of `L(K)`
+overrides: the literal holds the override there, and the argument appears
+nowhere in it. An argument that is an unstable path (D-10), such as `x.y` with
+`x` of a structural type, is held in the literal as that path. A class whose
+first parent takes arguments gets the field `super$K : Πs(params K, ⊤)` when it
+has no constructor, and when it is concrete and gives an unstable argument or
+has a parent's `val` parameter overridden in `L(K)`. Its
+body binds each argument to the parameter it gives, an alias for a path and a
+`let` for an unstable argument, and checks it at that parameter's type, read
+where the parent declares it. A class without a constructor has every argument
+checked there, except one whose check holds by its form: the argument is a
+parameter of the class, and its type is the parent's parameter type with the
+arguments in place of the parent's parameters. No binder of that type has the
+name of the root of an argument, and no outer variable that the type names
+has the name of a parameter of the class. A concrete class has its unstable
+arguments checked there, the arguments of its overridden `val` parameters, and
+each argument whose parameter's type names a parameter of these two kinds,
+since scalac reads the unstable argument there as an unknown value and the
+literal holds its path or the override. In both kinds of class a conjunct
+`q.type` of a parameter's type is not checked when `q` and the argument map to
+the same stable path, since the check would ask the typer for `p : p.type`,
+which the front end refuses (N4) and scalac concludes. A parameter of the
+class whose name is an outer variable of such a type is renamed in the field,
+so its lambda captures nothing. The field builds no instance and carries no
+tag, so a class without a constructor stays without one, and its parent
+arguments are checked whether or not a subclass is ever built. `new p.K(ē)` is
 `let ·n = ⟦p⟧.new$K ē in ·n`. `ScalaClasses` holds Martres' implementer `mimpl`
 (thesis p.74), the class of an effective member, the order of an instance's
 members, the superclass of a class, and the checks, which `outcome` runs before
 the typer and answers `rejected` with scalac's text: the shape of the parents
 and the arity of `new` (E171, E104), OV-Need at a concrete member (E164),
 OV-Nothing (E037), OV-Accidental (thesis p.75, E164, with scalac's two texts),
-OV-Abstract and OV-New (E042). `ofScala_tags` says that the mapping writes a tag
-only on a constructor's instance literal, and `scala_seal_sites` that an `ok`
+OV-Abstract, OV-New (E042) and OV-Private. OV-Private is scalac's check that
+the signature of a member that is not private names no private value whose
+owner does not contain the member's access boundary. In the subset the private
+values are the plain parameters of a class `K`. The signatures are the type of
+a `val` parameter, the bounds or alias of a type member, the type of a `val`,
+and the parameter and result types of a `def`. A right side is no signature,
+and a public signature may name a `val` parameter. scalac walks a signature
+and reports each path that starts at a plain parameter. At a type selection
+`q.A` that it reported, scalac walks again when `A` is an alias in the type of
+`q`, with the alias in place of `q.A`. It drops the report when the second walk
+finds nothing. OV-Private makes the same second walk at a type selection on a
+path through a plain parameter. It goes through refinements, `&`, classes and
+objects (pos/PlainParamAlias, pos/PlainParamAliasClass,
+pos/PlainParamAliasObject). A step on a class instance selects a member, a
+`val` parameter or a `val` of a body (neg/PrivateParentValEscape). It selects a
+plain parameter only where the body of that parameter's class names it
+(pos/PlainParamParentAlias). It reads the type of a parameter of another
+class in that class's head, as scalac does. There a name that the body
+declares or inherits does not hide a name outside the class
+(neg/PrivateOuterObjectEscape, pos/PlainParamAliasHeadName), and a parameter
+of the class continues the path (neg/PrivateEarlierParamEscape). An
+inherited alias is kept only when no other class of the linearization outside
+its own base classes declares the member as an alias or with bounds that are
+not open (neg/PrivateInheritedBoundEscape), and no class that derives from
+the class of the alias declares the member again
+(neg/PrivateOverriddenAliasEscape). OV-Private makes no second walk at `&`
+when both sides declare the member otherwise than with no bounds. It makes
+none at a class whose linearization declares the member twice in that way,
+even as two equal aliases. It makes none at a parameter typed by a singleton
+other than an object's, or at a type that the declared type names through a
+path that is not an object. It makes none at a type member of a class that is
+the declared type of a `val`, or at a `val` selected on `&` or on a
+refinement. Where it makes no second walk, it reports. So there it is
+stricter than scalac (disagree/PlainParamAliasMeet,
+disagree/PlainParamInheritedAliases, disagree/PlainParamAliasSingleton,
+disagree/PlainParamAliasValAlias, disagree/PlainParamAliasRefinementVal).
+That the second walk removes a report only where scalac's does is tested on
+the corpus and on the review probes, not proved. Before the check, the
+mapping wrote such a signature through the hidden field `ℓx$K`, and the typer
+accepted most of them. So ours accepted files that scalac rejects. That was
+a Scala conformance failure of the front end, not a counterexample to FCn
+safety. The checks other than those at `new` run at the classes that
+`Mems.clsEnvs` reaches, those of the wrapper and of its objects. They do not
+run at a class in an object inside a literal. In the probes tried, the typer
+rejects each such class that has a plain parameter. `ofScala_tags` says
+that the mapping writes a tag only on a constructor's instance literal, and `scala_seal_sites` that an `ok`
 outcome seals only at tagged variables, with the class order of each seal in the
 certificate `Nom`. The printers give a class definition and a tagged literal the
 gap `gapClass`.
 
-The corpus is `scala/nominal/`, 115 files, which `scala/README.md` describes.
+The corpus is `scala/nominal/`, 193 files, which `scala/README.md` describes.
 The module `Coercions.ScalaCorpus.Nominal` judges each file in the kernel from
 its bytes when `lake build ScalaCorpusNominal` builds it. The harness
 `scripts/scala/Agree.lean` compiles each file with scalac 3.8.4 and writes
 `scala/nominal/TABLE.md`, and CI fails when that table changes.
 
 The claim is plan IX's: outside `disagree/`, every corpus file that this front
-end accepts, scalac 3.8.4 accepts. It is tested on these 115 files and not
+end accepts, scalac 3.8.4 accepts. It is tested on these 193 files and not
 proved. It holds for the pinned compiler only, and it compares verdicts, not
-types. 50 files are agree-accept, 36 agree-reject and 26 outside. The
-3 files of `disagree/` are the exceptions, each with its cause, and each is
+types. 76 files are agree-accept, 83 agree-reject and 26 outside. The
+8 files of `disagree/` are the exceptions, each with its cause, and each is
 ours-stricter. AndCall needs a rule from an intersection of method types to a
 method of the intersection (And-Fun), FunStructParam a subtyping from a `μ` to
 a record (Bind1), and ThisTypeOverride a subtyping that widens a singleton.
-No file is ours-looser. N holds: each file that scalac
-rejects fails exactly on its `// error` lines. A check of `ScalaClasses`
-rejects 9 of the `neg` files with scalac's message, shortened for
-OV-Abstract, and the typer the other 27. Every file of the corpus declares a
-class or a trait, so no pos file has a fill. Of the 89 files the reader
-takes, 87 round trips stop at the gap `gapClass`, and the harness admits them
+PlainParamAliasMeet and PlainParamAliasSingleton need the second walk of
+OV-Private at a meet of two aliases and at a parameter typed by the singleton
+of another parameter. PlainParamAliasValAlias needs it at a `val` whose
+declared type is a type member of its class, and PlainParamAliasRefinementVal
+at a `val` of a refinement. PlainParamInheritedAliases needs scalac's meet of
+two equal aliases that a class inherits.
+No file of this corpus is ours-looser. This holds within the corpus only.
+Outside it, ours accepts a class whose plain parameter has the name of a `val`
+parameter of its parent, where the parent's parameter types name each other,
+and scalac refuses it with a cyclic reference (E046). Ours also accepts a
+trait or class in an object inside a literal that overrides nothing, which
+scalac refuses (E037), since no check of `checkClass` runs there. N holds:
+each file that scalac rejects fails exactly on its `// error` lines. A check of `ScalaClasses`
+rejects 41 of the `neg` files with scalac's message, shortened for
+OV-Abstract and OV-Private, and the typer the other 42. Every file of the
+corpus declares a class or a trait, so no pos file has a fill. Of the 167 files the reader
+takes, 165 round trips stop at the gap `gapClass`, and the harness admits them
 by F-C. The round trips of AbstractNew and NewTrait do not resolve, since `new`
 of a trait or an abstract class names a constructor that no class has, and F-C
 admits them too, since a check rejects both files first. So R checks no printer
@@ -235,7 +317,7 @@ their kinds there, except `outside/Tree.scala`, which it compiles.
 | `Pretty` | printers of surface, partial, annotated and source terms, types, reasons and runs |
 | `Examples` | the paths programs compiled, E10 and E11 as programs, the runs of E5, E7 and E8 on both machines, and the running example `Run_src` of plan XII |
 | `Provenance` | the provenance predicate on the running example, the tagged classes, a factory of two classes of one label, an instance read through a path field, and the corollary's fragment on these runs |
-| `ScalaClasses` | the implementer `mimpl`, the effective member, the members of an instance, the superclass, and the checks of the classes and of `new` |
+| `ScalaClasses` | the implementer `mimpl`, the effective member, the members of an instance, the superclass, and the checks of the classes (OV-Private among them) and of `new` |
 | `Scala` | the mapping from the reader's tree to `STm` with classes and traits, `readNominal`, `outcome` with the checks of `ScalaClasses`, the member check R-M and its three theorems, `ofScala_tags`, `scala_seal_sites`, the printers `toScala` and `fillToScala`, and `roundTrip` |
 | `ScalaTests` | checks of the mapping, the outcomes, the member check, the printers and the round trips, by `#eval expect` |
 | `ScalaCmd` | the commands `nominal_scala_example` and `nominal_scala_corpus` |

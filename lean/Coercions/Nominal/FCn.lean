@@ -55,5 +55,5 @@ erasure.  `Checker` holds the checker of T.8, structural and sound, and `Checker
 its completeness with `checkTm_iff`.  `Examples` decides the binder example and the twins of N2 and
 N3 with it.  `ClassForms` holds the canonical forms of the class primitive and `ClassExamples` its
 stores.  `Provenance`, `ProvenanceViews` and `ProvenanceClass` hold the run-time provenance of class
-instances, and `ProvenanceExamples` its runs.
+instances in terms of allocation records, and `ProvenanceExamples` its runs.
 -/
