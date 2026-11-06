@@ -98,7 +98,7 @@ OV-Abstract.  See
 
 `lake build Nominal` builds the calculus, and `Nominal` is a default target.  `lake build
 NominalFrontend NominalScalaRead NominalScala` builds the front ends.  `lake build
-ScalaCorpusNominal` judges the corpus in 6 min 35 s at a peak of 9.5 GB (plan XII, D-19).  The path
+ScalaCorpusNominal` judges the corpus in 6 min 20 s at a peak of 12.0 GB (plan XII, D-19).  The path
 layer is imported from `Paths/FCdot` and the runtime from `PDot/`, and neither tree changes.  The
 tree has no `sorry`, `axiom`, `native_decide`, `partial`, `unsafe`, `implemented_by`, Mathlib or
 `aesop`.  The roots `Frontend.lean`, `Frontend/ScalaRead.lean` and `Frontend/ScalaCmd.lean` end

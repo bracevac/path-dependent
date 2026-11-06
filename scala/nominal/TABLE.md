@@ -4,10 +4,10 @@ Written by `lake env lean --run scripts/scala/Agree.lean nominal scala/nominal`.
 CI runs the same command and fails when the file it writes differs from this one.
 
 - scalac 3.8.4, default flags, 120 s per run.
-- Files: 115.  pos 49, neg 36, disagree 4, outside 26.
-- Classes (plan S-21): agree-accept 49, ours-stricter 4, ours-looser 0, agree-reject 36, refuse-differently 0, agree-giveup 0, broken 0, outside 26.
+- Files: 115.  pos 50, neg 36, disagree 3, outside 26.
+- Classes (plan S-21): agree-accept 50, ours-stricter 3, ours-looser 0, agree-reject 36, refuse-differently 0, agree-giveup 0, broken 0, outside 26.
 - Fills of the pos files (F): 0.  0 have a cause of plan XI XS3.  F-L: the fill drops every written self type, so a lambda field prints with no declared type.  F-W: a `let` the elaborator inserted prints as a `val` with no written type, which scalac widens.  F-C (plan XII): a class program's fill has no Scala form, so a pos file with a class has no fill, and its round trip stops at the same gap, or does not resolve when a check of the classes rejects the file.  F admits a fill of another class than agree-accept only with a cause, and its row names it.
-- Round trips (R): 89 files the reader takes, gap 87, unresolved 2.  29 example programs, same 1, gap 26, differs 2.
+- Round trips (R): 89 files the reader takes, gap 87, unresolved 2.  29 example programs, same 2, gap 25, differs 2.
 
 ## Files
 
@@ -41,6 +41,7 @@ CI runs the same command and fails when the file it writes differs from this one
 | MutualClasses | pos | ok |  | ok : ⊤ ∧ ⊤ | Any & Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | NewAtStructResult | pos | ok |  | ok : {v : ⊤} | { val v: Any } | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | NonValParam | pos | ok |  | ok : μ(x. ({ℓself : x.type} ∧ {ℓx$C : ⊤}) ∧ {get : ∀(y : ⊤) ⊤}) ∧ ⊤ | { val ℓx$C: Any; val get: Any => Any } & Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
+| Running | pos | ok |  | ok : ⊤ | Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | SelfRefClass | pos | ok |  | ok : ⊤ ∧ ⊤ | Any & Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | SuperArgs | pos | ok |  | ok : μ(x. ({ℓself : x.type} ∧ {v : ⊤}) ∧ {get : ∀(y : ⊤) ⊤}) ∧ ⊤ | { val v: Any; val get: Any => Any } & Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | SuperFold | pos | ok |  | ok : ⊤ | Any | agree-accept |  | no fill: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
@@ -100,7 +101,6 @@ CI runs the same command and fails when the file it writes differs from this one
 | WideParam | neg | error: E038 at 7 |  | rejected: Type mismatch |  | agree-reject |  |  | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | AndCall | disagree | ok |  | rejected: Type mismatch |  | ours-stricter | pDOT has no rule from an intersection of method types to a method of the intersection (And-Fun, thesis p.124) |  | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | FunStructParam | disagree | ok |  | rejected: Type mismatch |  | ours-stricter | pDOT has no subtyping from a mu type to a record (no Bind1, facts 1.2.8), so { val v: Any } => Any is no subtype of m.C => Any |  | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
-| Running | disagree | ok |  | rejected: Type mismatch |  | ours-stricter | plan XI's row writes `val w: q.type = q.self2(p)` as an untyped let, since the block does not end in `w`, the Scala mode widens the binder of an untyped let, and the singleton of the block val `q` has no widening, so the candidate is dropped (plan XI D-13, stage N6 departure 16). A block that ends in `w` gets the typed let and is accepted |  | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | ThisTypeOverride | disagree | ok |  | rejected: Type mismatch |  | ours-stricter | pDOT subtyping widens no singleton, so a result at this.type does not match the result B of the overridden def (scala/pdot/TABLE.md:68, row SnglInFn) |  | gap: a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) |
 | AnonSubclass | outside | ok |  | outside 11:36: an anonymous class is outside the subset |  | outside | R-AN, an anonymous class is outside the subset |  |  |
 | AnonTrait | outside | ok |  | outside 9:22: an anonymous class is outside the subset |  | outside | R-AN, an anonymous class is outside the subset |  |  |
@@ -133,9 +133,8 @@ CI runs the same command and fails when the file it writes differs from this one
 
 - gap, an object literal needs a written type: scalac types it as Object (plan IX S-12) (22): E1, E2, E3, E4, E5, E6, E7, E8, E13, N1, N2, N3, E1I, E2I, E3I, E4I, E5I, E6I, E7I, E8I, E13I, E7w
 - differs: an application that is a lambda body reads back with the widening bind of D-13 (1): R2
-- same (1): PQ
+- same (2): PQ, E10
 - gap, reader: `x.a` is not a valid type prefix, since it is not an immutable path (scalac E083) (1): R7
 - gap, reader: `x.b` is not a valid type prefix, since it is not an immutable path (scalac E083) (1): E9l
-- gap, `let x : U = t in u` with `u` not `x` has no Scala form (plan IX S-11) (1): E10
 - differs: a μ whose binder does not occur prints as its body (plan IX S-15) (1): E11
 - gap, a class definition or a tagged literal has no Scala form: the printers do not read the mapping's classes back (plan XII N6) (1): Run

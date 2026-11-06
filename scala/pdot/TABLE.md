@@ -7,7 +7,7 @@ CI runs the same command and fails when the file it writes differs from this one
 - Files: 78.  pos 33, neg 15, disagree 8, outside 22.
 - Classes (plan S-21): agree-accept 33, ours-stricter 5, ours-looser 3, agree-reject 15, refuse-differently 0, agree-giveup 0, broken 0, outside 22.
 - Fills of the pos files (F): 32.  agree-accept 25, ours-stricter 5, agree-reject 2.  19 have a cause of plan XI XS3.  F-L: the fill drops every written self type, so a lambda field prints with no declared type.  F-W: a `let` the elaborator inserted prints as a `val` with no written type, which scalac widens.  F admits a fill of another class than agree-accept only with a cause, and its row names it.
-- Round trips (R): 57 files the reader takes, same 57.  28 example programs, same 1, gap 25, differs 2.
+- Round trips (R): 57 files the reader takes, same 57.  28 example programs, same 2, gap 24, differs 2.
 
 ## Files
 
@@ -96,8 +96,7 @@ CI runs the same command and fails when the file it writes differs from this one
 
 - gap, an object literal needs a written type: scalac types it as Object (plan IX S-12) (22): E1, E2, E3, E4, E5, E6, E7, E8, E13, N1, N2, N3, E1I, E2I, E3I, E4I, E5I, E6I, E7I, E8I, E13I, E7w
 - differs: an application that is a lambda body reads back with the widening bind of D-13 (1): R2
-- same (1): PQ
+- same (2): PQ, E10
 - gap, reader: `x.a` is not a valid type prefix, since it is not an immutable path (scalac E083) (1): R7
 - gap, reader: `x.b` is not a valid type prefix, since it is not an immutable path (scalac E083) (1): E9l
-- gap, `let x : U = t in u` with `u` not `x` has no Scala form (plan IX S-11) (1): E10
 - differs: a μ whose binder does not occur prints as its body (plan IX S-15) (1): E11
