@@ -7,11 +7,16 @@ import Coercions.Nominal.FCn.CheckerCompleteness
 
 A form `Form` is a chain of atoms `Atom`, applied first to last.  `Entries` are the entries of an
 object form, and `SideF` its sides.  A view `View` is what a path reads at its resolved type: an
-object view of entries `VEntries`, a function view that names a stored value with a form, or `none`
-at an abstract selection.  `View.liftAct`, `View.liftK` and `View.transport` move a view along an
-equality, and `View.repath` moves it to an aliased path.  `View.applyForm` applies a form, and
-`litView` and `varView` give the view of a literal at its path and of a store variable.  Each
-equation that is reached only off typed inputs says so in the docstring of its definition.
+object view of entries `VEntries`, a function view that names a stored value with a form, an
+instance view `inst W` at a class selection whose content `W` is the view at the class body, or
+`none` at an abstract selection.  `View.liftAct`, `View.liftK` and `View.transport` move a view along
+an equality, and `View.repath` moves it to an aliased path.  `View.applyForm` applies a form.  The
+atom `seal p C` wraps a view in an instance view, and `unseal p C` unwraps one.  `unseal` gives
+`none` at a view that is no instance view, reached only off typed inputs.  `litView` and `varView`
+give the view of a literal at its path and of a store variable.  A class member of a literal reads
+its upper bound by `unseal`.  Since stage NT the normalizer sends `seal p C` to the form of the one
+atom `seal p C` (HN-Seal).  Each equation that is reached only off typed inputs says so in the
+docstring of its definition.
 
 The normalizer `Hnf` with `HnfM` and `HnfS`, the path view `PV` and the stored casts `NormV` are
 relations indexed by the types of the evidence, one rule per evidence constructor.  `collapse` reads
@@ -48,6 +53,8 @@ inductive Atom : Sig → Type where
   | pair : Form s → Form s → Atom s                -- pair F G
   | bnd : Nat → Atom s                             -- bnd i
   | into : Form s → Atom s                         -- into F
+  | seal : Path s → Label → Atom s                 -- seal p C, the form of LE-Seal
+  | unseal : Path s → Label → Atom s               -- unseal p C, the read of a class's upper bound
 inductive Form : Sig → Type where
   | nil : Form s                                   -- id
   | cons : Atom s → Form s → Form s                -- A ⨾ F, A applied first
@@ -89,6 +96,7 @@ mutual
 inductive View : Sig → Type where
   | obj : VEntries s → View s                      -- (V)
   | fn : Value s → Form s → View s                 -- (v, F), v.core a lambda
+  | inst : View s → View s                         -- inst W, an instance view, W the view at the class body
   | none : View s
 inductive VEntry : Sig → Type where
   | le : Form s → VEntry s                         -- le F
@@ -174,12 +182,18 @@ mutual
 /-- `repath W T π r r'` moves a view of `r` at `Γ.res T` to a view of `r'` along `π : r' ≃ r`.  A
 function view or `none` is kept, on typed inputs too.  An object view at a `T` that resolves to no
 object type is kept as well, and that equation is reached only off typed inputs: an object view is a
-view at an object type (`View.repath_typed`). -/
+view at an object type (`View.repath_typed`).  An instance view `inst W` at a `T` that resolves to a
+class selection moves its content `W` at the class body.  At a `T` whose resolution has no class
+body it is kept, and that equation is reached only off typed inputs. -/
 def View.repath (Γ : Ctx s) : View s → Ty s → PEq s → Path s → Path s → View s
   | .obj V, T, π, r, r' =>
       match Γ.res T with
       | .mu Tel => .obj (VEntries.repath Γ V Tel π r r')
       | _ => .obj V
+  | .inst W, T, π, r, r' =>
+      match Γ.clsOf (Γ.res T) with
+      | some U => .inst (View.repath Γ W U π r r')
+      | none => .inst W
   | W, _, _, _, _ => W
 /-- `repath` entry by entry.  The last equation is reached on typed inputs at the end of both, and
 only off typed inputs where the lengths differ (`VEntries.repath_typed`). -/
@@ -203,7 +217,8 @@ mutual
 entry at `i` that is no `is` entry, are reached only off typed inputs.  The last equation keeps the
 view: a `pi` atom at a view that is no function view, an `obj` or `bnd` atom at a view that is no
 object view, and `bot`, which has no view to apply to.  It is reached only off typed inputs
-(`AtomT.apply`). -/
+(`AtomT.apply`).  `seal p C` wraps the view in an instance view, and `unseal p C` unwraps an instance
+view.  `unseal` at a view that is no instance view gives `none`, reached only off typed inputs. -/
 def View.applyAtom : Atom s → Path s → View s → View s
   | .eqv φ, r, W => View.transport true φ [] r W
   | .pi e f, _, .fn v F => .fn v (F.append (.single (.pi e f)))
@@ -218,6 +233,9 @@ def View.applyAtom : Atom s → Path s → View s → View s
       | some (.is W) => W
       | _ => .none
   | .into F, r, W => .obj (.cons .nil (.is (View.applyForm F r W)))
+  | .seal _ _, _, W => .inst W
+  | .unseal _ _, _, .inst W => W
+  | .unseal _ _, _, _ => .none
   | _, _, W => W
 def View.applyForm : Form s → Path s → View s → View s
   | .nil, _, W => W
@@ -251,12 +269,15 @@ end
 /-! ## The view of a literal at its own path -/
 
 mutual
+/-- The view of a literal's definitions at its path `l`, one entry per proposition.  A type member
+gives its two bounds by `defP l A`.  A class member gives the lower bound `bot` and the upper bound
+`unseal l C`, which reads an instance view of the class back as its content. -/
 def litView : Path s → Defs s → VEntries s
   | _, .nil => .nil
   | l, .typ ds A _ =>
       .cons (.cons (litView l ds) (.le (.single (.eqv (.symm (.defP l A)))))) (.le (.single (.eqv (.defP l A))))
   | l, .fld ds a rhs => .cons (litView l ds) (.fld a (rhsView l a rhs))
-  | l, .cls ds C _ => .cons (.cons (litView l ds) (.le (.single .bot))) (.le (.single (.eqv (.defP l C))))
+  | l, .cls ds C _ => .cons (.cons (litView l ds) (.le (.single .bot))) (.le (.single (.unseal l C)))
 def rhsView : Path s → Label → Rhs s → View s
   | _, _, .path _ => .obj (.cons .nil .alias)
   | _, _, .fn v => .fn v .nil
@@ -294,7 +315,7 @@ inductive Hnf (σ : Store s) (Γ : Ctx s) : LeCo s → Ty s → Ty s → Form s 
   | member : PV σ Γ P S W → Hnf σ Γ e S (.mu Tel) F → Tel.At i (.le S' T') →
       (View.applyForm F P.path W) = .obj V → V.get i = some (.le G) →
       Hnf σ Γ (.member P e i) (S'.substPath P.path) (T'.substPath P.path) G
-  | seal : Γ.clsAt p C = some U → Hnf σ Γ (.seal p C) U (.sel p C) (.single (.eqv (.symm (.defP p C))))
+  | seal : Γ.clsAt p C = some U → Hnf σ Γ (.seal p C) U (.sel p C) (.single (.seal p C))
 inductive HnfM (σ : Store s) (Γ : Ctx s) : Telescope (s,x) → Morphism s → Telescope (s,x) → Entries s → Prop
   | nil : HnfM σ Γ src .nil .nil .nil
   | le : HnfM σ Γ src m Tel Es → src.At j (.le X Y) → HnfS σ Γ pre S X pre' → HnfS σ Γ post Y T post' →
@@ -458,6 +479,7 @@ theorem Pr.alias_inj {q q' : Path s} (h : Pr.alias q = Pr.alias q') : q = q' := 
 theorem View.obj_inj {V V' : VEntries s} (h : View.obj V = View.obj V') : V = V' := by cases h; rfl
 theorem View.fn_inj {v v' : Value s} {F F' : Form s} (h : View.fn v F = View.fn v' F') : v = v' ∧ F = F' := by
   cases h; exact ⟨rfl, rfl⟩
+theorem View.inst_inj {W W' : View s} (h : View.inst W = View.inst W') : W = W' := by cases h; rfl
 theorem VEntry.le_inj {F F' : Form s} (h : VEntry.le F = VEntry.le F') : F = F' := by cases h; rfl
 theorem VEntry.fld_inj {a a' : Label} {W W' : View s} (h : VEntry.fld a W = VEntry.fld a' W') : a = a' ∧ W = W' := by
   cases h; exact ⟨rfl, rfl⟩
@@ -776,9 +798,9 @@ def hnf (σ : Store s) (Γ : Ctx s) : LeCo s → Option (Ty s × Ty s × Form s)
             | _, _ => none
           else none
       | _, _ => none
-  | .seal p C =>                                                                  -- HN-Seal₁
+  | .seal p C =>                                                                  -- HN-Seal
       match Γ.clsAt p C with
-      | some U => some (U, .sel p C, .single (.eqv (.symm (.defP p C))))
+      | some U => some (U, .sel p C, .single (.seal p C))
       | none => none
 /-- `hnfM σ Γ src m = some (Tel, Es)` when `σ ⊢ m ⇓ₘ Es : src ⇒ Tel`. -/
 def hnfM (σ : Store s) (Γ : Ctx s) (src : Telescope (s,x)) : Morphism s → Option (Telescope (s,x) × Entries s)
@@ -1215,6 +1237,7 @@ theorem pview_sound : ∀ (P : PathCo s) {T : Ty s} {W : View s}, pview σ Γ P 
                     · cases h
                   · cases h
               | fn _ _ => simp [pview, h₁] at h
+              | inst _ => simp [pview, h₁] at h
               | none => simp [pview, h₁] at h
           | bot => simp [pview, h₁] at h
           | sel _ _ => simp [pview, h₁] at h
@@ -1304,8 +1327,10 @@ theorem pview_sound : ∀ (P : PathCo s) {T : Ty s} {W : View s}, pview σ Γ P 
                         exact .both (pview_sound P h₁) (pview_sound Q h₂)
                       · cases h
                   | fn _ _ => simp [pview, h₁, h₂] at h
+                  | inst _ => simp [pview, h₁, h₂] at h
                   | none => simp [pview, h₁, h₂] at h
               | fn _ _ => simp [pview, h₁, h₂] at h
+              | inst _ => simp [pview, h₁, h₂] at h
               | none => simp [pview, h₁, h₂] at h
 end
 
@@ -1469,6 +1494,7 @@ theorem appViewOf_iff {σ : Store s} {P : PathCo s} {S₀ : Ty s} {t₀ : Tm (s,
                               · cases e
                         · cases e
                     | obj _ => simp [appViewOf, h₁, h₂, h₃] at e
+                    | inst _ => simp [appViewOf, h₁, h₂, h₃] at e
                     | none => simp [appViewOf, h₁, h₂, h₃] at e
             | bot => simp [appViewOf, h₁, h₂] at e
             | sel _ _ => simp [appViewOf, h₁, h₂] at e

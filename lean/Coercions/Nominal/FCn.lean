@@ -21,7 +21,9 @@ import Coercions.Nominal.FCn.FormAlgebra
 import Coercions.Nominal.FCn.CanonicalForms
 import Coercions.Nominal.FCn.LookupSafety
 import Coercions.Nominal.FCn.Consistency
+import Coercions.Nominal.FCn.ClassForms
 import Coercions.Nominal.FCn.CanonicalExamples
+import Coercions.Nominal.FCn.ClassExamples
 import Coercions.Nominal.FCn.Preservation
 import Coercions.Nominal.FCn.Progress
 import Coercions.Nominal.FCn.ErasureMetatheory
@@ -47,5 +49,6 @@ example and the adjusted let body.  `Erasure` holds the erasure into the runtime
 simulation `erase_step` under a sound application view, and the shuffle steps that keep the
 erasure.  `Checker` holds the checker of T.8, structural and sound, and `CheckerCompleteness` holds
 its completeness with `checkTm_iff`.  `Examples` decides the binder example and the twins of N2 and
-N3 with it.
+N3 with it.  `ClassForms` holds the canonical forms of the class primitive and `ClassExamples` its
+stores.
 -/

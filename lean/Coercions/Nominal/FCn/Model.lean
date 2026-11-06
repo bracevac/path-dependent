@@ -7,8 +7,9 @@ import Coercions.Nominal.Source.Model
 A tool for the negative examples (decision D11 of the groups file).  A model of a context `Γ`
 reads every type as a set of paths `sem T p`, path equality as a relation `peq`, type equality as
 a relation `teq`, and marks the paths it reaches.  It asks one closure property per rule of the
-evidence block whose conclusion is in `Γ`.  `μ(w : Tel)` holds at a reachable path `p` when every
-proposition of `Tel` holds at `p`, read by `semPrOf` with the self at `p`.
+evidence block whose conclusion is in `Γ`, and one for LE-Seal (`sem_seal`).  `μ(w : Tel)` holds
+at a reachable path `p` when every proposition of `Tel` holds at `p`, read by `semPrOf` with the
+self at `p`.
 
 The six soundness theorems then read the six evidence judgments of `Γ` in the model: a path
 typing as membership, a path equality as `peq`, an inclusion as inclusion, a type equality as
@@ -56,6 +57,8 @@ structure Model (Γ : Ctx s) where
   teq_symm : ∀ S T, teq S T → teq T S
   teq_trans : ∀ S M T, teq S M → teq M T → teq S T
   teq_defP : ∀ p A W, Γ.defAt p A = some W → teq (.sel p A) W
+  -- LE-Seal: a class includes its body
+  sem_seal : ∀ p C U, Γ.clsAt p C = some U → ∀ r, sem U r → sem (.sel p C) r
   teq_lift : ∀ (T : Ty (s,x)) p q, peq p q → teq (T.substPath p) (T.substPath q)
   teq_dom : ∀ S₁ T₁ S₂ T₂, teq (.pi S₁ T₁) (.pi S₂ T₂) → teq S₁ S₂
   teq_cod : ∀ S₁ T₁ S₂ T₂ p, teq (.pi S₁ T₁) (.pi S₂ T₂) → teq (T₁.substPath p) (T₂.substPath p)
@@ -189,7 +192,7 @@ theorem Model.sound_le {Γ : Ctx s} (M : Model Γ) : ∀ {e : LeCo s} {S T : Ty 
   | _, _, _, .member hP he hi, p, h => by
       have h₀ := Model.sound_path M hP
       exact ((M.mu _ _).1 (Model.sound_le M he _ h₀)).2 _ _ hi p h
-  | _, _, _, .seal h, p, h' => M.teq_sem _ _ (M.teq_symm _ _ (M.teq_defP _ _ _ (Ctx.defAt_of_clsAt h))) p h'
+  | _, _, _, .seal h, p, h' => M.sem_seal _ _ _ h p h'
 theorem Model.sound_eq {Γ : Ctx s} (M : Model Γ) : ∀ {φ : EqCo s} {S T : Ty s}, EqCo.HasType Γ φ S T → M.teq S T
   | _, _, _, .refl => M.teq_refl _
   | _, _, _, .symm h => M.teq_symm _ _ (Model.sound_eq M h)

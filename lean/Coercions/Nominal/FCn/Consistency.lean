@@ -7,8 +7,9 @@ import Coercions.Nominal.FCn.CanonicalForms
 literal at `⊤` would apply to a view at `⊥`, and there is none.
 
 `closed_le_shapes` is the Paths target's with `res` for `resolve` and `norm` for the equality of two
-resolutions.  Its proof reads the typed normal form of the evidence (`le_canon`) and follows its
-chain of atoms (`FormT.shapes`).  From a source that resolves to no object type the chain reaches
+resolutions.  Its shapes are the target's, or a class selection on either side (stage NT).  Its
+proof reads the typed normal form of the evidence (`le_canon`) and follows its chain of atoms
+(`FormT.shapes`).  From a source that resolves to no object type the chain reaches
 types of the same normal type, function types, and object types of `is` propositions only
 (`Reach`).  From an object type it reaches object types, or types a form reaches from an `is`
 component of the source (`ReachO`).  At an `eqv` atom the components move with evidence
@@ -481,27 +482,52 @@ theorem Ctx.norm_res_mu (Γ : Ctx s) {S T : Ty s} {Tel : Telescope (s,x)} (h : �
   | sel _ _ => rw [hS] at h; cases h
   | pi _ _ => rw [hS] at h; cases h
 
+theorem Ctx.norm_res_sel (Γ : Ctx s) {S T : Ty s} {q : Path s} {A : Label} (h : Γ.norm S = Γ.norm T)
+    (hT : Γ.res T = .sel q A) : ∃ q', Γ.res S = .sel q' A ∧ Γ.canon q' = Γ.canon q := by
+  unfold Ctx.norm at h
+  rw [hT] at h
+  cases hS : Γ.res S with
+  | sel q' A' =>
+      rw [hS] at h
+      have h' : TyO.sel (Γ.canon q') A' = TyO.sel (Γ.canon q) A := h
+      injection h' with _ e₁ e₂
+      subst e₂
+      exact ⟨q', rfl, e₁⟩
+  | bot => rw [hS] at h; cases h
+  | pi _ _ => rw [hS] at h; cases h
+  | mu _ => rw [hS] at h; cases h
+
+/-- One normal type, one class: `clsOf` reads the canonical name. -/
+theorem Ctx.norm_res_cls (Γ : Ctx s) {S T : Ty s} {q : Path s} {D : Label} {U : Ty s}
+    (h : Γ.norm S = Γ.norm T) (hT : Γ.res T = .sel q D) (hc : Γ.clsOf (.sel q D) = some U) :
+    ∃ q', Γ.res S = .sel q' D ∧ Γ.clsOf (.sel q' D) = some U := by
+  obtain ⟨q', hS, hcq⟩ := Γ.norm_res_sel h hT
+  exact ⟨q', hS, (Γ.clsOf_sel_congr hcq D).trans hc⟩
+
 /-! ## What a typed form reaches from a source that resolves to no object type -/
 
-/-- From `S`, resolving to a function type or an abstract selection: a type of the same normal type,
-a function type when `S` resolves to one, or an object type of `is` propositions only, each component
-reached in turn. -/
+/-- From `S`, resolving to a function type or an abstract selection that is no class: a type of the
+same normal type, a function type, an object type of `is` propositions only, or a class selection
+whose body is reached. -/
 inductive Reach (Γ : Ctx s) (S : Ty s) : Ty s → Prop
   | eq : Γ.norm M = Γ.norm S → Reach Γ S M
   | pi : Γ.res S = .pi S₁ T₁ → Γ.res M = .pi S₂ T₂ → Reach Γ S M
   | obj : Γ.res M = .mu Tel → Tel.IsOnly → (∀ i X, Tel.At i (.is X.weaken) → Reach Γ S X) → Reach Γ S M
+  | cls : Γ.res M = .sel q D → Γ.clsOf (.sel q D) = some U → Reach Γ S U → Reach Γ S M
 
 section Shapes
 variable {Γ : Ctx s} {γ : PDot.Runtime.Store s}
 
-/-- The three ways to reach `M`, at a variable index. -/
+/-- The four ways to reach `M`, `cls` among them. -/
 theorem Reach.elim {S M : Ty s} (h : Reach Γ S M) :
     Γ.norm M = Γ.norm S ∨ (∃ S₁ T₁ S₂ T₂, Γ.res S = .pi S₁ T₁ ∧ Γ.res M = .pi S₂ T₂) ∨
-    (∃ Tel, Γ.res M = .mu Tel ∧ Tel.IsOnly ∧ ∀ i X, Tel.At i (.is X.weaken) → Reach Γ S X) :=
+    (∃ Tel, Γ.res M = .mu Tel ∧ Tel.IsOnly ∧ ∀ i X, Tel.At i (.is X.weaken) → Reach Γ S X) ∨
+    (∃ q D U, Γ.res M = .sel q D ∧ Γ.clsOf (.sel q D) = some U ∧ Reach Γ S U) :=
   match h with
   | .eq e => .inl e
   | .pi hS hM => .inr (.inl ⟨_, _, _, _, hS, hM⟩)
-  | .obj hM hO hc => .inr (.inr ⟨_, hM, hO, hc⟩)
+  | .obj hM hO hc => .inr (.inr (.inl ⟨_, hM, hO, hc⟩))
+  | .cls hM hc hU => .inr (.inr (.inr ⟨_, _, _, hM, hc, hU⟩))
 
 theorem Reach.eqv {S : Ty s} : ∀ {M M' : Ty s} {φ : EqCo s}, Reach Γ S M → SoundEq Γ γ φ M M' → Reach Γ S M'
   | _, _, _, .eq h, hφ => .eq (hφ.norm.symm.trans h)
@@ -516,59 +542,87 @@ theorem Reach.eqv {S : Ty s} : ∀ {M M' : Ty s} {φ : EqCo s}, Reach Γ S M →
       · obtain ⟨pr, h₁, _, h₃⟩ := r.1 i _ h'
         obtain ⟨X, ψ, rfl, hψ⟩ := h₃ X' rfl
         exact Reach.eqv (hc i X h₁) hψ
+  | _, _, _, .cls hM hc hU, hφ => by
+      obtain ⟨q', hM', hc'⟩ := Γ.norm_res_cls hφ.norm.symm hM hc
+      exact .cls hM' hc' hU
 
 /-- Reaching an object type from a source that resolves to none: `is` propositions only, each
 component reached. -/
 theorem Reach.mu_inv {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) {Tel : Telescope (s,x)} (h : Reach Γ S (.mu Tel)) :
     Tel.IsOnly ∧ ∀ i X, Tel.At i (.is X.weaken) → Reach Γ S X := by
-  rcases h.elim with e | ⟨_, _, _, _, _, hM⟩ | ⟨Tel', hM, hO, hc⟩
-  · obtain ⟨_, hS'⟩ := Γ.norm_res_mu e.symm (Γ.res_mu Tel)
-    exact absurd hS' (hS _)
-  · rw [Γ.res_mu] at hM; cases hM
-  · rw [Γ.res_mu] at hM
-    cases hM
-    exact ⟨hO, hc⟩
+  cases h with
+  | eq e =>
+      obtain ⟨_, hS'⟩ := Γ.norm_res_mu e.symm (Γ.res_mu Tel)
+      exact absurd hS' (hS _)
+  | pi _ hM => rw [Γ.res_mu] at hM; cases hM
+  | obj hM hO hc => rw [Γ.res_mu] at hM; cases hM; exact ⟨hO, hc⟩
+  | cls hM _ _ => rw [Γ.res_mu] at hM; cases hM
+
+/-- At a class selection the body is reached: the source is no class. -/
+theorem Reach.cls_inv {S : Ty s} (hS : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U)
+    {M : Ty s} {p : Path s} {C : Label} {U : Ty s} (h : Reach Γ S M) (hM : Γ.res M = .sel p C)
+    (hc : Γ.clsOf (.sel p C) = some U) : Reach Γ S U := by
+  cases h with
+  | eq e =>
+      obtain ⟨q', hS', hc'⟩ := Γ.norm_res_cls e.symm hM hc
+      exact absurd hc' (hS _ _ _ hS')
+  | pi _ hM' => rw [hM] at hM'; cases hM'
+  | obj hM' _ _ => rw [hM] at hM'; cases hM'
+  | cls hM' hc' hU =>
+      rw [hM] at hM'
+      cases hM'
+      rw [hc] at hc'
+      cases hc'
+      exact hU
 
 mutual
-theorem Reach.atom {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot) :
+theorem Reach.atom {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot)
+    (hk : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U) :
     ∀ {A : Atom s} {M M' : Ty s}, Reach Γ S M → AtomT Γ γ A M M' → Reach Γ S M'
   | _, _, _, h, .eqv hφ => h.eqv hφ
   | _, _, _, h, .pi _ _ => by
-      rcases h.elim with e | ⟨_, _, _, _, hS', _⟩ | ⟨_, hM, _, _⟩
-      · obtain ⟨_, _, hS'⟩ := Γ.norm_res_pi e.symm (Γ.res_pi _ _)
-        exact .pi hS' (Γ.res_pi _ _)
-      · exact .pi hS' (Γ.res_pi _ _)
-      · rw [Γ.res_pi] at hM; cases hM
+      cases h with
+      | eq e =>
+          obtain ⟨_, _, hS'⟩ := Γ.norm_res_pi e.symm (Γ.res_pi _ _)
+          exact .pi hS' (Γ.res_pi _ _)
+      | pi hS' _ => exact .pi hS' (Γ.res_pi _ _)
+      | obj hM _ _ => rw [Γ.res_pi] at hM; cases hM
+      | cls hM _ _ => rw [Γ.res_pi] at hM; cases hM
   | _, _, _, h, .obj hEs => by
       obtain ⟨hO, hc⟩ := Reach.mu_inv hS h
-      obtain ⟨hO', hc'⟩ := Reach.entries hS hb h hO hc hEs
+      obtain ⟨hO', hc'⟩ := Reach.entries hS hb hk h hO hc hEs
       exact .obj (Γ.res_mu _) hO' hc'
   | _, _, _, _, .top => .obj (Γ.res_mu _) Telescope.IsOnly.nil (fun _ _ h => (Telescope.At.nil_of_eq h rfl).elim)
   | _, _, _, h, .bot => by
-      rcases h.elim with e | ⟨_, _, _, _, _, hM⟩ | ⟨_, hM, _, _⟩
-      · exact absurd (Γ.norm_res_bot e.symm Γ.res_bot) hb
-      · rw [Γ.res_bot] at hM; cases hM
-      · rw [Γ.res_bot] at hM; cases hM
+      cases h with
+      | eq e => exact absurd (Γ.norm_res_bot e.symm Γ.res_bot) hb
+      | pi _ hM => rw [Γ.res_bot] at hM; cases hM
+      | obj hM _ _ => rw [Γ.res_bot] at hM; cases hM
+      | cls hM _ _ => rw [Γ.res_bot] at hM; cases hM
   | _, _, _, h, .pair (Tel := Tel) (Tel' := Tel') hF hG => by
-      obtain ⟨hO₁, hc₁⟩ := Reach.mu_inv hS (Reach.form hS hb h hF)
-      obtain ⟨hO₂, hc₂⟩ := Reach.mu_inv hS (Reach.form hS hb h hG)
+      obtain ⟨hO₁, hc₁⟩ := Reach.mu_inv hS (Reach.form hS hb hk h hF)
+      obtain ⟨hO₂, hc₂⟩ := Reach.mu_inv hS (Reach.form hS hb hk h hG)
       refine .obj (Γ.res_mu _) (hO₁.append hO₂) (fun i X hi => ?_)
       rcases Telescope.At.of_append Tel Tel' hi with hi | ⟨j, _, hj⟩
       · exact hc₁ i X hi
       · exact hc₂ j X hj
   | _, _, _, h, .bnd hi => (Reach.mu_inv hS h).2 _ _ hi
   | _, _, _, h, .into hF => by
-      have hX := Reach.form hS hb h hF
+      have hX := Reach.form hS hb hk h hF
       refine .obj (Γ.res_mu _) (Telescope.IsOnly.single _) (fun i X hi => ?_)
       rcases Telescope.At.cons_of_eq hi rfl with ⟨_, e⟩ | hi'
       · rw [Ty.weaken_inj (Pr.is_inj e)]
         exact hX
       · exact (Telescope.At.nil_of_eq hi' rfl).elim
-theorem Reach.form {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot) :
+  | _, _, _, h, .seal hc => .cls (Ctx.res_cls (Ctx.clsOf_of_clsAt hc)) (Ctx.clsOf_of_clsAt hc) h
+  | _, _, _, h, .unseal hc => Reach.cls_inv hk h (Ctx.res_cls hc) hc
+theorem Reach.form {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot)
+    (hk : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U) :
     ∀ {F : Form s} {M M' : Ty s}, Reach Γ S M → FormT Γ γ F M M' → Reach Γ S M'
   | _, _, _, h, .nil => h
-  | _, _, _, h, .cons hA hF => Reach.form hS hb (Reach.atom hS hb h hA) hF
-theorem Reach.entries {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot) :
+  | _, _, _, h, .cons hA hF => Reach.form hS hb hk (Reach.atom hS hb hk h hA) hF
+theorem Reach.entries {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.res S ≠ .bot)
+    (hk : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U) :
     ∀ {src : Telescope (s,x)} {Es : Entries s} {Tel : Telescope (s,x)}, Reach Γ S (.mu src) → src.IsOnly →
       (∀ i X, src.At i (.is X.weaken) → Reach Γ S X) → EntriesT Γ γ src Es Tel →
       Tel.IsOnly ∧ ∀ i X, Tel.At i (.is X.weaken) → Reach Γ S X
@@ -577,32 +631,35 @@ theorem Reach.entries {S : Ty s} (hS : ∀ Tel, Γ.res S ≠ .mu Tel) (hb : Γ.r
   | _, _, _, _, hO, _, .fld _ hj _ => by obtain ⟨_, e⟩ := hO _ _ hj; cases e
   | _, _, _, _, hO, _, .alias _ hj => by obtain ⟨_, e⟩ := hO _ _ hj; cases e
   | _, _, _, h, hO, hc, .is hEs hF => by
-      obtain ⟨hO', hc'⟩ := Reach.entries hS hb h hO hc hEs
+      obtain ⟨hO', hc'⟩ := Reach.entries hS hb hk h hO hc hEs
       refine ⟨fun i pr hi => ?_, fun i X hi => ?_⟩
       · rcases Telescope.At.cons_of_eq hi rfl with ⟨_, rfl⟩ | hi'
         · exact ⟨_, rfl⟩
         · exact hO' i pr hi'
       · rcases Telescope.At.cons_of_eq hi rfl with ⟨_, e⟩ | hi'
         · rw [Ty.weaken_inj (Pr.is_inj e)]
-          exact Reach.form hS hb h hF
+          exact Reach.form hS hb hk h hF
         · exact hc' i X hi'
 end
 
 /-! ## What a typed form reaches from a source that resolves to an object type -/
 
-/-- From `S`, resolving to `μ(w : Tel₁)`: a type a form reaches from an `is` component of `Tel₁`, or an
-object type each of whose `is` components is reached in turn. -/
+/-- From `S`, resolving to `μ(w : Tel₁)`: a type a form reaches from an `is` component of `Tel₁`, an
+object type each of whose `is` components is reached, or a class selection whose body is reached. -/
 inductive ReachO (Γ : Ctx s) (γ : PDot.Runtime.Store s) (S : Ty s) : Ty s → Prop
   | via : Γ.res S = .mu Tel₁ → Tel₁.At i (.is X.weaken) → FormT Γ γ F X M → ReachO Γ γ S M
   | obj : Γ.res M = .mu Tel → (∀ i X, Tel.At i (.is X.weaken) → ReachO Γ γ S X) → ReachO Γ γ S M
+  | cls : Γ.res M = .sel q D → Γ.clsOf (.sel q D) = some U → ReachO Γ γ S U → ReachO Γ γ S M
 
-/-- The two ways to reach `M`, at a variable index. -/
+/-- The three ways to reach `M`, `cls` among them. -/
 theorem ReachO.elim {S M : Ty s} (h : ReachO Γ γ S M) :
     (∃ Tel₁ i X F, Γ.res S = .mu Tel₁ ∧ Tel₁.At i (.is X.weaken) ∧ FormT Γ γ F X M) ∨
-    (∃ Tel, Γ.res M = .mu Tel ∧ ∀ i X, Tel.At i (.is X.weaken) → ReachO Γ γ S X) :=
+    (∃ Tel, Γ.res M = .mu Tel ∧ ∀ i X, Tel.At i (.is X.weaken) → ReachO Γ γ S X) ∨
+    (∃ q D U, Γ.res M = .sel q D ∧ Γ.clsOf (.sel q D) = some U ∧ ReachO Γ γ S U) :=
   match h with
   | .via hS hi hF => .inl ⟨_, _, _, _, hS, hi, hF⟩
-  | .obj hM hc => .inr ⟨_, hM, hc⟩
+  | .obj hM hc => .inr (.inl ⟨_, hM, hc⟩)
+  | .cls hM hc hU => .inr (.inr ⟨_, _, _, hM, hc, hU⟩)
 
 theorem ReachO.start {S : Ty s} {Tel : Telescope (s,x)} (hS : Γ.res S = .mu Tel) : ReachO Γ γ S S :=
   .obj hS (fun _ _ hi => .via hS hi .nil)
@@ -615,32 +672,37 @@ theorem ReachO.eqv {S : Ty s} : ∀ {M M' : Ty s} {φ : EqCo s}, ReachO Γ γ S 
       obtain ⟨pr, h₁, _, h₃⟩ := r.1 i _ h'
       obtain ⟨X, ψ, rfl, hψ⟩ := h₃ X' rfl
       exact ReachO.eqv (hc i X h₁) hψ
+  | _, _, _, .cls hM hc hU, hφ => by
+      obtain ⟨q', hM', hc'⟩ := Γ.norm_res_cls hφ.norm.symm hM hc
+      exact .cls hM' hc' hU
 
 /-- Each `is` component of a reached object type is reached: through `bnd`, or by the component. -/
 theorem ReachO.comps {S : Ty s} {Tel : Telescope (s,x)} (h : ReachO Γ γ S (.mu Tel)) :
     ∀ i X, Tel.At i (.is X.weaken) → ReachO Γ γ S X := by
-  rcases h.elim with ⟨_, _, _, _, hS, hi, hF⟩ | ⟨Tel', hM, hc⟩
-  · exact fun _ _ hj => .via hS hi (FormT.append hF (FormT.single (.bnd hj)))
-  · rw [Γ.res_mu] at hM
-    cases hM
-    exact hc
+  cases h with
+  | via hS hi hF => exact fun _ _ hj => .via hS hi (FormT.append hF (FormT.single (.bnd hj)))
+  | obj hM hc => rw [Γ.res_mu] at hM; cases hM; exact hc
+  | cls hM _ _ => rw [Γ.res_mu] at hM; cases hM
 
 mutual
 theorem ReachO.atom {S : Ty s} : ∀ {A : Atom s} {M M' : Ty s}, ReachO Γ γ S M → AtomT Γ γ A M M' → ReachO Γ γ S M'
   | _, _, _, h, .eqv hφ => h.eqv hφ
   | _, _, _, h, .pi he hf => by
-      rcases h.elim with ⟨_, _, _, _, hS, hi, hF⟩ | ⟨_, hM, _⟩
-      · exact .via hS hi (FormT.append hF (FormT.single (.pi he hf)))
-      · rw [Γ.res_pi] at hM; cases hM
+      cases h with
+      | via hS hi hF => exact .via hS hi (FormT.append hF (FormT.single (.pi he hf)))
+      | obj hM _ => rw [Γ.res_pi] at hM; cases hM
+      | cls hM _ _ => rw [Γ.res_pi] at hM; cases hM
   | _, _, _, h, .obj hEs => by
-      rcases h.elim with ⟨_, _, _, _, hS, hi, hF⟩ | _
-      · exact .via hS hi (FormT.append hF (FormT.single (.obj hEs)))
-      · exact .obj (Γ.res_mu _) (ReachO.entries h hEs)
+      cases h with
+      | via hS hi hF => exact .via hS hi (FormT.append hF (FormT.single (.obj hEs)))
+      | obj hM hc => exact .obj (Γ.res_mu _) (ReachO.entries (.obj hM hc) hEs)
+      | cls hM _ _ => rw [Γ.res_mu] at hM; cases hM
   | _, _, _, _, .top => .obj (Γ.res_mu _) (fun _ _ h => (Telescope.At.nil_of_eq h rfl).elim)
   | _, _, _, h, .bot => by
-      rcases h.elim with ⟨_, _, _, _, hS, hi, hF⟩ | ⟨_, hM, _⟩
-      · exact .via hS hi (FormT.append hF (FormT.single .bot))
-      · rw [Γ.res_bot] at hM; cases hM
+      cases h with
+      | via hS hi hF => exact .via hS hi (FormT.append hF (FormT.single .bot))
+      | obj hM _ => rw [Γ.res_bot] at hM; cases hM
+      | cls hM _ _ => rw [Γ.res_bot] at hM; cases hM
   | _, _, _, h, .pair (Tel := Tel) (Tel' := Tel') hF hG => by
       have h₁ := ReachO.comps (ReachO.form h hF)
       have h₂ := ReachO.comps (ReachO.form h hG)
@@ -656,6 +718,17 @@ theorem ReachO.atom {S : Ty s} : ∀ {A : Atom s} {M M' : Ty s}, ReachO Γ γ S 
       · rw [Ty.weaken_inj (Pr.is_inj e)]
         exact hX
       · exact (Telescope.At.nil_of_eq hi' rfl).elim
+  | _, _, _, h, .seal hc => .cls (Ctx.res_cls (Ctx.clsOf_of_clsAt hc)) (Ctx.clsOf_of_clsAt hc) h
+  | _, _, _, h, .unseal (U := U) hc => by
+      cases h with
+      | via hS hi hF => exact .via hS hi (FormT.append hF (FormT.single (.unseal hc)))
+      | obj hM _ => rw [Ctx.res_cls hc] at hM; cases hM
+      | cls hM hc' hU =>
+          rw [Ctx.res_cls hc] at hM
+          cases hM
+          rw [hc] at hc'
+          cases hc'
+          exact hU
 theorem ReachO.form {S : Ty s} : ∀ {F : Form s} {M M' : Ty s}, ReachO Γ γ S M → FormT Γ γ F M M' → ReachO Γ γ S M'
   | _, _, _, h, .nil => h
   | _, _, _, h, .cons hA hF => ReachO.form (ReachO.atom h hA) hF
@@ -681,46 +754,76 @@ theorem ReachO.entries {S : Ty s} : ∀ {src : Telescope (s,x)} {Es : Entries s}
       · exact ReachO.entries h hEs i X hi'
 end
 
-/-- The shapes a typed form relates, by the resolution of its source. -/
+/-- A class selection: a settled selection whose prefix names a class. -/
+def Ctx.IsCls (Γ : Ctx s) (T : Ty s) : Prop := ∃ q D U, Γ.res T = .sel q D ∧ Γ.clsOf (.sel q D) = some U
+
+/-- The shapes a typed form relates, by the resolution of its source, with a class on either side. -/
 theorem FormT.shapes {F : Form s} {S T : Ty s} (h : FormT Γ γ F S T) :
     Γ.res S = .bot ∨ Γ.res T = .top ∨ Γ.norm S = Γ.norm T ∨
     (∃ S₁ T₁ S₂ T₂, Γ.res S = .pi S₁ T₁ ∧ Γ.res T = .pi S₂ T₂) ∨
     (∃ Tel₁ Tel₂, Γ.res S = .mu Tel₁ ∧ Γ.res T = .mu Tel₂) ∨
     (∃ Tel₁ i X F, Γ.res S = .mu Tel₁ ∧ Tel₁.At i (.is X.weaken) ∧ FormT Γ γ F X T) ∨
-    (∃ Tel₂, Γ.res T = .mu Tel₂ ∧ ((∃ Tel₁, Γ.res S = .mu Tel₁) ∨ Tel₂.IsOnly)) := by
+    (∃ Tel₂, Γ.res T = .mu Tel₂ ∧ ((∃ Tel₁, Γ.res S = .mu Tel₁) ∨ Tel₂.IsOnly)) ∨
+    Ctx.IsCls Γ S ∨ Ctx.IsCls Γ T := by
+  have tail : ∀ {S M : Ty s}, Reach Γ S M → (∀ Tel, Γ.res S ≠ .mu Tel) →
+      Γ.norm M = Γ.norm S ∨ (∃ S₁ T₁ S₂ T₂, Γ.res S = .pi S₁ T₁ ∧ Γ.res M = .pi S₂ T₂) ∨
+      (∃ Tel, Γ.res M = .mu Tel ∧ Tel.IsOnly) ∨ Ctx.IsCls Γ M := by
+    intro S M hR _
+    cases hR with
+    | eq e => exact .inl e
+    | pi hS hM => exact .inr (.inl ⟨_, _, _, _, hS, hM⟩)
+    | obj hM hO _ => exact .inr (.inr (.inl ⟨_, hM, hO⟩))
+    | cls hM hc _ => exact .inr (.inr (.inr ⟨_, _, _, hM, hc⟩))
   cases hS : Γ.res S with
   | bot => exact .inl rfl
   | mu Tel₁ =>
-      rcases (ReachO.form (ReachO.start hS) h).elim with ⟨_, _, _, _, hS', hi, hF⟩ | ⟨_, hT, _⟩
-      · rw [hS] at hS'
-        cases hS'
-        exact .inr (.inr (.inr (.inr (.inr (.inl ⟨_, _, _, _, rfl, hi, hF⟩)))))
-      · exact .inr (.inr (.inr (.inr (.inl ⟨_, _, rfl, hT⟩))))
+      cases ReachO.form (ReachO.start hS) h with
+      | via hS' hi hF =>
+          rw [hS] at hS'
+          cases hS'
+          exact .inr (.inr (.inr (.inr (.inr (.inl ⟨_, _, _, _, rfl, hi, hF⟩)))))
+      | obj hT _ => exact .inr (.inr (.inr (.inr (.inl ⟨_, _, rfl, hT⟩))))
+      | cls hT hc _ => exact .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr ⟨_, _, _, hT, hc⟩)))))))
   | pi S₁ T₁ =>
       have hm : ∀ Tel, Γ.res S ≠ .mu Tel := fun _ e => by rw [hS] at e; cases e
       have hb : Γ.res S ≠ .bot := fun e => by rw [hS] at e; cases e
-      rcases (Reach.form hm hb (.eq rfl) h).elim with e | ⟨_, _, _, _, hS', hT⟩ | ⟨_, hT, hO, _⟩
+      have hk : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U :=
+        fun _ _ _ e => by rw [hS] at e; cases e
+      rcases tail (Reach.form hm hb hk (.eq rfl) h) hm with e | ⟨_, _, _, _, hS', hT⟩ | ⟨_, hT, hO⟩ | hc
       · exact .inr (.inr (.inl e.symm))
       · rw [hS] at hS'; exact .inr (.inr (.inr (.inl ⟨_, _, _, _, hS', hT⟩)))
-      · exact .inr (.inr (.inr (.inr (.inr (.inr ⟨_, hT, .inr hO⟩)))))
+      · exact .inr (.inr (.inr (.inr (.inr (.inr (.inl ⟨_, hT, .inr hO⟩))))))
+      · exact .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr hc)))))))
   | sel p A =>
-      have hm : ∀ Tel, Γ.res S ≠ .mu Tel := fun _ e => by rw [hS] at e; cases e
-      have hb : Γ.res S ≠ .bot := fun e => by rw [hS] at e; cases e
-      rcases (Reach.form hm hb (.eq rfl) h).elim with e | ⟨_, _, _, _, hS', _⟩ | ⟨_, hT, hO, _⟩
-      · exact .inr (.inr (.inl e.symm))
-      · rw [hS] at hS'; cases hS'
-      · exact .inr (.inr (.inr (.inr (.inr (.inr ⟨_, hT, .inr hO⟩)))))
+      cases hcl : Γ.clsOf (.sel p A) with
+      | some U => exact .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl ⟨p, A, U, hS, hcl⟩)))))))
+      | none =>
+          have hm : ∀ Tel, Γ.res S ≠ .mu Tel := fun _ e => by rw [hS] at e; cases e
+          have hb : Γ.res S ≠ .bot := fun e => by rw [hS] at e; cases e
+          have hk : ∀ q D U, Γ.res S = .sel q D → Γ.clsOf (.sel q D) ≠ some U := by
+            intro q D U e e'
+            rw [hS] at e
+            cases e
+            rw [hcl] at e'
+            cases e'
+          rcases tail (Reach.form hm hb hk (.eq rfl) h) hm with e | ⟨_, _, _, _, hS', _⟩ | ⟨_, hT, hO⟩ | hc
+          · exact .inr (.inr (.inl e.symm))
+          · rw [hS] at hS'; cases hS'
+          · exact .inr (.inr (.inr (.inr (.inr (.inr (.inl ⟨_, hT, .inr hO⟩))))))
+          · exact .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr hc)))))))
 
 end Shapes
 
-/-- `closed_le_shapes`: closed inclusion evidence relates types of compatible shapes. -/
+/-- `closed_le_shapes`: closed inclusion evidence relates types of compatible shapes, a class selection
+on either side among them. -/
 theorem closed_le_shapes {σ : Store s} {Γ : Ctx s} (hσ : Store.Typed σ Γ) {e : LeCo s} {S T : Ty s}
     (h : LeCo.HasType Γ e S T) :
     Γ.res S = .bot ∨ Γ.res T = .top ∨ Γ.norm S = Γ.norm T ∨
     (∃ S₁ T₁ S₂ T₂, Γ.res S = .pi S₁ T₁ ∧ Γ.res T = .pi S₂ T₂) ∨
     (∃ Tel₁ Tel₂, Γ.res S = .mu Tel₁ ∧ Γ.res T = .mu Tel₂) ∨
     (∃ Tel₁ i X F, Γ.res S = .mu Tel₁ ∧ Tel₁.At i (.is X.weaken) ∧ FormT Γ σ.erase F X T) ∨
-    (∃ Tel₂, Γ.res T = .mu Tel₂ ∧ ((∃ Tel₁, Γ.res S = .mu Tel₁) ∨ Tel₂.IsOnly)) :=
+    (∃ Tel₂, Γ.res T = .mu Tel₂ ∧ ((∃ Tel₁, Γ.res S = .mu Tel₁) ∨ Tel₂.IsOnly)) ∨
+    Ctx.IsCls Γ S ∨ Ctx.IsCls Γ T :=
   let ⟨_, _, hF⟩ := le_canon hσ h
   hF.shapes
 

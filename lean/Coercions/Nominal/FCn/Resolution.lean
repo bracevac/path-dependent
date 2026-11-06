@@ -8,7 +8,9 @@ One alias step `Ctx.next` reads the definition at the canonical name of a select
 `Ctx.resFuel` iterates it with fuel, and the budget `Ctx.resBudget` is one more than the number of
 type definitions in the context's blocks.  Resolution `Ctx.res` is `Ctx.resFuel` at the budget, and
 it resolves a cycle of definitions to `⊤`.  `Ctx.res_stable` says that resolution commutes with one
-alias step, and it is proved by stabilization over the type definitions.
+alias step, and it is proved by stabilization over the type definitions.  A class entry is no
+definition: `next` answers `none` at a class selection, which `res` keeps (`Ctx.res_cls`), and
+`Ctx.clsOf` reads the class at the canonical name of the prefix.
 
 The canonical types `TyO` read a type through a naming `CFn`, lifted under binders by `CFn.lift`.
 The normal type `Ctx.norm` resolves the head and names every path by `Ctx.canon`.
@@ -38,7 +40,7 @@ def Ctx.resFuel (Γ : Ctx s) : Nat → Ty s → Ty s
 def TyDefs.all : TyDefs s → List (Ty s)
   | .nil => []
   | .cons W _ U => U :: W.all
-  | .cls W _ U => U :: W.all                                 -- v1: a class entry counts as a definition
+  | .cls W _ _ => W.all                                      -- a class entry is no definition (stage NT)
 
 mutual
 def Block.defs : Block s → List (Ty s)
@@ -62,6 +64,11 @@ def Ctx.defs : Ctx s → List (Ty s)
 def Ctx.resBudget (Γ : Ctx s) : Nat := Γ.defs.length + 1
 def Ctx.res (Γ : Ctx s) (T : Ty s) : Ty s := Γ.resFuel Γ.resBudget T
 
+/-- The class body of a selection at the canonical name of its prefix. -/
+def Ctx.clsOf (Γ : Ctx s) : Ty s → Option (Ty s)
+  | .sel p C => (Γ.canon p).bind (fun c => Γ.clsAt c C)
+  | _ => none
+
 theorem TyDefs.get_mem : ∀ (W : TyDefs s) (A : Label) (U : Ty s), W.get A = some U → U ∈ W.all
   | .nil, _, _, h => by cases h
   | .cons W A' U', A, U, h => by
@@ -73,20 +80,18 @@ theorem TyDefs.get_mem : ∀ (W : TyDefs s) (A : Label) (U : Ty s), W.get A = so
         exact List.mem_cons_of_mem _ (TyDefs.get_mem W A U h)
   | .cls W C U', A, U, h => by
       by_cases e : A = C
-      · have : TyDefs.get (.cls W C U') A = some U' := by simp [TyDefs.get, e]
-        rw [this] at h; cases h; exact List.mem_cons_self ..
+      · have : TyDefs.get (.cls W C U') A = none := by simp [TyDefs.get, e]
+        rw [this] at h; cases h
       · have : TyDefs.get (.cls W C U') A = W.get A := by simp [TyDefs.get, e]
         rw [this] at h
-        exact List.mem_cons_of_mem _ (TyDefs.get_mem W A U h)
+        exact TyDefs.get_mem W A U h
 
 theorem TyDefs.all_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂), (W.rename ρ).all = W.all.map (·.rename ρ)
   | .nil, _ => rfl
   | .cons W A U, ρ => by
       show U.rename ρ :: (W.rename ρ).all = _
       rw [TyDefs.all_rename W ρ]; rfl
-  | .cls W C U, ρ => by
-      show U.rename ρ :: (W.rename ρ).all = _
-      rw [TyDefs.all_rename W ρ]; rfl
+  | .cls W C U, ρ => TyDefs.all_rename W ρ
 
 mutual
 theorem Block.defs_rename : ∀ (B : Block s₁) (ρ : Rename s₁ s₂), (B.rename ρ).defs = B.defs.map (·.rename ρ)
@@ -277,6 +282,44 @@ theorem Ctx.next_node (Γ : Ctx s) {p : Path s} {A : Label} {W : Ty s} (h : Γ.d
 
 theorem Ctx.res_defAt (Γ : Ctx s) {p : Path s} {A : Label} {W : Ty s} (h : Γ.defAt p A = some W) :
     Γ.res (.sel p A) = Γ.res W := Γ.res_stable (Γ.next_node h)
+
+/-! ## Resolution settles at a class selection -/
+
+/-- `clsOf` at a node: the class of a block is the class of its selection. -/
+theorem Ctx.clsOf_of_clsAt {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} (h : Γ.clsAt p C = some U) :
+    Γ.clsOf (.sel p C) = some U := by
+  have h' : (Γ.nodeAt p).bind (·.cls C) = some U := h
+  cases hp : Γ.nodeAt p with
+  | none => rw [hp] at h'; cases h'
+  | some B =>
+      cases B with
+      | node W K =>
+          show (Γ.canon p).bind (fun c => Γ.clsAt c C) = some U
+          rw [canon_node Γ hp]
+          exact h
+      | fwd _ => rw [hp] at h'; cases h'
+      | clo => rw [hp] at h'; cases h'
+
+/-- No alias step at a class selection. -/
+theorem Ctx.next_cls {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} (h : Γ.clsOf (.sel p C) = some U) :
+    Γ.next (.sel p C) = none := by
+  have h' : (Γ.canon p).bind (fun c => Γ.clsAt c C) = some U := h
+  show (Γ.canon p).bind (fun c => Γ.defAt c C) = none
+  cases hc : Γ.canon p with
+  | none => rfl
+  | some c =>
+      rw [hc] at h'
+      exact Ctx.defAt_none_of_clsAt h'
+
+/-- Resolution settles at a class selection: a class is opaque outside its seal. -/
+theorem Ctx.res_cls {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} (h : Γ.clsOf (.sel p C) = some U) :
+    Γ.res (.sel p C) = .sel p C :=
+  Γ.res_settled (Ctx.next_cls h)
+
+theorem Ctx.clsOf_sel_congr (Γ : Ctx s) {p q : Path s} (h : Γ.canon p = Γ.canon q) (C : Label) :
+    Γ.clsOf (.sel p C) = Γ.clsOf (.sel q C) := by
+  show (Γ.canon p).bind _ = (Γ.canon q).bind _
+  rw [h]
 
 /-! ## Canonical types: paths named by `canon`, `none` at every cyclic path -/
 
@@ -711,6 +754,10 @@ theorem Ctx.res_sel_cases (Γ : Ctx s) {P₁ P₂ : Path s} (h : Γ.canon P₁ =
   | some W =>
       rw [h₁] at hn
       exact .inr ((Γ.res_stable h₁).trans (Γ.res_stable hn.symm).symm)
+
+theorem Ctx.norm_res (Γ : Ctx s) (T : Ty s) : Γ.norm (Γ.res T) = Γ.norm T := by
+  unfold Ctx.norm
+  rw [Ctx.res_res]
 
 /-- Under an opaque binder the context's naming is the lifted naming, so `Ty.canonTy Γ.canon` reads
 types under binders as the plan's `(Γ, z : opaque ⊤).canonTy` does. -/

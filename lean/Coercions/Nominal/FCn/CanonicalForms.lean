@@ -41,6 +41,20 @@ theorem Defs.tyDefs_get_none : ∀ (ds : Defs s) (A : Label), A ∉ ds.labels �
       rw [if_neg hne]
       exact Defs.tyDefs_get_none ds A (fun hm => h (List.mem_cons_of_mem _ hm))
 
+theorem Defs.tyDefs_getCls_none : ∀ (ds : Defs s) (C : Label), C ∉ ds.labels → ds.tyDefs.getCls C = none
+  | .nil, _, _ => rfl
+  | .typ ds A U, C, h => by
+      simp only [Defs.tyDefs, TyDefs.getCls]
+      have hne : C ≠ A := fun e => h (e ▸ List.mem_cons_self ..)
+      rw [if_neg hne]
+      exact Defs.tyDefs_getCls_none ds C (fun hm => h (List.mem_cons_of_mem _ hm))
+  | .fld ds a _, C, h => Defs.tyDefs_getCls_none ds C (fun hm => h (List.mem_cons_of_mem _ hm))
+  | .cls ds C' U, C, h => by
+      simp only [Defs.tyDefs, TyDefs.getCls]
+      have hne : C ≠ C' := fun e => h (e ▸ List.mem_cons_self ..)
+      rw [if_neg hne]
+      exact Defs.tyDefs_getCls_none ds C (fun hm => h (List.mem_cons_of_mem _ hm))
+
 theorem Defs.getFld_none : ∀ (ds : Defs s) (a : Label), a ∉ ds.labels → ds.getFld a = none
   | .nil, _, _ => rfl
   | .typ ds _ _, a, h => Defs.getFld_none ds a (fun hm => h (List.mem_cons_of_mem _ hm))
@@ -51,37 +65,55 @@ theorem Defs.getFld_none : ∀ (ds : Defs s) (a : Label), a ∉ ds.labels → ds
       exact Defs.getFld_none ds a (fun hm => h (List.mem_cons_of_mem _ hm))
   | .cls ds _ _, a, h => Defs.getFld_none ds a (fun hm => h (List.mem_cons_of_mem _ hm))
 
-/-- `ds` is a prefix of the definitions `dsF` of a literal: what it defines, `dsF` defines alike. -/
+/-- `ds` is a prefix of the definitions `dsF` of a literal: its type definitions, its classes and its
+fields, `dsF` defines alike. -/
 def Pref (ds dsF : Defs s) : Prop :=
   (∀ A U, ds.tyDefs.get A = some U → dsF.tyDefs.get A = some U) ∧
+  (∀ C U, ds.tyDefs.getCls C = some U → dsF.tyDefs.getCls C = some U) ∧
   (∀ a rhs, ds.getFld a = some rhs → dsF.getFld a = some rhs)
 
-theorem Pref.refl (ds : Defs s) : Pref ds ds := ⟨fun _ _ h => h, fun _ _ h => h⟩
+theorem Pref.refl (ds : Defs s) : Pref ds ds := ⟨fun _ _ h => h, fun _ _ h => h, fun _ _ h => h⟩
 
 theorem Pref.typ {ds dsF : Defs s} {A : Label} {U : Ty s} (hA : A ∉ ds.labels) (h : Pref (.typ ds A U) dsF) :
     Pref ds dsF ∧ dsF.tyDefs.get A = some U := by
-  refine ⟨⟨fun A' U' h' => ?_, fun a rhs h' => h.2 a rhs h'⟩, h.1 A U (by simp [Defs.tyDefs, TyDefs.get])⟩
-  apply h.1 A' U'
-  have hne : A' ≠ A := by
-    intro e; subst e
-    rw [Defs.tyDefs_get_none ds A' hA] at h'; cases h'
-  simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
-  exact h'
+  refine ⟨⟨fun A' U' h' => ?_, fun C U' h' => ?_, fun a rhs h' => h.2.2 a rhs h'⟩,
+    h.1 A U (by simp [Defs.tyDefs, TyDefs.get])⟩
+  · apply h.1 A' U'
+    have hne : A' ≠ A := by
+      intro e; subst e
+      rw [Defs.tyDefs_get_none ds A' hA] at h'; cases h'
+    simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
+    exact h'
+  · apply h.2.1 C U'
+    have hne : C ≠ A := by
+      intro e; subst e
+      rw [Defs.tyDefs_getCls_none ds C hA] at h'; cases h'
+    simp only [Defs.tyDefs, TyDefs.getCls, if_neg hne]
+    exact h'
 
+/-- A class entry of the prefix is a class of the full definitions. -/
 theorem Pref.cls {ds dsF : Defs s} {C : Label} {U : Ty s} (hC : C ∉ ds.labels) (h : Pref (.cls ds C U) dsF) :
-    Pref ds dsF ∧ dsF.tyDefs.get C = some U := by
-  refine ⟨⟨fun A' U' h' => ?_, fun a rhs h' => h.2 a rhs h'⟩, h.1 C U (by simp [Defs.tyDefs, TyDefs.get])⟩
-  apply h.1 A' U'
-  have hne : A' ≠ C := by
-    intro e; subst e
-    rw [Defs.tyDefs_get_none ds A' hC] at h'; cases h'
-  simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
-  exact h'
+    Pref ds dsF ∧ dsF.tyDefs.getCls C = some U := by
+  refine ⟨⟨fun A' U' h' => ?_, fun C' U' h' => ?_, fun a rhs h' => h.2.2 a rhs h'⟩,
+    h.2.1 C U (by simp [Defs.tyDefs, TyDefs.getCls])⟩
+  · apply h.1 A' U'
+    have hne : A' ≠ C := by
+      intro e; subst e
+      rw [Defs.tyDefs_get_none ds A' hC] at h'; cases h'
+    simp only [Defs.tyDefs, TyDefs.get, if_neg hne]
+    exact h'
+  · apply h.2.1 C' U'
+    have hne : C' ≠ C := by
+      intro e; subst e
+      rw [Defs.tyDefs_getCls_none ds C' hC] at h'; cases h'
+    simp only [Defs.tyDefs, TyDefs.getCls, if_neg hne]
+    exact h'
 
 theorem Pref.fld {ds dsF : Defs s} {a : Label} {rhs : Rhs s} (ha : a ∉ ds.labels) (h : Pref (.fld ds a rhs) dsF) :
     Pref ds dsF ∧ dsF.getFld a = some rhs := by
-  refine ⟨⟨fun A U h' => h.1 A U h', fun a' rhs' h' => ?_⟩, h.2 a rhs (by simp [Defs.getFld])⟩
-  apply h.2 a' rhs'
+  refine ⟨⟨fun A U h' => h.1 A U h', fun C U h' => h.2.1 C U h', fun a' rhs' h' => ?_⟩,
+    h.2.2 a rhs (by simp [Defs.getFld])⟩
+  apply h.2.2 a' rhs'
   have hne : a ≠ a' := by
     intro e; subst e
     rw [Defs.getFld_none ds a ha] at h'; cases h'
@@ -263,14 +295,14 @@ theorem litView_typed {σ : Store s} {Γ : Ctx s} :
       exact .obj (litView_typed hL' hds' (Pref.refl ds')) hL'.live
   | l, dsF, hL, _, _, .cls (C := C) (U := U) (TelB := TelB) hds hC hU, hp => by
       obtain ⟨hp', hget⟩ := hp.cls hC
-      have hdef : Γ.defAt l C = some ((Ty.mu TelB).substPath l) := by
-        show (Γ.nodeAt l).bind (·.def C) = _
+      have hcls : Γ.clsAt l C = some ((Ty.mu TelB).substPath l) := by
+        show (Γ.nodeAt l).bind (·.cls C) = _
         rw [hL.node, ← hU]
         exact hget
       simp only [litView]
       refine .cons (.cons (litView_typed hL hds hp') (.le ?_)) (.le ?_)
       · exact FormT.single .bot
-      · exact FormT.single (.eqv (.defP hdef))
+      · exact FormT.single (.unseal (Ctx.clsOf_of_clsAt hcls))
 
 /-- The view of a store variable at its type. -/
 theorem varView_typed {σ : Store s} {Γ : Ctx s} (hσ : Store.Typed σ Γ) (x : BVar s .var) :
@@ -456,7 +488,7 @@ theorem LeCo.HasType.form (hσ : Store.Typed σ Γ) : LeCo.HasType Γ e S T →
       exact ⟨_, .trans hH hH', FormT.append hF hG⟩
   | .top => ⟨_, .top, FormT.single .top⟩
   | .bot => ⟨_, .bot, FormT.single .bot⟩
-  | .seal h => ⟨_, .seal h, FormT.single (.eqv (.symm (.defP (Ctx.defAt_of_clsAt h))))⟩
+  | .seal h => ⟨_, .seal h, FormT.single (.seal h)⟩
   | .eqToLe h => ⟨_, .eqToLe h, FormT.single (.eqv (EqCo.HasType.sound hσ h))⟩
   | .pi he hf => ⟨_, .pi he hf, FormT.single (.pi he hf)⟩
   | .obj hm => by

@@ -47,7 +47,8 @@ def Ctx.blockAt : Ctx s → BVar s .var → Option (Block s)
 def TyDefs.get : TyDefs s → Label → Option (Ty s)          -- W A, the newest
   | .nil, _ => none
   | .cons W A' U, A => if A = A' then some U else W.get A
-  | .cls W C U, A => if A = C then some U else W.get A                  -- v1: a class entry is read (plan D-3)
+  -- a class entry answers `none` at its label and hides an older plain entry there (stage NT)
+  | .cls W C _, A => if A = C then none else W.get A
 def TyDefs.getCls : TyDefs s → Label → Option (Ty s)       -- the class at C, the newest entry at C
   | .nil, _ => none
   | .cons W A _, C => if C = A then none else W.getCls C                -- a newer plain entry hides an older class
@@ -135,33 +136,65 @@ theorem Ctx.clsAt_ext (Γ : Ctx s) (x : BVar s .var) (bs : List Label) (C : Labe
   show ((Γ.blockAt x).bind (·.walk bs)).bind (·.cls C) = _
   cases Γ.blockAt x <;> rfl
 
-/-! ## A class entry is a type definition -/
+/-! ## A class entry is no type definition -/
 
-theorem TyDefs.get_of_getCls {W : TyDefs s} {C : Label} {U : Ty s} : W.getCls C = some U → W.get C = some U := by
+/-- A label holds a type definition or a class, never both. -/
+theorem TyDefs.get_none_of_getCls {W : TyDefs s} {C : Label} {U : Ty s} (h : W.getCls C = some U) : W.get C = none := by
   induction W with
-  | nil => intro h; nomatch h
+  | nil => nomatch h
   | cons W A U' ih =>
-      show (if C = A then none else W.getCls C) = some U → (if C = A then some U' else W.get C) = some U
-      by_cases h : C = A
-      · rw [if_pos h]; intro e; nomatch e
-      · rw [if_neg h, if_neg h]; exact ih
+      have h' : (if C = A then none else W.getCls C) = some U := h
+      by_cases e : C = A
+      · rw [if_pos e] at h'
+        nomatch h'
+      · rw [if_neg e] at h'
+        show (if C = A then some U' else W.get C) = none
+        rw [if_neg e]
+        exact ih h'
   | cls W C' U' ih =>
-      show (if C = C' then some U' else W.getCls C) = some U → (if C = C' then some U' else W.get C) = some U
-      by_cases h : C = C'
-      · rw [if_pos h, if_pos h]; exact id
-      · rw [if_neg h, if_neg h]; exact ih
+      show (if C = C' then none else W.get C) = none
+      by_cases e : C = C'
+      · rw [if_pos e]
+      · have h' : (if C = C' then some U' else W.getCls C) = some U := h
+        rw [if_neg e] at h'
+        rw [if_neg e]
+        exact ih h'
 
-theorem Block.def_of_cls {B : Block s} {C : Label} {U : Ty s} : B.cls C = some U → B.def C = some U := by
+theorem TyDefs.getCls_none_of_get {W : TyDefs s} {A : Label} {U : Ty s} (h : W.get A = some U) : W.getCls A = none := by
+  induction W with
+  | nil => nomatch h
+  | cons W A' U' ih =>
+      show (if A = A' then none else W.getCls A) = none
+      by_cases e : A = A'
+      · rw [if_pos e]
+      · have h' : (if A = A' then some U' else W.get A) = some U := h
+        rw [if_neg e] at h'
+        rw [if_neg e]
+        exact ih h'
+  | cls W C U' ih =>
+      have h' : (if A = C then none else W.get A) = some U := h
+      by_cases e : A = C
+      · rw [if_pos e] at h'
+        nomatch h'
+      · rw [if_neg e] at h'
+        show (if A = C then some U' else W.getCls A) = none
+        rw [if_neg e]
+        exact ih h'
+
+theorem Block.def_none_of_cls {B : Block s} {C : Label} {U : Ty s} : B.cls C = some U → B.def C = none := by
   cases B with
-  | node W _ => exact TyDefs.get_of_getCls
+  | node W _ => exact TyDefs.get_none_of_getCls
   | fwd _ => intro h; nomatch h
   | clo => intro h; nomatch h
 
-theorem Ctx.defAt_of_clsAt {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} : Γ.clsAt p C = some U → Γ.defAt p C = some U := by
-  show (Γ.nodeAt p).bind (·.cls C) = some U → (Γ.nodeAt p).bind (·.def C) = some U
-  cases Γ.nodeAt p with
-  | none => intro h; nomatch h
-  | some B => exact Block.def_of_cls
+/-- A class entry is no type definition at its label. -/
+theorem Ctx.defAt_none_of_clsAt {Γ : Ctx s} {p : Path s} {C : Label} {U : Ty s} (h : Γ.clsAt p C = some U) :
+    Γ.defAt p C = none := by
+  show (Γ.nodeAt p).bind (·.def C) = none
+  have h' : (Γ.nodeAt p).bind (·.cls C) = some U := h
+  cases hp : Γ.nodeAt p with
+  | none => rfl
+  | some B => rw [hp] at h'; exact Block.def_none_of_cls h'
 
 /-! ## Reading a block commutes with renaming and path substitution -/
 
@@ -175,8 +208,8 @@ theorem TyDefs.get_rename : ∀ (W : TyDefs s₁) (ρ : Rename s₁ s₂) (A : L
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_rename W ρ A]
   | .cls W C U, ρ, A => by
-      show (if A = C then some (U.rename ρ) else (W.rename ρ).get A) =
-        (if A = C then some U else W.get A).map (Ty.rename · ρ)
+      show (if A = C then none else (W.rename ρ).get A) =
+        (if A = C then none else W.get A).map (Ty.rename · ρ)
       by_cases h : A = C
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_rename W ρ A]
@@ -191,8 +224,8 @@ theorem TyDefs.get_subst : ∀ (W : TyDefs s₁) (σ : PathSubst s₁ s₂) (A :
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_subst W σ A]
   | .cls W C U, σ, A => by
-      show (if A = C then some (U.subst σ) else (W.subst σ).get A) =
-        (if A = C then some U else W.get A).map (Ty.subst · σ)
+      show (if A = C then none else (W.subst σ).get A) =
+        (if A = C then none else W.get A).map (Ty.subst · σ)
       by_cases h : A = C
       · rw [if_pos h, if_pos h]; rfl
       · rw [if_neg h, if_neg h, TyDefs.get_subst W σ A]
@@ -399,12 +432,16 @@ private abbrev lC : Label := .typ 1
 private def B₁ : Block ([],x) := .node (.cls (.cons .nil lA .top) lC .top) .nil
 /-- `node (nil[class C ↦ ⊤][C ↦ ⊥]) nil`, a newer plain entry over a class -/
 private def B₂ : Block ([],x) := .node (.cons (.cls .nil lC .top) lC .bot) .nil
+/-- `node (nil[C ↦ ⊥][class C ↦ ⊤]) nil`, a class over an older plain entry -/
+private def B₃ : Block ([],x) := .node (.cls (.cons .nil lC .bot) lC .top) .nil
 
 example : B₁.cls lC = some .top := by decide
 example : B₁.cls lA = none := by decide
-example : B₁.def lC = some .top := by decide
+example : B₁.def lC = none := by decide
 example : B₂.cls lC = none := by decide
 example : B₂.def lC = some .bot := by decide
+example : B₃.cls lC = some .top := by decide
+example : B₃.def lC = none := by decide
 
 end ClsBlockTests
 

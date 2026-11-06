@@ -47,7 +47,7 @@ The checker of T.8 decides three programs by `decide +kernel` (group g5).
 `C` by `DF-Cls` and a constructor `newC` that seals its instance at `C` by `LE-Seal`.
 `classProg_checks` decides the program that builds an instance and calls its method.
 `sealOpaque_rejected` decides that a seal at a let-bound module fails, with `litOnly_typed` as its
-positive control.  `classDefP_v1` records the v1 reading of a class entry by `EQ-Def`.
+positive control.  `classDefP_none` says that `EQ-Def` has no type at a class selection.
 -/
 
 namespace Nominal.FCn
@@ -428,6 +428,10 @@ theorem danglingCtx_defAt (p : Path ([],x)) (A : Label) : danglingCtx.defAt p A 
   unfold Ctx.defAt
   rcases danglingCtx_nodeAt p with h | ⟨q, h⟩ | h <;> simp [h, Block.def, TyDefs.get]
 
+theorem danglingCtx_clsAt (p : Path ([],x)) (C : Label) : danglingCtx.clsAt p C = none := by
+  unfold Ctx.clsAt
+  rcases danglingCtx_nodeAt p with h | ⟨q, h⟩ | h <;> simp [h, Block.cls, TyDefs.getCls]
+
 /-! ## The model -/
 
 def danglingModel : Model danglingCtx where
@@ -472,6 +476,7 @@ def danglingModel : Model danglingCtx where
   teq_symm _ _ h := h.symm
   teq_trans _ _ _ h₁ h₂ := h₁.trans h₂
   teq_defP p A W h := by rw [danglingCtx_defAt] at h; cases h
+  sem_seal p C U h := by rw [danglingCtx_clsAt] at h; cases h
   teq_lift T p q h := Ty.nfo_subst_congr T (σ := PathSubst.one p) (σ' := PathSubst.one q) (fun y => by
     cases y with
     | here => exact h
@@ -651,8 +656,8 @@ theorem danglingProg_synth : synthTm .nil danglingProg = none := by decide +kern
 /-! ## A class (group g7 of N1)
 
 A module literal `mC` declares a class `C` by `DF-Cls` and a constructor `newC` whose instance is
-sealed at `C` by `LE-Seal`.  In v1 a class entry of a block is read by `defAt`, so `EQ-Def` at
-`z∙C` answers the body `Bd` (`classDefP_v1`).  Stage NT of plan XII removes that reading. -/
+sealed at `C` by `LE-Seal`.  A class entry is no type definition, so `EQ-Def` at `z∙C` has no type
+(`classDefP_none`).  The class is opaque outside its seal. -/
 
 namespace Class
 
@@ -699,9 +704,9 @@ theorem classProg_checks : checkTm .nil progC .top = true := by decide +kernel
 theorem litOnly_typed : synthTm .nil litOnly = some (.mu TelI) := by decide +kernel
 /-- A seal at a let-bound module is rejected: `LE-Seal` finds no block at an opaque binder. -/
 theorem sealOpaque_rejected : checkTm .nil progSealOut .top = false := by decide +kernel
-/-- The v1 reading of a class entry: `EQ-Def` at `z∙C` answers the body `Bd`. -/
-theorem classDefP_v1 : synthLe (Ctx.nil.cons (.transparent (.mu TelmC) dsmC.block))
-    (.eqToLe (.defP (.var .here) C)) = some (.sel (.var .here) C, (Bd : Ty []).weaken) := by decide +kernel
+/-- A class entry is no type definition: `EQ-Def` at `z∙C` has no type. -/
+theorem classDefP_none : synthLe (Ctx.nil.cons (.transparent (.mu TelmC) dsmC.block))
+    (.eqToLe (.defP (.var .here) C)) = none := by decide +kernel
 
 end Class
 

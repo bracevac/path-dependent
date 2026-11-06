@@ -188,15 +188,41 @@ theorem View.liftAct_typed (hπ : PEq.HasType Γ π p q) (hr : PRead Γ γ p q) 
           rw [show (Ty.mu Tel).substPath p = .mu (Tel.subst (PathSubst.one p).lift) from rfl, Γ.res_mu] at e
           cases e
   | .none, T, r, h => by
-      obtain ⟨p', A', e, hn, hl⟩ := h.none_inv
+      obtain ⟨p', A', e, hn, hcn, hl⟩ := h.none_inv_cls
       have hW : View.liftAct T π r .none = .none := by cases T <;> rfl
       rw [hW]
       cases T with
       | sel P A =>
           have hc := canon_one_congr hr P
-          rcases Γ.res_sel_cases hc A with ⟨_, h₂, _, h₄⟩ | heq
-          · rw [show (Ty.sel P A).substPath q = .sel (P.subst (PathSubst.one q)) A from rfl, h₄]
-            exact .none h₂ hl
+          rcases Γ.res_sel_cases hc A with ⟨_, h₂, h₃, h₄⟩ | heq
+          · rw [show (Ty.sel P A).substPath p = .sel (P.subst (PathSubst.one p)) A from rfl, h₃] at e
+            rw [show (Ty.sel P A).substPath q = .sel (P.subst (PathSubst.one q)) A from rfl, h₄]
+            rw [← e, Γ.clsOf_sel_congr hc A] at hcn
+            exact .none h₂ hcn hl
+          · rw [show (Ty.sel P A).substPath q = .sel (P.subst (PathSubst.one q)) A from rfl, ← heq]
+            exact h
+      | bot =>
+          rw [show (Ty.bot).substPath p = (.bot : Ty s) from rfl, Γ.res_bot] at e
+          cases e
+      | pi S U =>
+          rw [show (Ty.pi S U).substPath p = .pi (S.substPath p) (U.subst (PathSubst.one p).lift) from rfl,
+            Γ.res_pi] at e
+          cases e
+      | mu Tel =>
+          rw [show (Ty.mu Tel).substPath p = .mu (Tel.subst (PathSubst.one p).lift) from rfl, Γ.res_mu] at e
+          cases e
+  | .inst W, T, r, h => by
+      obtain ⟨p', C', U, e, hcU, hWU, hl⟩ := h.inst_inv
+      have hK : View.liftAct T π r (.inst W) = .inst W := by cases T <;> rfl
+      rw [hK]
+      cases T with
+      | sel P A =>
+          have hc := canon_one_congr hr P
+          rcases Γ.res_sel_cases hc A with ⟨_, _, h₃, h₄⟩ | heq
+          · rw [show (Ty.sel P A).substPath p = .sel (P.subst (PathSubst.one p)) A from rfl, h₃] at e
+            rw [show (Ty.sel P A).substPath q = .sel (P.subst (PathSubst.one q)) A from rfl, h₄]
+            rw [← e, Γ.clsOf_sel_congr hc A] at hcU
+            exact .inst hcU hWU hl
           · rw [show (Ty.sel P A).substPath q = .sel (P.subst (PathSubst.one q)) A from rfl, ← heq]
             exact h
       | bot =>
@@ -407,10 +433,15 @@ theorem View.repath_typed : ∀ (W : View s) (T : Ty s) (π : PEq s) (r r' : Pat
       rw [e]
       exact .fn hv hlam hF hl (hR.of_join hr.2)
   | .none, T, π, r, r', hπ, hr, hl, h => by
-      obtain ⟨p, A, e, hn, _⟩ := h.none_inv
+      obtain ⟨p, A, e, hn, hcn, _⟩ := h.none_inv_cls
       simp only [View.repath]
       rw [e]
-      exact .none hn hl
+      exact .none hn hcn hl
+  | .inst W, T, π, r, r', hπ, hr, hl, h => by
+      obtain ⟨p, C, U, e, hc, hW, _⟩ := h.inst_inv
+      simp only [View.repath]
+      rw [e, hc]
+      exact .inst hc (View.repath_typed W U π r r' hπ hr hl hW) hl
 theorem VEntries.repath_typed : ∀ (V : VEntries s) (Tel : Telescope (s,x)) (π : PEq s) (r r' : Path s),
     PEq.HasType Γ π r' r → PRead Γ γ r' r → Live γ r' → VEntriesT Γ γ r Tel V →
     VEntriesT Γ γ r' Tel (VEntries.repath Γ V Tel π r r')
@@ -543,6 +574,15 @@ theorem AtomT.apply : AtomT Γ γ A S T → ∀ (r : Path s) (W : View s), ViewT
       refine .obj (.cons .nil (.is ?_)) hW.live
       rw [Ty.weaken_substPath]
       exact h1
+  | .seal hc, r, W, hW => by
+      simp only [View.applyAtom]
+      rw [Ctx.res_cls (Ctx.clsOf_of_clsAt hc)]
+      exact .inst (Ctx.clsOf_of_clsAt hc) hW hW.live
+  | .unseal hc, r, W, hW => by
+      rw [Ctx.res_cls hc] at hW
+      obtain ⟨W', rfl, hW'⟩ := ViewT.cls_inv hW hc
+      simp only [View.applyAtom]
+      exact hW'
 theorem FormT.apply : FormT Γ γ F S T → ∀ (r : Path s) (W : View s), ViewT Γ γ r (Γ.res S) W →
     ViewT Γ γ r (Γ.res T) (View.applyForm F r W)
   | .nil, _, W, hW => hW
@@ -606,6 +646,7 @@ mutual
 def View.vals : View s → Value s → Prop
   | .obj V, v₀ => VEntries.vals V v₀
   | .fn v _, v₀ => v = v₀
+  | .inst W, v₀ => View.vals W v₀
   | .none, _ => True
 def VEntries.vals : VEntries s → Value s → Prop
   | .nil, _ => True
@@ -646,6 +687,7 @@ theorem View.liftAct_vals : ∀ (W : View s) (T : Ty (s,x)) (π : PEq s) (r : Pa
       | sel _ _ => exact h
       | bot => exact h
       | mu _ => exact h
+  | .inst W, T, _, _, _, h => by cases T <;> exact h
   | .none, T, _, _, _, h => by cases T <;> exact h
 theorem VEntries.liftAct_vals : ∀ (V : VEntries s) (Tel : Telescope ((s,x),x)) (π : PEq s) (r : Path s) (v₀ : Value s),
     VEntries.vals V v₀ → VEntries.vals (VEntries.liftAct V Tel π r) v₀
@@ -710,11 +752,13 @@ theorem View.applyAtom_vals : ∀ (A : Atom s) (r : Path s) (W : View s) (v₀ :
       | fn v F => exact h
       | obj _ => exact h
       | none => exact h
+      | inst _ => exact h
   | .obj Es, r, W, v₀, h => by
       cases W with
       | obj V => exact Entries.apply_vals Es r V v₀ h
       | fn _ _ => exact h
       | none => exact h
+      | inst _ => exact h
   | .top, r, W, v₀, h => by cases W <;> trivial
   | .bot, r, W, v₀, h => by cases W <;> exact h
   | .pair F G, r, W, v₀, h => by
@@ -727,8 +771,10 @@ theorem View.applyAtom_vals : ∀ (A : Atom s) (r : Path s) (W : View s) (v₀ :
           | obj V' => rw [e1] at h1; rw [e2] at h2; exact VEntries.append_vals V V' v₀ h1 h2
           | fn _ _ => rw [e1] at h1; exact h1
           | none => rw [e1] at h1; exact h1
+          | inst _ => rw [e1] at h1; exact h1
       | fn _ _ => rw [e1] at h1; exact h1
       | none => rw [e1] at h1; exact h1
+      | inst _ => rw [e1] at h1; exact h1
   | .bnd i, r, W, v₀, h => by
       cases W with
       | obj V =>
@@ -739,7 +785,15 @@ theorem View.applyAtom_vals : ∀ (A : Atom s) (r : Path s) (W : View s) (v₀ :
           · trivial
       | fn _ _ => exact h
       | none => exact h
+      | inst _ => exact h
   | .into F, r, W, v₀, h => ⟨trivial, View.applyForm_vals F r W v₀ h⟩
+  | .seal _ _, _, _, _, h => h
+  | .unseal _ _, r, W, v₀, h => by
+      cases W with
+      | inst W' => exact h
+      | obj _ => trivial
+      | fn _ _ => trivial
+      | none => trivial
 theorem View.applyForm_vals : ∀ (F : Form s) (r : Path s) (W : View s) (v₀ : Value s),
     View.vals W v₀ → View.vals (View.applyForm F r W) v₀
   | .nil, _, _, _, h => h
