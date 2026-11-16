@@ -6,14 +6,54 @@ from the compositions a program must supply. The automatic relation, written
 the additional reasoning. Composing certificates records the intermediate type of a transitivity
 derivation, so checking composition does not search for it.
 
-This development applies that discipline to WadlerFest DOT in monadic normal
-form. It uses the existing `DotMNF` types and contexts, including dependent
+The aim is a self-contained calculus of this kind for each of two source
+systems: full System F-sub, and WadlerFest DOT in monadic normal form. Each
+calculus should have only the two certificate forms `step[S,T]` and `c ; d`, a
+safety proof from its own typing, and a correspondence with the plain source
+system. For F-sub this is done. For DOT it is open: the DOT part of this
+directory is a first design, called `H`, that does not meet the aim.
+
+## F-sub
+
+[`Fsub/`](Fsub/README.md) defines the calculus for full F-sub, with its own
+syntax, typing and reduction. Its certificates are exactly `step` and `;`, and
+its primitive relation is not transitive (`primitive_nontrans`). Term typing has
+no subsumption rule. One primitive comparison is implicit at the argument of an
+application and at the bound of a type application.
+
+Progress, preservation and safety are proved directly on erased terms, for terms
+typed in the empty term context under any type context. Preservation proves that
+the reduct has an annotation; it does not compute one.
+
+`typability_iff` relates the calculus to declarative F-sub, whose typing has a
+subsumption rule over subtyping with transitivity:
+
+```text
+Γ; Δ ⊢F e : T    ↔    ∃ h, erase(h) = e ∧ Γ; Δ ⊢ h : T
+```
+
+From left to right this is an elaboration that keeps the type and the program.
+For terms it is a theorem that an annotated term exists, and not a function,
+because declarative typing is a proposition. For subtyping, `Sub.toCert` is a
+function from derivations to certificates. A computable elaborator for terms is
+not built.
+
+## DOT: the explored design `H`
+
+`H` uses the existing `DotMNF` types and contexts, including dependent
 functions, recursive objects, intersections, and type members with both bounds.
 Every DOT-MNF typing has an annotated term at the same type whose erasure is the
 original program. The annotations change what the checker is given; they erase
 before execution on the DOT-MNF machine.
 
-## Primitive subtyping and composition
+`H` differs from the calculus aimed at in two ways. Its certificates are not
+only `step` and `;`: a type selection carries evidence for its receiver, as
+described below. And it has no safety proof of its own: `compiled_safety` erases
+the program and uses the DOT-MNF theorem. The receiver examples below concern the
+primitive relation that `H` fixes. They do not show that `step` and `;` are too
+weak for DOT under another primitive relation or other implicit rules.
+
+### Primitive subtyping and composition
 
 `Prim` contains structural subtyping rules and rules for the bounds exposed by a
 variable's declared type. Exposing a member can pass through intersections and
@@ -62,7 +102,7 @@ derivation translates to `;`, but an annotation of the same program need not
 write every step of that derivation. These examples are checked in
 [`Hybrid.lean`](Hybrid.lean).
 
-## Type selections need receiver evidence
+### Type selections need receiver evidence
 
 DOT's selection rules depend on the type of the receiver. Its declared type
 need not expose the member used in a derivation. For example:
@@ -92,7 +132,7 @@ under structural type constructors, including dependent function binders. These
 forms account for the DOT reasoning that the two constructors `step` and `;`
 alone do not express with this primitive relation.
 
-## Formal results
+### Formal results of `H`
 
 The central equivalences are `coercion_iff` and `typability_iff`:
 
@@ -119,16 +159,16 @@ the original certificates.
 
 ## Sources and build
 
-[`Hybrid.lean`](Hybrid.lean) collects the main statements and examples.
+[`Hybrid.lean`](Hybrid.lean) collects the main statements and examples of `H`.
 `Prim.lean`, `Syntax.lean`, and `Typing.lean` define the calculus;
 `Check.lean` and `Typer.lean` implement its checkers;
 `Sound.lean`, `Complete.lean`, and `Annotate.lean` relate it to DOT-MNF.
 [`REFERENCE.md`](REFERENCE.md) lists every module and theorem.
 
-[`Fsub/`](Fsub/README.md) studies the same idea in full System F-sub, where `step`
-and `;` suffice. It proves certificate substitution, narrowing, inversion, and
-type safety. [`Bridge/`](Bridge/README.md) preserves F-sub primitive steps and
-certificates in DOT, mapping composition to composition. The encoding does not
+[`Fsub/`](Fsub/README.md) is the F-sub calculus. It proves certificate
+substitution, narrowing, inversion, and type safety. [`Bridge/`](Bridge/README.md)
+preserves F-sub primitive steps and certificates in `H`, mapping composition to
+composition. The encoding does not
 reflect subtyping: DOT relates some encoded types that F-sub keeps separate.
 [`FsubDeclarative/`](FsubDeclarative/README.md) contains the matched declarative safety proof, and
 [`FsubCompare/`](FsubCompare/README.md) compares certificates with the existing FCsub development.

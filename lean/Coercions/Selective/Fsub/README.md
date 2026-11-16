@@ -25,14 +25,21 @@ lemmas `CTy.narrow`, `CTy.inst`, `CTy.arr_inv`, `CTy.all_inv`).
 Terms are `x | λ(x : S). t | t u | Λ(X <: S). t | t [U] | t ▷ c`. The typing judgment `HTy` has no
 subsumption rule. It applies one primitive comparison at the argument of an application and at the
 bound of a type application, and a cast applies its written certificate. A term has at most one type
-(`HTy.unique`), `synthTm` checks it (`synthTm_iff`), and `typability_iff` says that the erasures of
-typed terms are exactly the terms typed by declarative F-sub. Progress, preservation and safety are
+(`HTy.unique`), and `synthTm` checks it (`synthTm_iff`). Progress, preservation and safety are
 proved directly on erased terms, for terms closed in term variables. Preservation shows that the
 reduct has an annotation; it does not compute one.
 
-Compared with the DOT development in the parent directory, F-sub needs no evidence beyond `step` and
+`typability_iff` relates the calculus to declarative F-sub: `FTy Γ Δ e T` holds exactly when some
+annotated term with erasure `e` has type `T`. `FTy` is stated with a subsumption rule over `Sub`,
+which has a transitivity rule, and uses no certificate. So every declarative typing has an
+elaboration at the same type with the same erasure (`elaboration_complete`), and every typed
+annotated term erases to a declaratively typed one (`elaboration_typed`). The elaboration of terms
+is a theorem that the annotated term exists; it is not a function, because `FTy` is a proposition.
+`Sub.toCert` is a function from subtyping derivations to certificates.
+
+Compared with the DOT design `H` in the parent directory, F-sub needs no evidence beyond `step` and
 `;`, because a variable's bound is read from the context and never depends on the typing of a
-receiver. [`../Bridge`](../Bridge/README.md) translates these certificates into the DOT calculus.
+receiver. [`../Bridge`](../Bridge/README.md) translates these certificates into `H`.
 
 The checker decides validity of a given certificate. `coercion_iff` relates certificate existence to
 full F-sub subtyping; it supplies no procedure for deciding existence.

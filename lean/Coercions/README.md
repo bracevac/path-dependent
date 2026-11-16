@@ -192,16 +192,18 @@ checker of the Scala 3 compiler and is complete up to its recursion limit.
 
 ## Selective subtyping
 
-**`Selective/`** gives DOT-MNF a second typing discipline over the same types, contexts and programs.
-Subtyping is a decidable relation without transitivity, applied implicitly at the argument of an
-application and at the subject of a cast.  Every further step is written in the term as a certificate:
-composing certificates takes the place of the transitivity rule, and a type selection carries evidence
-for its receiver.  `typability_iff` and `coercion_iff` say that annotated terms and certificates cover
-exactly DOT-MNF's typing and subtyping, the checkers are sound and complete for the annotations they
-are given, and `compiled_safety` gives safety of the erased program through `dot_safety`.  Library
-`Selective`, a default target, see [Selective/README.md](Selective/README.md).  The same directory holds
-the F-sub companion and its translation into the DOT calculus, as the libraries `SelectiveFsub`,
-`SelectiveFsubDeclarative`, `SelectiveFsubCompare` and `SelectiveBridge`, which are not default targets.
+**`Selective/`** studies subtyping without a transitivity rule.  A decidable relation is applied
+implicitly at a few places in a term, and every further step is written as a certificate built from
+`step[S,T]` and `c ; d`.  For full F-sub this is a calculus of its own, the library `SelectiveFsub` in
+[Selective/Fsub/](Selective/Fsub/README.md): type safety is proved directly from its typing, and
+`typability_iff` relates it to declarative F-sub.  For DOT-MNF the same is open.  The library
+`Selective`, a default target, holds a first design: its annotated terms and certificates cover exactly
+DOT-MNF's typing and subtyping (`typability_iff`, `coercion_iff`), but a type selection carries evidence
+for its receiver beyond the two certificate forms, and safety of the erased program comes from
+`dot_safety`.  See [Selective/README.md](Selective/README.md).  The libraries
+`SelectiveFsubDeclarative`, `SelectiveFsubCompare` and `SelectiveBridge` hold a declarative control, a
+comparison with FCsub evidence and a translation of F-sub certificates into the DOT design; like
+`SelectiveFsub` they are not default targets.
 
 ## Scala syntax
 

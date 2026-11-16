@@ -2,7 +2,8 @@
 
 The module list and the theorem inventory of the library `Selective`. The introduction is
 [README.md](README.md); [`Hybrid.lean`](Hybrid.lean) collects the main statements and two examples.
-The calculus is called `H` below. Its types and contexts are `DotMNF.Ty` and `DotMNF.Ctx`.
+The calculus is called `H` below. Its types and contexts are `DotMNF.Ty` and `DotMNF.Ctx`. `H` is an
+explored design and not the DOT calculus aimed at; the README says what separates the two.
 
 ## Replay
 
