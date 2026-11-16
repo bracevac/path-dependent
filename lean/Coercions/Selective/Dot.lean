@@ -6,6 +6,7 @@ import Coercions.Selective.Dot.Rename
 import Coercions.Selective.Dot.Subst
 import Coercions.Selective.Dot.State
 import Coercions.Selective.Dot.Tight
+import Coercions.Selective.Dot.Lift
 import Coercions.Selective.Dot.Probes
 
 /-!

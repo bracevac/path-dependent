@@ -374,10 +374,11 @@ theorem Prim.rename : ∀ {s1 s2 : Sig} {Γ : Ctx s1} {S T : ATy s1}
   | _, _, _, _, _, _, _, .andR hT hU, h => .andR (Prim.rename hT h) (Prim.rename hU h)
   | _, _, _, _, _, _, _, .fld hT, h => .fld (Prim.rename hT h)
   | _, _, _, _, _, _, _, .typ hS hT, h => .typ (Prim.rename hS h) (Prim.rename hT h)
-  | _, _, _, _, _, _, _, .all hS hT, h => by
+  | _, _, _, _, _, _, _, .all hS hW hT, h => by
       have ih := Prim.rename hT (h.cons _)
-      simp only [← ATy.erase_rename] at ih
-      exact .all (Prim.rename hS h) ih
+      have iw := Wf.rename hW (h.cons _)
+      simp only [← ATy.erase_rename] at ih iw
+      exact .all (Prim.rename hS h) iw ih
   | _, _, _, _, _, _, _, .selU hp hT e, h =>
       .selU (PathTy.rename hp h) (Wf.rename hT h) (by rw [ATy.erase_rename, e])
   | _, _, _, _, _, _, _, .selL hp hS e, h =>

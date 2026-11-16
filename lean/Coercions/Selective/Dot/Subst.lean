@@ -164,10 +164,11 @@ theorem Prim.psubst : ∀ {s1 s2 : Sig} {Γ : Ctx s1} {S T : ATy s1}
   | _, _, _, _, _, _, _, hσ, .andR hT hU => .andR (Prim.psubst hσ hT) (Prim.psubst hσ hU)
   | _, _, _, _, _, _, _, hσ, .fld hT => .fld (Prim.psubst hσ hT)
   | _, _, _, _, _, _, _, hσ, .typ hS hT => .typ (Prim.psubst hσ hS) (Prim.psubst hσ hT)
-  | _, _, _, _, _, _, _, hσ, .all hS hT => by
+  | _, _, _, _, _, _, _, hσ, .all hS hW hT => by
       have ih := Prim.psubst (hσ.lift _) hT
-      simp only [← ATy.erase_psubst] at ih
-      exact .all (Prim.psubst hσ hS) ih
+      have iw := Wf.psubst (hσ.lift _) hW
+      simp only [← ATy.erase_psubst] at ih iw
+      exact .all (Prim.psubst hσ hS) iw ih
   | _, _, _, _, _, _, _, hσ, .selU hp hT e =>
       .selU (PathTy.psubst hσ hp) (Wf.psubst hσ hT) (by rw [ATy.erase_psubst, e])
   | _, _, _, _, _, _, _, hσ, .selL hp hS e =>

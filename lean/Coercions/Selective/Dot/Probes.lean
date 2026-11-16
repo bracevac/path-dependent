@@ -303,7 +303,7 @@ theorem step_refl_validates_under_binder {S T : Ty S1} :
           | all _ hb =>
               cases hb with
               | sel hp => exact bad hp
-      | all _ hb =>
+      | all _ _ hb =>
           cases hb with
           | refl hw _ _ =>
               cases hw with
@@ -357,7 +357,8 @@ def certY : Cert S1 :=
 
 theorem certY_typed :
     CertTy Γ4 certY (.all D4 (.sel y4 lB)) (.all D4 (.fld la .top)) :=
-  .step (.all (.refl (Wf.embed _ D4) (Wf.embed _ D4) rfl) (.selU r4_typed (.fld .top) rfl))
+  .step (.all (.refl (Wf.embed _ D4) (Wf.embed _ D4) rfl) (.sel r4_typed)
+    (.selU r4_typed (.fld .top) rfl))
 
 /-- With the receiver left as the variable `y`, the step is not primitive. -/
 theorem certY_bare_gap :
@@ -366,11 +367,61 @@ theorem certY_bare_gap :
   change Prim Γ4 (.all D4.embed (.sel (.var y4) lB)) (.all D4.embed (.fld la .top)) at h
   cases h with
   | refl _ _ e => cases e
-  | all _ hb =>
+  | all _ _ hb =>
       cases hb with
       | refl _ _ e => cases e
       | selU hp _ _ =>
           have h1 := (var_inv hp).noRecE (by intro M e; cases e)
           cases h1
+
+/-! ## A function type is checked under its own domain
+
+`D = {A : ⊤..⊤}` and `p = x ▷ step[D, ⊤]`. The cast in `p` is valid under
+`x : D` and invalid under `x : ⊤`, where `x` does not have the type `D`. So
+`∀(x : ⊤) p.B` is not a valid endpoint, and the step from it to `∀(x : D) p.B`
+is rejected although the two bodies are compared under `x : D`. -/
+
+/-- The path under a cast has the source of the cast among its types. -/
+theorem cast_inv_aux {Γ : Ctx s} : ∀ {q : Path s} {T : Ty s}, PathTy Γ q T →
+    ∀ p c, q = .cast p c → ∃ S U, PathTy Γ p S ∧ CertTy Γ c S U
+  | _, _, .var, _, _, e => by cases e
+  | _, _, .cast hp hc, _, _, e => by cases e; exact ⟨_, _, hp, hc⟩
+  | _, _, .keep hp hc _, _, _, e => by cases e; exact ⟨_, _, hp, hc⟩
+  | _, _, .recI h, p, c, e => cast_inv_aux h p c e
+  | _, _, .recE h, p, c, e => cast_inv_aux h p c e
+  | _, _, .andI h _, p, c, e => cast_inv_aux h p c e
+
+theorem cast_inv {Γ : Ctx s} {p : Path s} {c : Cert s} {T : Ty s}
+    (h : PathTy Γ (.cast p c) T) : ∃ S U, PathTy Γ p S ∧ CertTy Γ c S U :=
+  cast_inv_aux h p c rfl
+
+def D5 : Ty s := .typ lA .top .top
+
+/-- `p = x ▷ step[D, ⊤]`, under the binder. -/
+def p5 : Path S1 := .cast (.var .here) (.step D5.embed .top)
+
+/-- Under `x : D` the path has a type. -/
+theorem p5_typed_under_D : PathTy (.cons .nil D5) p5 .top :=
+  .cast (.var (x := .here)) (.step (.top (Wf.embed _ D5)))
+
+/-- Under `x : ⊤` it has none: `x` does not have the source of the cast. -/
+theorem p5_untyped_under_top {T : Ty S1} : ¬ PathTy (.cons .nil .top) p5 T := by
+  intro h
+  obtain ⟨S, U, hp, hc⟩ := cast_inv h
+  cases hc with
+  | step _ =>
+      have h1 := (var_inv hp).noRecE (by intro M e; cases e)
+      cases h1
+
+theorem step_checks_source_body {S T : Ty []} :
+    ¬ CertTy .nil (.step (.all .top (.sel p5 lB)) (.all D5.embed (.sel p5 lB))) S T := by
+  intro h
+  cases h with
+  | step hp =>
+      cases hp with
+      | refl _ _ e => cases e
+      | all _ hw _ =>
+          cases hw with
+          | sel hq => exact p5_untyped_under_top hq
 
 end SelDot.Probes

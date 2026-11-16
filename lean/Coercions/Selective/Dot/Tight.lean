@@ -436,7 +436,7 @@ theorem Prim.tight {Γ : Ctx s} (hΓ : Γ.Inert) :
   | _, _, .andR h1 h2 => .and (Prim.tight hΓ h1) (Prim.tight hΓ h2)
   | _, _, .fld h => .fld (Prim.tight hΓ h)
   | _, _, .typ h1 h2 => .typ (Prim.tight hΓ h1) (Prim.tight hΓ h2)
-  | _, _, .all h1 h2 => .all (Prim.tight hΓ h1) ⟨.step _ _, .step h2⟩
+  | _, _, .all h1 _ h2 => .all (Prim.tight hΓ h1) ⟨.step _ _, .step h2⟩
   | _, _, .selU hp _ e => e ▸ (TTy.sel_bounds hΓ (PathTy.tight hΓ hp)).2
   | _, _, .selL hp _ e => e ▸ (TTy.sel_bounds hΓ (PathTy.tight hΓ hp)).1
 

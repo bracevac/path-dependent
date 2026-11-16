@@ -29,3 +29,9 @@ open SelDot SelDot.Probes
 #print axioms r4_typed
 #print axioms certY_typed
 #print axioms certY_bare_gap
+#print axioms cast_inv
+#print axioms p5_typed_under_D
+#print axioms p5_untyped_under_top
+#print axioms step_checks_source_body
+#print axioms Prim.wf_left
+#print axioms Prim.wf_right

@@ -81,9 +81,10 @@ inductive Wf : {s : Sig} → Ctx s → ATy s → Prop where
 
 /-- Primitive subtyping between endpoints. There is no transitivity rule.
 Every rule that does not compare a part of an endpoint checks that part with
-`Wf`, so a derivation checks every cast stored in its two endpoints, in the
-context in which the part is compared. For two function types that context has
-the smaller domain. -/
+`Wf`, so both endpoints of a derivation are valid (`Prim.wf_left`,
+`Prim.wf_right`). The bodies of two function types are compared under the
+smaller domain; the body of the larger function type is also checked under its
+own domain. -/
 inductive Prim : {s : Sig} → Ctx s → ATy s → ATy s → Prop where
   | top : Wf Γ S → Prim Γ S .top
   | bot : Wf Γ T → Prim Γ .bot T
@@ -94,7 +95,8 @@ inductive Prim : {s : Sig} → Ctx s → ATy s → ATy s → Prop where
   | andR : Prim Γ S T → Prim Γ S U → Prim Γ S (.and T U)
   | fld : Prim Γ T U → Prim Γ (.fld a T) (.fld a U)
   | typ : Prim Γ S2 S1 → Prim Γ T1 T2 → Prim Γ (.typ A S1 T1) (.typ A S2 T2)
-  | all : Prim Γ S2 S1 → Prim (Γ.cons S2.erase) T1 T2 → Prim Γ (.all S1 T1) (.all S2 T2)
+  | all : Prim Γ S2 S1 → Wf (Γ.cons S1.erase) T1 → Prim (Γ.cons S2.erase) T1 T2 →
+      Prim Γ (.all S1 T1) (.all S2 T2)
   /-- `Sel-<:`, at the written receiver. -/
   | selU : PathTy Γ p (.typ A L U) → Wf Γ T → U = T.erase → Prim Γ (.sel p A) T
   /-- `<:-Sel`, at the written receiver. -/
@@ -117,6 +119,38 @@ theorem Wf.embed : ∀ {s : Sig} (Γ : Ctx s) (T : Ty s), Wf Γ T.embed
   | _, _, .mu T => .mu (Wf.embed _ T)
   | _, Γ, .all S T => .all (Wf.embed Γ S) (Wf.embed _ T)
   | _, Γ, .and S T => .and (Wf.embed Γ S) (Wf.embed Γ T)
+
+mutual
+
+/-- The left endpoint of a primitive step is valid. -/
+theorem Prim.wf_left : ∀ {s : Sig} {Γ : Ctx s} {S T : ATy s}, Prim Γ S T → Wf Γ S
+  | _, _, _, _, .top hw => hw
+  | _, _, _, _, .bot _ => .bot
+  | _, _, _, _, .refl hs _ _ => hs
+  | _, _, _, _, .andL1 h hw => .and (Prim.wf_left h) hw
+  | _, _, _, _, .andL2 hw h => .and hw (Prim.wf_left h)
+  | _, _, _, _, .andR h _ => Prim.wf_left h
+  | _, _, _, _, .fld h => .fld (Prim.wf_left h)
+  | _, _, _, _, .typ h1 h2 => .typ (Prim.wf_right h1) (Prim.wf_left h2)
+  | _, _, _, _, .all h1 hw _ => .all (Prim.wf_right h1) hw
+  | _, _, _, _, .selU hp _ _ => .sel hp
+  | _, _, _, _, .selL _ hw _ => hw
+
+/-- The right endpoint of a primitive step is valid. -/
+theorem Prim.wf_right : ∀ {s : Sig} {Γ : Ctx s} {S T : ATy s}, Prim Γ S T → Wf Γ T
+  | _, _, _, _, .top _ => .top
+  | _, _, _, _, .bot hw => hw
+  | _, _, _, _, .refl _ ht _ => ht
+  | _, _, _, _, .andL1 h _ => Prim.wf_right h
+  | _, _, _, _, .andL2 _ h => Prim.wf_right h
+  | _, _, _, _, .andR h1 h2 => .and (Prim.wf_right h1) (Prim.wf_right h2)
+  | _, _, _, _, .fld h => .fld (Prim.wf_right h)
+  | _, _, _, _, .typ h1 h2 => .typ (Prim.wf_left h1) (Prim.wf_right h2)
+  | _, _, _, _, .all h1 _ h2 => .all (Prim.wf_left h1) (Prim.wf_right h2)
+  | _, _, _, _, .selU _ hw _ => hw
+  | _, _, _, _, .selL hp _ _ => .sel hp
+
+end
 
 /-- Primitive subtyping between types, with every receiver a variable. This is
 the comparison that term typing applies without a certificate. -/
