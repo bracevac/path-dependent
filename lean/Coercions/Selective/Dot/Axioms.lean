@@ -35,3 +35,34 @@ open SelDot SelDot.Probes
 #print axioms step_checks_source_body
 #print axioms Prim.wf_left
 #print axioms Prim.wf_right
+-- structural lemmas
+#print axioms HasTy.rename
+#print axioms PathTy.psubst
+#print axioms Prim.psubst
+#print axioms CertTy.psubst
+#print axioms HasTy.psubst
+#print axioms CertTy.narrow
+#print axioms HasTy.narrow
+#print axioms CertTy.substPath
+#print axioms HasTy.substPath
+-- inert contexts
+#print axioms Inv.sub
+#print axioms TTy.inv
+#print axioms TTy.sel_bounds
+#print axioms PathTy.tight
+#print axioms Prim.tight
+#print axioms CertTy.tight
+#print axioms PathTy.fun_inv
+#print axioms PathTy.fld_inv
+-- certificates
+#print axioms CertTy.andI
+#print axioms TSub.cert
+#print axioms AllSub.collapse
+-- safety
+#print axioms HasTy.strip
+#print axioms StoreTy.inert
+#print axioms canonical_fun
+#print axioms canonical_obj
+#print axioms progress
+#print axioms preservation
+#print axioms safety
