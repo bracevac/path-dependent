@@ -149,6 +149,12 @@ theorem primitive_nontrans :
     ¬ ∀ {s : Sig} (Γ : Ctx s) (S M T : Ty s), Prim₀ Γ S M → Prim₀ Γ M T → Prim₀ Γ S T :=
   fun h => gap (h Γr bB xA cC half1 half2)
 
+/-- Primitive subtyping between written endpoints is not transitive: the three
+endpoints of the witness are fixed, and `Prim₀` is `Prim` on them. -/
+theorem prim_nontrans :
+    ¬ ∀ {s : Sig} (Γ : Ctx s) (S M T : ATy s), Prim Γ S M → Prim Γ M T → Prim Γ S T :=
+  fun h => gap (h Γr bB.embed xA.embed cC.embed half1 half2)
+
 /-! ## Probe 2: a selection whose receiver needs a conversion
 
 ```text

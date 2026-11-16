@@ -23,14 +23,15 @@ endpoints written in a step select on such paths. Path typing keeps DOT's
 safety are proved directly on the machine of erased terms, by way of inert
 contexts and tight typing, without the existing DOT-MNF or FCdot theorems.
 `Dot/Vanilla` proves `typability_iff` and `coercion_iff` against the DOT-MNF of
-this repository; `Sub.toCert` and `HasTy.elab` compute certificates and
+this repository; `Sub.elab` and `HasTy.elab` compute certificates and
 annotated terms from DOT-MNF derivations, with `Sub.trans` mapped to `;`. The
 two machines take the same steps, which gives `dot_safety_direct`: type safety
 of DOT-MNF without the translation to FCdot. No algorithm for the primitive
 relation or for typing is given for this calculus.
 
 Both preservation theorems prove that an annotation of the reduct exists; they
-do not compute it.
+do not compute it. For DOT, preservation is that of the typed-state invariant of
+the machine, which is what safety needs.
 
 The modules directly in `lean/Coercions/Selective` are an earlier design for
 DOT, `H`, kept as explored work. It covers DOT-MNF exactly and has verified
@@ -40,6 +41,6 @@ comparison for F-sub, a comparison with FCsub evidence, and a translation of
 F-sub certificates into `H`. The READMEs describe the rules and results.
 Exploratory designs and run logs are not part of this change.
 
-Checked with Lean 4.29.1: `lake build`, all seven Selective targets, and the
-axiom audits. All pass, and the audits use at most `propext` and `Quot.sound`.
+Checked with Lean 4.29.1: `lake build`, all seven Selective targets, the target
+`SelectiveAll` that loads them into one environment, and the axiom audits. All pass, and the audits use at most `propext` and `Quot.sound`.
 The READMEs give the build commands.

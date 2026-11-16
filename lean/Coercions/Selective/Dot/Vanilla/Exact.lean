@@ -36,7 +36,7 @@ theorem coercion_iff {Γ : DotMNF.Ctx s} {S T : DotMNF.Ty s} :
     Nonempty (DotMNF.Sub Γ S T) ↔ ∃ c, CertTy (Ctx.ofDot Γ) c (Ty.ofDot S) (Ty.ofDot T) := by
   constructor
   · rintro ⟨d⟩
-    exact ⟨d.toCert, d.toCert_typed⟩
+    exact ⟨d.elab, d.elab_typed⟩
   · rintro ⟨c, hc⟩
     obtain ⟨d⟩ := certTy_sound hc
     rw [Ty.toDot_ofDot, Ty.toDot_ofDot] at d
@@ -45,6 +45,6 @@ theorem coercion_iff {Γ : DotMNF.Ctx s} {S T : DotMNF.Ty s} :
 /-- Transitivity is elaborated to composition. -/
 theorem trans_is_seq {Γ : DotMNF.Ctx s} {S M T : DotMNF.Ty s}
     (d1 : DotMNF.Sub Γ S M) (d2 : DotMNF.Sub Γ M T) :
-    (DotMNF.Sub.trans d1 d2).toCert = .seq d1.toCert d2.toCert := rfl
+    (DotMNF.Sub.trans d1 d2).elab = .seq d1.elab d2.elab := rfl
 
 end SelDot.Vanilla

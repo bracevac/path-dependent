@@ -195,3 +195,7 @@ roots = ["Coercions.Selective.Dot"]
 [[lean_lib]]
 name = "SelectiveDotVanilla"
 roots = ["Coercions.Selective.Dot.Vanilla"]
+
+[[lean_lib]]
+name = "SelectiveAll"
+roots = ["Coercions.Selective.All"]

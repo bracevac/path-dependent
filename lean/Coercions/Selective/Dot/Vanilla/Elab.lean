@@ -30,30 +30,30 @@ open SelDot.Lift (Ty.erase_embed')
 mutual
 
 /-- The certificate of a subtyping derivation. -/
-def Sub.toCert : {s : Sig} → {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → SelDot.Cert s
+def Sub.elab : {s : Sig} → {Γ : Ctx s} → {S T : Ty s} → Sub Γ S T → SelDot.Cert s
   | _, _, S, _, .top => SelDot.Cert.top (SelDot.Ty.ofDot S)
   | _, _, _, T, .bot => SelDot.Cert.bot (SelDot.Ty.ofDot T)
   | _, _, T, _, .refl => SelDot.Cert.refl (SelDot.Ty.ofDot T)
-  | _, _, _, _, .trans d1 d2 => .seq d1.toCert d2.toCert
+  | _, _, _, _, .trans d1 d2 => .seq d1.elab d2.elab
   | _, _, _, _, .and1 (S := S) (T := T) => SelDot.Cert.and1 (SelDot.Ty.ofDot S) (SelDot.Ty.ofDot T)
   | _, _, _, _, .and2 (S := S) (T := T) => SelDot.Cert.and2 (SelDot.Ty.ofDot S) (SelDot.Ty.ofDot T)
-  | _, _, S, _, .and d1 d2 => SelDot.Cert.andI (SelDot.Ty.ofDot S) d1.toCert d2.toCert
-  | _, _, _, _, .fld (a := a) d => d.toCert.fld a
+  | _, _, S, _, .and d1 d2 => SelDot.Cert.andI (SelDot.Ty.ofDot S) d1.elab d2.elab
+  | _, _, _, _, .fld (a := a) d => d.elab.fld a
   | _, _, _, _, .typ (A := A) (S2 := S2) (T1 := T1) d1 d2 =>
-      .seq (d1.toCert.typLo A (SelDot.Ty.ofDot T1)) (d2.toCert.typHi A (SelDot.Ty.ofDot S2))
+      .seq (d1.elab.typLo A (SelDot.Ty.ofDot T1)) (d2.elab.typHi A (SelDot.Ty.ofDot S2))
   | _, _, _, T, .selUpper (x := x) (A := A) d =>
       .step (.sel (d.toPath (.var x)) A) (SelDot.Ty.ofDot T).embed
   | _, _, S, _, .selLower (x := x) (A := A) d =>
       .step (SelDot.Ty.ofDot S).embed (.sel (d.toPath (.var x)) A)
   | _, _, _, _, .all (S2 := S2) (T1 := T1) d1 d2 =>
-      .seq (d1.toCert.allDom (SelDot.Ty.ofDot T1)) (d2.toCert.allBody (SelDot.Ty.ofDot S2))
+      .seq (d1.elab.allDom (SelDot.Ty.ofDot T1)) (d2.elab.allBody (SelDot.Ty.ofDot S2))
 
 /-- The path of a typing derivation of a variable, extending `p₀` by casts.
 On a derivation of any other term it returns `p₀`. -/
 def HasTy.toPath : {s : Sig} → {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
     HasTy Γ t T → SelDot.Path s → SelDot.Path s
   | _, _, _, _, .var, p₀ => p₀
-  | _, _, _, _, .sub d e, p₀ => .cast (d.toPath p₀) e.toCert
+  | _, _, _, _, .sub d e, p₀ => .cast (d.toPath p₀) e.elab
   | _, _, _, _, .recI d, p₀ => d.toPath p₀
   | _, _, _, _, .recE d, p₀ => d.toPath p₀
   | _, _, _, _, .andI d1 d2, p₀ => d2.toPath (d1.toPath p₀)
@@ -82,18 +82,18 @@ theorem HasTy.toPath_root : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
 mutual
 
 /-- The certificate of a subtyping derivation converts the source types. -/
-theorem Sub.toCert_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T),
-    SelDot.CertTy (SelDot.Ctx.ofDot Γ) d.toCert (SelDot.Ty.ofDot S) (SelDot.Ty.ofDot T)
+theorem Sub.elab_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S T),
+    SelDot.CertTy (SelDot.Ctx.ofDot Γ) d.elab (SelDot.Ty.ofDot S) (SelDot.Ty.ofDot T)
   | _, _, _, _, .top => SelDot.CertTy.top
   | _, _, _, _, .bot => SelDot.CertTy.bot
   | _, _, _, _, .refl => SelDot.CertTy.refl
-  | _, _, _, _, .trans d1 d2 => .seq (Sub.toCert_typed d1) (Sub.toCert_typed d2)
+  | _, _, _, _, .trans d1 d2 => .seq (Sub.elab_typed d1) (Sub.elab_typed d2)
   | _, _, _, _, .and1 => SelDot.CertTy.and1
   | _, _, _, _, .and2 => SelDot.CertTy.and2
-  | _, _, _, _, .and d1 d2 => SelDot.CertTy.andI (Sub.toCert_typed d1) (Sub.toCert_typed d2)
-  | _, _, _, _, .fld d => SelDot.CertTy.fld (Sub.toCert_typed d)
+  | _, _, _, _, .and d1 d2 => SelDot.CertTy.andI (Sub.elab_typed d1) (Sub.elab_typed d2)
+  | _, _, _, _, .fld d => SelDot.CertTy.fld (Sub.elab_typed d)
   | _, _, _, _, .typ d1 d2 =>
-      .seq (SelDot.CertTy.typLo (Sub.toCert_typed d1)) (SelDot.CertTy.typHi (Sub.toCert_typed d2))
+      .seq (SelDot.CertTy.typLo (Sub.elab_typed d1)) (SelDot.CertTy.typHi (Sub.elab_typed d2))
   | _, _, _, T, .selUpper (x := x) (A := A) d => by
       have ih := HasTy.toPath_typed d x rfl (.var x) rfl (fun _ h => h)
       have hr := HasTy.toPath_root d (.var x)
@@ -111,7 +111,7 @@ theorem Sub.toCert_typed : ∀ {s : Sig} {Γ : Ctx s} {S T : Ty s} (d : Sub Γ S
       rw [hr] at c
       exact c
   | _, _, _, _, .all d1 d2 =>
-      .seq (SelDot.CertTy.allDom (Sub.toCert_typed d1)) (SelDot.CertTy.allBody (Sub.toCert_typed d2))
+      .seq (SelDot.CertTy.allDom (Sub.elab_typed d1)) (SelDot.CertTy.allBody (Sub.elab_typed d2))
 
 /-- The path of a typing derivation of a variable `x`: given a path `p₀` rooted
 at `x` that has every type of `x`, the extended path has the source type, and
@@ -132,7 +132,7 @@ theorem HasTy.toPath_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s}
       exact h
   | _, _, _, _, .sub d e, x, ht, p₀, hr, hp₀ =>
       have ih := HasTy.toPath_typed d x ht p₀ hr hp₀
-      have hc := Sub.toCert_typed e
+      have hc := Sub.elab_typed e
       ⟨.cast ih.1 hc, fun U h => .keep ih.1 hc (ih.2 U h)⟩
   | _, Γ, _, _, .recI (x := x') (T := T) d, x, ht, p₀, hr, hp₀ => by
       have ih := HasTy.toPath_typed d x ht p₀ hr hp₀
@@ -202,7 +202,7 @@ def HasTy.elab : {s : Sig} → {Γ : Ctx s} → {t : Tm s} → {T : Ty s} →
   | _, _, _, _, .recE (x := x) d => .path ((HasTy.recE d).toPath (.var x))
   | _, _, _, _, .andI (x := x) d1 d2 => .path ((HasTy.andI d1 d2).toPath (.var x))
   | _, _, t, _, .sub d e =>
-      subElab t (fun x => .path ((HasTy.sub d e).toPath (.var x))) (.cast d.elab e.toCert)
+      subElab t (fun x => .path ((HasTy.sub d e).toPath (.var x))) (.cast d.elab e.elab)
 
 /-- The elaboration of a definition typing derivation. -/
 def DefsTy.elab : {s : Sig} → {Γ : Ctx s} → {d : Defs s} → {T : Ty s} →
@@ -250,7 +250,7 @@ theorem HasTy.elab_erase : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (d :
       have ih := HasTy.elab_erase d
       simp only [HasTy.elab]
       rcases subElab_cases t (fun x => .path ((HasTy.sub d e).toPath (.var x)))
-        (.cast d.elab e.toCert) with ⟨x, rfl, h⟩ | h
+        (.cast d.elab e.elab) with ⟨x, rfl, h⟩ | h
       · rw [h]
         simp only [SelDot.Tm.erase, SelDot.Tm.ofDot, HasTy.toPath_root, SelDot.Path.root]
       · rw [h]
@@ -305,10 +305,10 @@ theorem HasTy.elab_typed : ∀ {s : Sig} {Γ : Ctx s} {t : Tm s} {T : Ty s} (d :
   | _, _, _, _, .andI d1 d2 => .path (HasTy.toPath_var (HasTy.andI d1 d2)).1
   | _, _, t, _, .sub d e => by
       have ih := HasTy.elab_typed d
-      have hc := Sub.toCert_typed e
+      have hc := Sub.elab_typed e
       simp only [HasTy.elab]
       rcases subElab_cases t (fun x => .path ((HasTy.sub d e).toPath (.var x)))
-        (.cast d.elab e.toCert) with ⟨x, rfl, h⟩ | h
+        (.cast d.elab e.elab) with ⟨x, rfl, h⟩ | h
       · rw [h]
         exact .path (HasTy.toPath_var (HasTy.sub d e)).1
       · rw [h]

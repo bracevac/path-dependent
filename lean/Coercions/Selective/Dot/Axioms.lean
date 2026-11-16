@@ -13,6 +13,7 @@ open SelDot SelDot.Probes
 #print axioms gap
 #print axioms wit_typed
 #print axioms primitive_nontrans
+#print axioms prim_nontrans
 #print axioms cRecv_typed
 #print axioms r_typed
 #print axioms cSel_typed

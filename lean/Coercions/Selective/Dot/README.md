@@ -59,6 +59,12 @@ derivation of `S ≤₀ T` checks every cast stored in `S` and `T`: both endpoin
 valid (`Prim.wf_left`, `Prim.wf_right`), also under binders, and a function type is
 checked under its own domain.
 
+A receiver written in an endpoint can carry a composed certificate, as in the third
+example below. That evidence is written and checked like any other. So one `step` is
+one use of a rule of `≤₀` between its two endpoints; it is not a bound on the evidence
+inside them. An annotation of a program need not record every use of transitivity of
+a source derivation, and a program can have several annotations.
+
 ## Terms
 
 Application and projection take paths, and any term can be cast:
@@ -68,8 +74,9 @@ t ::= p | v | p q | p.a | let x = t in u | t ▷ c
 ```
 
 Term typing has no subsumption rule. One comparison `≤₀` is applied without a
-certificate, at the argument of an application, between types without casts. Every
-other conversion is a cast. Erasure removes all casts, and the machine runs erased
+certificate, at the argument of an application, between types without casts: its
+receivers are variables, so it cannot supply a cast. Every other conversion is a
+cast. Erasure removes all casts, and the machine runs erased
 terms.
 
 ## Examples
@@ -77,8 +84,8 @@ terms.
 [`Probes.lean`](Probes.lean) has the derivations.
 
 In `b : {B : ⊥..⊤}, c : {C : ⊥..⊤}, x : {A : b.B..c.C}` both `b.B ≤₀ x.A` and
-`x.A ≤₀ c.C` hold and `b.B ≤₀ c.C` does not (`gap`, for receivers without casts), so
-`≤₀` is not transitive (`primitive_nontrans`). The certificate
+`x.A ≤₀ c.C` hold and `b.B ≤₀ c.C` does not (`gap`), so `≤₀` is not transitive
+(`prim_nontrans`, and `primitive_nontrans` for the implicit comparison). The certificate
 `step[b.B, x.A] ; step[x.A, c.C]` converts `b.B` to `c.C`.
 
 A receiver that needs a conversion:
@@ -117,8 +124,11 @@ preservation  : StateTy st → Step st st' → StateTy st'
 safety        : HasTy .nil t T → Steps ⟨.nil, .nil, t.erase⟩ st → ¬ st.Stuck
 ```
 
-Preservation proves that annotations for the next state exist. It does not compute
-them. The proof follows Rapoport, Kabir, He and Lhoták (OOPSLA 2017): the context of a
+`StateTy st` says that some context and some types make the store, the term and the
+continuation of `st` typed. So `preservation` keeps the invariant that `safety` needs;
+it does not say that a result type fixed in advance is kept, which the preservation
+theorem of the F-sub calculus does. It proves that annotations for the next state
+exist and does not compute them. The proof follows Rapoport, Kabir, He and Lhoták (OOPSLA 2017): the context of a
 typed store is inert; in an inert context every path, primitive step and certificate
 is tight (`PathTy.tight`, `Prim.tight`, `CertTy.tight`), where the tight relation
 `TSub` is an auxiliary declarative subtyping with transitivity whose selection rules
@@ -139,8 +149,8 @@ coercion_iff   : (∃ d, d : Γ ⊢DOT S <: T)  ↔   ∃ c, Γ ⊢ c : S ⇒ T
 ```
 
 From left to right the witnesses are computed by functions on DOT-MNF derivations:
-`Sub.toCert` gives the certificate, with `Sub.trans d₁ d₂` mapped to
-`d₁.toCert ; d₂.toCert` (`trans_is_seq`), `HasTy.toPath` gives the cast path of a
+`Sub.elab` gives the certificate, with `Sub.trans d₁ d₂` mapped to
+`d₁.elab ; d₂.elab` (`trans_is_seq`), `HasTy.toPath` gives the cast path of a
 variable typing, and `HasTy.elab` the annotated term, which erases to the source term
 (`elab_erase`) and has the same type (`elab_typed`). From right to left, erasure maps
 typed terms to typed terms (`hasTy_sound`).
@@ -156,9 +166,10 @@ dot_safety_direct : (d : ⊢DOT t : T) → Steps ⟨∅, ∅, t⟩ st → ¬ st.
 ## What is not claimed
 
 There is no checker here: `≤₀` and the typing judgments are relations, and neither
-decidability nor an algorithm is proved. The witness that `≤₀` is not transitive
-compares receivers without casts; for endpoints with arbitrary cast receivers the
-one-step claim is not proved. A cast cannot be written in a binder annotation or a
+decidability nor an algorithm is proved. `≤₀` relates written endpoints, and the
+witness shows that it is not transitive on them. A different question is left open:
+whether, for the same three types, another choice of casts in the endpoints lets a
+single step do the conversion. A cast cannot be written in a binder annotation or a
 context entry. Paths are variables under casts; there are no field paths.
 
 ## Modules

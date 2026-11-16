@@ -53,9 +53,12 @@ typing keeps DOT's `Rec-I`, `Rec-E` and `And-I` and has no subsumption. Term
 typing has no subsumption either; one primitive comparison is implicit at the
 argument of an application.
 
-The primitive relation is not transitive (`primitive_nontrans`). Progress,
-preservation and safety are proved directly on the machine of erased terms;
-preservation proves that an annotation of the next state exists. The
+The primitive relation is not transitive (`prim_nontrans`). One step can still
+contain composed certificates inside the receiver paths of its endpoints; they
+are written and checked like any other. Progress, preservation and safety are
+proved directly on the machine of erased terms; preservation keeps the
+typed-state invariant of the machine and proves that an annotation of the next
+state exists. The
 correspondence with the DOT-MNF of this repository is
 
 ```text
@@ -217,6 +220,10 @@ lake env lean lean/Coercions/Selective/Fsub/Axioms.lean
 lake env lean lean/Coercions/Selective/Dot/Axioms.lean
 lake build Selective SelectiveFsubDeclarative SelectiveFsubCompare SelectiveBridge
 lake env lean lean/Coercions/Selective/Axioms.lean
+lake build SelectiveAll
 ```
+
+`SelectiveAll` has no declarations: it loads every library of this directory into
+one environment.
 
 The axiom audits use at most `propext` and `Quot.sound`.

@@ -9,10 +9,10 @@ open SelDot SelDot.Vanilla
 #print axioms prim_sound
 #print axioms certTy_sound
 #print axioms hasTy_sound
-#print axioms DotMNF.Sub.toCert
+#print axioms DotMNF.Sub.elab
 #print axioms DotMNF.HasTy.toPath
 #print axioms DotMNF.HasTy.elab
-#print axioms DotMNF.Sub.toCert_typed
+#print axioms DotMNF.Sub.elab_typed
 #print axioms DotMNF.HasTy.toPath_typed
 #print axioms DotMNF.HasTy.elab_erase
 #print axioms DotMNF.HasTy.elab_typed
