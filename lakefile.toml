@@ -187,3 +187,7 @@ roots = ["Coercions.Selective.FsubCompare"]
 [[lean_lib]]
 name = "SelectiveBridge"
 roots = ["Coercions.Selective.Bridge"]
+
+[[lean_lib]]
+name = "SelectiveDot"
+roots = ["Coercions.Selective.Dot"]
