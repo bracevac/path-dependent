@@ -2,7 +2,7 @@
 
 Selective subtyping separates the comparisons a type checker performs automatically
 from the compositions a program must supply. The automatic relation, written
-`Γ ⊢ S ≤₀ T`, is decidable and is not transitive. A cast carries a certificate for
+`Γ ⊢ S ≤₀ T`, is not transitive. A cast carries a certificate for
 the additional reasoning. Composing certificates records the intermediate type of a transitivity
 derivation, so checking composition does not search for it.
 
@@ -10,14 +10,17 @@ The aim is a self-contained calculus of this kind for each of two source
 systems: full System F-sub, and WadlerFest DOT in monadic normal form. Each
 calculus should have only the two certificate forms `step[S,T]` and `c ; d`, a
 safety proof from its own typing, and a correspondence with the plain source
-system. For F-sub this is done. For DOT it is open: the DOT part of this
-directory is a first design, called `H`, that does not meet the aim.
+system. [`Fsub/`](Fsub/README.md) is that calculus for F-sub and
+[`Dot/`](Dot/README.md) is that calculus for DOT. The modules directly in this
+directory are an earlier design for DOT, called `H`, which needs more evidence
+than the two forms.
 
 ## F-sub
 
 [`Fsub/`](Fsub/README.md) defines the calculus for full F-sub, with its own
-syntax, typing and reduction. Its certificates are exactly `step` and `;`, and
-its primitive relation is not transitive (`primitive_nontrans`). Term typing has
+syntax, typing and reduction. Its certificates are exactly `step` and `;`. Its
+primitive relation is decided by `prim?` and is not transitive
+(`primitive_nontrans`). Term typing has
 no subsumption rule. One primitive comparison is implicit at the argument of an
 application and at the bound of a type application.
 
@@ -37,7 +40,35 @@ It is a function on derivations: `FDer.elab` maps a derivation of the
 declarative typing to an annotated term, with subsumption turned into a cast by
 `Sub.toCert`, the function from subtyping derivations to certificates.
 
-## DOT: the explored design `H`
+## DOT
+
+[`Dot/`](Dot/README.md) defines the calculus for DOT, with its own syntax, typing
+and machine. Its certificates are exactly `step` and `;`. What DOT adds to F-sub
+is that a selection `x.A` gets its bounds from a type of the receiver `x`, and
+that type may need a conversion. The conversion is a cast on the receiver: a
+receiver is a path `p ::= x | p ▷ c`, and the endpoints written in a step select
+on paths, as in `step[(y ▷ c).A, U]`. A step converts the types obtained by
+erasing the casts in its endpoints, so `(y ▷ c).A` is matched by `y.A`. Path
+typing keeps DOT's `Rec-I`, `Rec-E` and `And-I` and has no subsumption. Term
+typing has no subsumption either; one primitive comparison is implicit at the
+argument of an application.
+
+The primitive relation is not transitive (`primitive_nontrans`). Progress,
+preservation and safety are proved directly on the machine of erased terms;
+preservation proves that an annotation of the next state exists. The
+correspondence with the DOT-MNF of this repository is
+
+```text
+(∃ d, d : Γ ⊢DOT t : T)    ↔    ∃ h, erase(h) = t ∧ Γ ⊢ h : T
+```
+
+and from left to right the annotated term is computed from the derivation by
+`HasTy.elab`, with `Sub.trans` mapped to `;`. The machines of the two calculi
+take the same steps, so the safety theorem here also gives the type safety of
+DOT-MNF without the translation to FCdot (`dot_safety_direct`). No algorithm for
+`≤₀` or for typing is given for this calculus.
+
+## An earlier design for DOT: `H`
 
 `H` uses the existing `DotMNF` types and contexts, including dependent
 functions, recursive objects, intersections, and type members with both bounds.
@@ -45,12 +76,13 @@ Every DOT-MNF typing has an annotated term at the same type whose erasure is the
 original program. The annotations change what the checker is given; they erase
 before execution on the DOT-MNF machine.
 
-`H` differs from the calculus aimed at in two ways. Its certificates are not
-only `step` and `;`: a type selection carries evidence for its receiver, as
-described below. And it has no safety proof of its own: `compiled_safety` erases
-the program and uses the DOT-MNF theorem. The receiver examples below concern the
-primitive relation that `H` fixes. They do not show that `step` and `;` are too
-weak for DOT under another primitive relation or other implicit rules.
+`H` differs from the calculus in `Dot/` in three ways. Its certificates are not
+only `step` and `;`: a type selection carries evidence for its receiver in
+further certificate forms, as described below. It has no safety proof of its
+own: `compiled_safety` erases the program and uses the DOT-MNF theorem. And its
+primitive relation and typing are decided by verified checkers, which `Dot/`
+does not have. The receiver examples below concern the primitive relation that
+`H` fixes, which reads members only from the declared type of a variable.
 
 ### Primitive subtyping and composition
 
@@ -158,6 +190,11 @@ the original certificates.
 
 ## Sources and build
 
+[`Dot/`](Dot/README.md) is the DOT calculus, the library `SelectiveDot`, and
+[`Dot/Vanilla/`](Dot/README.md) its correspondence with DOT-MNF, the library
+`SelectiveDotVanilla`. The DOT calculus imports only the binding infrastructure.
+
+The modules directly in this directory are `H`, the library `Selective`.
 [`Hybrid.lean`](Hybrid.lean) collects the main statements and examples of `H`.
 `Prim.lean`, `Syntax.lean`, and `Typing.lean` define the calculus;
 `Check.lean` and `Typer.lean` implement its checkers;
@@ -175,9 +212,11 @@ reflect subtyping: DOT relates some encoded types that F-sub keeps separate.
 From the repository root:
 
 ```sh
-lake build Selective
+lake build SelectiveFsub SelectiveDot SelectiveDotVanilla
+lake env lean lean/Coercions/Selective/Fsub/Axioms.lean
+lake env lean lean/Coercions/Selective/Dot/Axioms.lean
+lake build Selective SelectiveFsubDeclarative SelectiveFsubCompare SelectiveBridge
 lake env lean lean/Coercions/Selective/Axioms.lean
-lake build SelectiveFsub SelectiveFsubDeclarative SelectiveFsubCompare SelectiveBridge
 ```
 
 The axiom audits use at most `propext` and `Quot.sound`.
