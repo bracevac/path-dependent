@@ -1,7 +1,7 @@
 name = "path-dependent"
 version = "0.1.0"
 srcDir = "lean"
-defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Oopsla16", "FCdotR", "Captures", "CapturesCC", "Classifiers", "Paths", "PDot", "Nominal"]
+defaultTargets = ["LambdaP", "LambdaPFC", "LambdaPCC", "LambdaPFCI", "LambdaPCCI", "FCsub", "DotFC", "ManySortedFC", "FCdot", "Runtime", "DotMNF", "DotToFCdot", "Oopsla16", "FCdotR", "Captures", "CapturesCC", "Classifiers", "Paths", "PDot", "Nominal", "Selective"]
 
 [leanOptions]
 pp.unicode.fun = true
@@ -167,3 +167,19 @@ filter = { extension = ["scala"] }
 name = "ScalaCorpusNominal"
 roots = ["Coercions.ScalaCorpus.Nominal"]
 needs = ["scala-nominal"]
+
+[[lean_lib]]
+name = "Selective"
+roots = ["Coercions.Selective"]
+
+[[lean_lib]]
+name = "SelectiveFsub"
+roots = ["Coercions.Selective.Fsub"]
+
+[[lean_lib]]
+name = "SelectiveDot"
+roots = ["Coercions.Selective.Dot"]
+
+[[lean_lib]]
+name = "SelectiveDotVanilla"
+roots = ["Coercions.Selective.Dot.Vanilla"]

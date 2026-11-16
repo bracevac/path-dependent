@@ -190,6 +190,15 @@ the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writ
 and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
 checker of the Scala 3 compiler and is complete up to its recursion limit.
 
+## Selective transitivity
+
+**`Selective/`** defines two calculi in which primitive subtyping has no transitivity rule and the
+only coercions are `step[S,T]` and `c ; d`: one for full System F-sub and one for WadlerFest DOT in
+monadic normal form.  Each has its own typing and a direct type safety proof for erased execution,
+and each is related to its plain source system by an elaboration computed from a typing derivation
+and by erasure.  In DOT the receiver of a type selection can carry a cast, written inside the
+endpoint of a step.  Library `Selective`, see [Selective/README.md](Selective/README.md).
+
 ## Scala syntax
 
 **`ScalaSyntax/`** is the reader that the Scala-syntax front ends share, the library `ScalaSyntax`.
