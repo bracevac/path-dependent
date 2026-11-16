@@ -1,7 +1,6 @@
-# Selective subtyping for full F-sub
+# Selective transitivity for full F-sub
 
-This directory studies selective subtyping in plain full System F-sub, where the idea can be seen
-without path dependency. Types are `Top | X | S → T | ∀(X <: S). T`, and the rule for universals is
+This directory defines the calculus for full System F-sub. Types are `Top | X | S → T | ∀(X <: S). T`, and the rule for universals is
 the full one: bounds are contravariant and bodies are compared under the target bound.
 
 The primitive relation `Γ ⊢ S ≤₀ T` (`Prim`) has five rules: reflexivity, `Top`, the declared bound
@@ -27,7 +26,9 @@ subsumption rule. It applies one primitive comparison at the argument of an appl
 bound of a type application, and a cast applies its written certificate. A term has at most one type
 (`HTy.unique`), and `synthTm` checks it (`synthTm_iff`). Progress, preservation and safety are
 proved directly on erased terms, for terms closed in term variables. Preservation shows that the
-reduct has an annotation; it does not compute one.
+reduct has an annotation at the same type; it does not compute one. On terms closed in term
+variables the reduction relation is standard capture-avoiding call-by-value (`step_iff_std`), and
+`safety_std` states safety for that relation.
 
 `typability_iff` relates the calculus to declarative F-sub: `FTy Γ Δ e T` holds exactly when some
 annotated term with erasure `e` has type `T`. `FTy` is stated with a subsumption rule over `Sub`,
@@ -40,15 +41,11 @@ annotated term, `FDer.elab_erase` says it erases to the source term and `FDer.el
 has the same type (`Elab.lean`). For subtyping, `Sub.toCert` is the function from derivations to
 certificates.
 
-Compared with the DOT design `H` in the parent directory, F-sub needs no evidence beyond `step` and
-`;`, because a variable's bound is read from the context and never depends on the typing of a
-receiver. [`../Bridge`](../Bridge/README.md) translates these certificates into `H`.
-
 The checker decides validity of a given certificate. `coercion_iff` relates certificate existence to
 full F-sub subtyping; it supplies no procedure for deciding existence.
 
-[`REFERENCE.md`](REFERENCE.md) has the module list, the theorem inventory and the limits of the
-implementation. The library imports nothing outside this directory. From the repository root:
+[`REFERENCE.md`](REFERENCE.md) has the module list and the theorem index. The library imports
+nothing outside this directory. From the repository root:
 
 ```sh
 lake build SelectiveFsub

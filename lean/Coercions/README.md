@@ -190,22 +190,14 @@ the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writ
 and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
 checker of the Scala 3 compiler and is complete up to its recursion limit.
 
-## Selective subtyping
+## Selective transitivity
 
-**`Selective/`** studies subtyping without a transitivity rule.  A primitive relation is applied
-implicitly at a few places in a term, and every further step is written as a certificate built from
-`step[S,T]` and `c ; d`.  For full F-sub this is a calculus of its own, the library `SelectiveFsub` in
-[Selective/Fsub/](Selective/Fsub/README.md): type safety is proved directly from its typing, and
-`typability_iff` relates it to declarative F-sub.  For WadlerFest DOT in monadic normal form it is the
-library `SelectiveDot` in [Selective/Dot/](Selective/Dot/README.md): the receiver of a type selection
-is a path that may be cast, type safety is proved directly on the machine of erased terms, and the
-library `SelectiveDotVanilla` relates the calculus to DOT-MNF by `typability_iff` and computes annotated
-terms from DOT-MNF derivations.  The library `Selective`, a default target, holds an earlier design for
-DOT with further evidence forms and verified checkers, whose safety comes from `dot_safety`.  See
-[Selective/README.md](Selective/README.md).  The libraries `SelectiveFsubDeclarative`,
-`SelectiveFsubCompare` and `SelectiveBridge` hold a declarative control, a comparison with FCsub
-evidence and a translation of F-sub certificates into the earlier DOT design.  Only `Selective` is a
-default target.
+**`Selective/`** defines two calculi in which primitive subtyping has no transitivity rule and the
+only coercions are `step[S,T]` and `c ; d`: one for full System F-sub and one for WadlerFest DOT in
+monadic normal form.  Each has its own typing and a direct type safety proof for erased execution,
+and each is related to its plain source system by an elaboration computed from a typing derivation
+and by erasure.  In DOT the receiver of a type selection can carry a cast, written inside the
+endpoint of a step.  Library `Selective`, see [Selective/README.md](Selective/README.md).
 
 ## Scala syntax
 

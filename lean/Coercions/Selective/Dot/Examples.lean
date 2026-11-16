@@ -1,7 +1,7 @@
 import Coercions.Selective.Dot.Typing
 
 /-!
-# Selective DOT: first probes of the rules
+# Selective DOT: examples
 
 Derivations in the calculus of `Typing.lean`, written out.
 
@@ -12,9 +12,10 @@ Derivations in the calculus of `Typing.lean`, written out.
    their intersection by `And-I`. An invalid cast is rejected wherever it is
    stored.
 4. A receiver that is cast under the binder of a dependent function type.
+5. A function type is checked under its own domain.
 -/
 
-namespace SelDot.Probes
+namespace SelDot.Examples
 
 open FCdot (Kind Sig BVar Rename Label)
 
@@ -99,7 +100,7 @@ theorem var_sel_no_typ {Γ : Ctx s} {x y : BVar s .var} {A B : Label} {L U : Ty 
   rw [hD] at h1
   cases h1
 
-/-! ## Probe 1: `≤₀` is not transitive
+/-! ## `≤₀` is not transitive
 
 `b : {B : ⊥..⊤}, c : {C : ⊥..⊤}, x : {A : b.B..c.C}`. Then `b.B ≤₀ x.A` and
 `x.A ≤₀ c.C`, and `b.B ≤₀ c.C` fails. The context has a closed realization:
@@ -155,7 +156,7 @@ theorem prim_nontrans :
     ¬ ∀ {s : Sig} (Γ : Ctx s) (S M T : ATy s), Prim Γ S M → Prim Γ M T → Prim Γ S T :=
   fun h => gap (h Γr bB.embed xA.embed cC.embed half1 half2)
 
-/-! ## Probe 2: a selection whose receiver needs a conversion
+/-! ## A selection whose receiver needs a conversion
 
 ```text
 R = {A : ⊥..{a : ⊤}}
@@ -215,7 +216,7 @@ theorem ex2_bare_gap : ¬ Prim₀ Γ2 (.sel ry lA) (.fld la .top) := by
   | refl _ _ e => cases e
   | selU hp _ _ => exact var_sel_no_typ Γ2_y hp
 
-/-! ## Probe 3: two casts on one variable
+/-! ## Two casts on one variable
 
 `x : {A : ⊥..⊥} ∧ {B : ⊥..⊥}`, with `c₁ : _ ⇒ {A : ⊥..⊤}` and
 `c₂ : _ ⇒ {B : ⊥..⊤}`. The path `(x ▷ c₁) ▷ c₂` has the target of `c₂`, keeps
@@ -317,7 +318,7 @@ theorem step_refl_validates_under_binder {S T : Ty S1} :
           | selU hp _ _ => exact bad hp
           | selL hp _ _ => exact bad hp
 
-/-! ## Probe 4: a receiver cast under a dependent binder
+/-! ## A receiver cast under a dependent binder
 
 ```text
 RB = {B : ⊥..{a : ⊤}},  D = {A : ⊤..RB},  y : ⊤
@@ -430,4 +431,4 @@ theorem step_checks_source_body {S T : Ty []} :
           cases hw with
           | sel hq => exact p5_untyped_under_top hq
 
-end SelDot.Probes
+end SelDot.Examples

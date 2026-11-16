@@ -1,4 +1,4 @@
-import Coercions.Selective.Fsub.Exact
+import Coercions.Selective.Fsub.Reduction
 import Coercions.Selective.Fsub.Witness
 /-!
 # Examples for the term layer
@@ -7,11 +7,9 @@ Kernel-checked programs, typed by `synthTm` under `decide`. Variables are de Bru
 indices. In `ctxYX` (`Y <: Top → Top, X <: Y`) `X` is `var 0` and `Y` is `var 1`; the
 composite `X ≤ Top → Top` takes two bound steps and is not primitive (`ctxYX_not`).
 
-The written annotations below are not minimal: at each boundary the implicit check can
-take one of the two bound steps, so one written step (`step[X, Y]` on an argument,
-`step[Y, Top → Top]` under the bound lift on the callee) suffices where the full chain
-is written. The examples show that a boundary adds at most one implicit step after the
-last written cast.
+A boundary applies one implicit comparison after the last written cast. So some of the
+written chains below are longer than they have to be: `arg_one_written_typed` and
+`b_min_typed` show annotations with one written step.
 -/
 namespace SelFsub.Examples
 open Witness (tt)
@@ -35,6 +33,11 @@ theorem arg_one_step_rejected :
     synthTm .nil [] (argProg (.cast (.var 0) (.step (.var 0) tt))) = none := by decide
 theorem arg_cast_typed : synthTm .nil [] (argProg (.cast (.var 0) chain)) =
     some (.all tt (.all (.var 0) (.arr (.var 0) tt))) := by decide
+/-- The single written step `step[X, Y]` is accepted: the argument check supplies
+`Y ≤₀ Top → Top`. -/
+theorem arg_one_written_typed :
+    synthTm .nil [] (argProg (.cast (.var 0) (.step (.var 0) (.var 1)))) =
+      some (.all tt (.all (.var 0) (.arr (.var 0) tt))) := by decide
 
 /-- The program applied to `Top → Top`, `Top → Top` and `λ(z : Top). z`. -/
 def argRun : Tm 0 := .app (.tapp (.tapp (argProg (.cast (.var 0) chain)) tt) tt) idT
@@ -141,5 +144,76 @@ def bReduct : Tm 2 :=
 
 theorem bReduct_erase : bReduct.erase = bReductBare := rfl
 theorem bReduct_typed : synthTm ctxYX [] bReduct = some XT := by decide
+
+/-! ## β: a program without casts whose reduct needs a cast at a type application
+
+`(λ(g : ∀(Z <: Y). Z → Z). g [X]) f` with `f = Λ(Z <: Top → Top). λ(z : Z). z`. The argument
+check `∀(Z <: Top → Top). Z → Z ≤₀ ∀(Z <: Y). Z → Z` is one primitive step (bound
+`Y ≤₀ Top → Top`), and the bound check of `g [X]` is `X ≤₀ Y`. After β the bound check of
+`f [X]` is `X ≤₀ Top → Top`, which is not primitive. -/
+
+def fId : Tm 2 := .tlam tt (.lam (.var 0) (.var 0))
+def gTy : Ty 2 := .all (.var 1) (.arr (.var 0) (.var 0))
+def gProg : Tm 2 := .app (.lam gTy (.tapp (.var 0) (.var 0))) fId
+def gReductBare : Tm 2 := .tapp fId (.var 0)
+
+theorem gProg_castfree : gProg.erase = gProg := rfl
+theorem gProg_typed : synthTm ctxYX [] gProg = some (.arr (.var 0) (.var 0)) := by decide
+theorem g_step : Step gProg.erase gReductBare := .beta .tlam
+theorem g_bare_rejected : synthTm ctxYX [] gReductBare = none := by decide
+
+/-- An annotation of the reduct with one written step on the callee. -/
+def gReduct : Tm 2 :=
+  .tapp (.cast fId ((Cert.step (.var 1) tt).allBound (.arr (.var 0) (.var 0)))) (.var 0)
+
+theorem gReduct_erase : gReduct.erase = gReductBare := rfl
+theorem gReduct_typed : synthTm ctxYX [] gReduct = some (.arr (.var 0) (.var 0)) := by decide
+
+/-! ## β twice: a program without casts whose reduct is annotated with a composition
+
+In `Witness.Γ3` (`Z <: Top → Top, Y <: Z, X <: Y`; `X`, `Y`, `Z` are `var 0`, `var 1`,
+`var 2`), with `Hᵢ = Xᵢ → Top` for `Z`, `Y`, `X` and `v = λ(z : Top → Top). z`:
+`(λ(h₀ : H₀). (λ(h₁ : H₁). (λ(h₂ : H₂). h₂) h₁) h₀) v`. Each argument check is one
+primitive step. After two β-steps `v` meets `H₂`, which takes three bound steps. -/
+
+def H0 : Ty 3 := .arr (.var 2) .top
+def H1 : Ty 3 := .arr (.var 1) .top
+def H2 : Ty 3 := .arr (.var 0) .top
+def vId : Tm 3 := .lam tt (.var 0)
+def hProg : Tm 3 :=
+  .app (.lam H0 (.app (.lam H1 (.app (.lam H2 (.var 0)) (.var 0))) (.var 0))) vId
+def hReductBare : Tm 3 := .app (.lam H2 (.var 0)) vId
+
+theorem hProg_castfree : hProg.erase = hProg := rfl
+theorem hProg_typed : synthTm Witness.Γ3 [] hProg = some H2 := by decide
+theorem h_steps : Steps hProg.erase hReductBare := .step (.beta .lam) (.step (.beta .lam) .refl)
+theorem h_bare_rejected : synthTm Witness.Γ3 [] hReductBare = none := by decide
+/-- The written step `step[(Top → Top) → (Top → Top), H₀]` on the value is rejected. -/
+theorem h_one_step_rejected :
+    synthTm Witness.Γ3 [] (.app (.lam H2 (.var 0)) (.cast vId (.step (.arr tt tt) H0))) = none := by
+  decide
+/-- With `step[_, H₀] ; step[H₀, H₁]` it is accepted; the argument check supplies
+`H₁ ≤₀ H₂`. -/
+theorem h_two_steps_typed :
+    synthTm Witness.Γ3 [] (.app (.lam H2 (.var 0))
+      (.cast vId (.seq (.step (.arr tt tt) H0) (.step H0 H1)))) = some H2 := by decide
+
+/-! ## β under a type binder
+
+In `X <: Top` (`X` is `var 0`): `(λ(x : X → X). Λ(Y <: Top). λ(z : Y). x) (λ(a : X). a)`.
+The value crosses the binder of `Y`, so `X` in it becomes `var 1`. `Step` agrees with the
+standard substitution `Tm.substStd`, and the redex and the reduct have the same type. -/
+
+def capV : Tm 1 := .lam (.var 0) (.var 0)
+def capBody : Tm 1 := .tlam .top (.lam (.var 0) (.var 1))
+def capRedex : Tm 1 := .app (.lam (.arr (.var 0) (.var 0)) capBody) capV
+def capReduct : Tm 1 := .tlam .top (.lam (.var 0) (.lam (.var 1) (.var 0)))
+
+theorem cap_step : Step capRedex capReduct := .beta .lam
+theorem cap_std : Tm.substStd capBody 0 capV = capReduct := rfl
+theorem cap_typed :
+    HTy (.snoc .nil .top) [] capRedex (.all .top (.arr (.var 0) (.arr (.var 1) (.var 1)))) ∧
+    HTy (.snoc .nil .top) [] capReduct (.all .top (.arr (.var 0) (.arr (.var 1) (.var 1)))) := by
+  decide
 
 end SelFsub.Examples

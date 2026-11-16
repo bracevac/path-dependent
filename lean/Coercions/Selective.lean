@@ -1,30 +1,15 @@
-import Coercions.Selective.Prim
-import Coercions.Selective.Syntax
-import Coercions.Selective.Typing
-import Coercions.Selective.Check
-import Coercions.Selective.Sound
-import Coercions.Selective.Lift
-import Coercions.Selective.Complete
-import Coercions.Selective.Annotate
-import Coercions.Selective.Rename
-import Coercions.Selective.Typer
-import Coercions.Selective.Witness
-import Coercions.Selective.Matrix
-import Coercions.Selective.Negative
-import Coercions.Selective.Subst
-import Coercions.Selective.Hybrid
+import Coercions.Selective.Fsub
+import Coercions.Selective.Dot
+import Coercions.Selective.Dot.Vanilla
 
 /-!
-# Selective subtyping for DOT-MNF
+# Selective transitivity
 
-The root of the `Selective` library. It imports the modules of
-`lean/Coercions/Selective/`: implicit primitive subtyping without transitivity,
-written certificates for every further step, and the correspondence with
-DOT-MNF. `Hybrid` collects the main statements and two worked examples;
-`README.md` in that directory is the introduction.
+The root of the `Selective` library: the coercive calculi for full System F-sub
+(`Selective/Fsub`) and for WadlerFest DOT in monadic normal form (`Selective/Dot`), and the
+correspondence of the DOT calculus with DOT-MNF (`Selective/Dot/Vanilla`). The coercions of
+both are `step[S,T]` and `c ; d`. `README.md` in `Selective/` is the introduction.
 
-The axiom audit `Selective/Axioms.lean` is not imported here; replay it with
-`lake env lean lean/Coercions/Selective/Axioms.lean`. The companions under
-`Selective/Fsub`, `Selective/FsubDeclarative`, `Selective/FsubCompare` and
-`Selective/Bridge` have their own import roots and Lake targets.
+The axiom audits are not imported here: `Selective/Fsub/Axioms.lean`,
+`Selective/Dot/Axioms.lean` and `Selective/Dot/Vanilla/Axioms.lean`.
 -/

@@ -1,14 +1,22 @@
-import Coercions.Selective.Fsub
+import Coercions.Selective.Fsub.Exact
 /-!
-# Probe P1: the reduction relation and the substitution concessions
+# Reduction is standard call-by-value on closed terms
 
-* A standard capture-avoiding term substitution `Tm.substStd` (it shifts the substituted
-  term under term binders) and the matching call-by-value relation `StepStd`.
-* On term-closed terms `Tm.subst` agrees with `Tm.substStd`, `Step` preserves term-closedness,
-  and `Step` coincides with `StepStd`; hence `safety` is a statement about standard CBV.
-* Reducts of cast-free terms are cast-free; `Tm.substTy` never meets a cast along `Steps t.erase`.
-* `Step` captures on open terms, and with it preservation is false in a nonempty term context.
-* `Step` is deterministic; declarative preservation `fsub_preservation` follows.
+`Step` (`Safety.lean`) substitutes with `Tm.subst`, which does not shift the substituted
+term under term binders. That avoids capture when the substituted term is closed in term
+variables, which is the only case the safety theorems use. This module makes that precise.
+
+* `Tm.cl k t`: the free term variables of `t` are below `k`. A typed term is closed at the
+  length of its term context (`HTy.cl`), and `Step` preserves closedness (`Step.cl`).
+* `Tm.substStd` is the standard capture-avoiding substitution, which shifts the substituted
+  term under term binders, and `StepStd` is call-by-value reduction with it. On closed terms
+  `Step` and `StepStd` coincide (`step_iff_std`, `steps_iff_std`), so `safety` is a statement
+  about standard call-by-value (`safety_std`).
+* Every term on a reduction sequence from an erased term is cast-free (`Steps.castfree`), so
+  `Tm.substTy`, which erases, never drops a cast along it.
+* On open terms `Step` captures, and preservation fails in a nonempty term context
+  (`open_capture`, `open_preservation_fails`). The theorems are stated for the empty term
+  context.
 -/
 namespace SelFsub
 
@@ -107,7 +115,7 @@ theorem Tm.shift_cl : (t : Tm n) → ∀ {c}, Tm.cl c t → Tm.shift c t = t
   | .tapp t _, _, h => by simp only [Tm.shift, Tm.shift_cl t h]
   | .cast t _, _, h => by simp only [Tm.shift, Tm.shift_cl t h]
 
-/-- On a term-closed `w`, the authors' substitution is the standard one. -/
+/-- For a term-closed `w`, `Tm.subst` is the standard substitution. -/
 theorem Tm.substStd_eq : (t : Tm n) → ∀ {k} {w : Tm n}, Tm.cl 0 w → Tm.substStd t k w = t.subst k w
   | .var _, _, _, _ => rfl
   | .lam _ t, _, w, hw => by
@@ -139,7 +147,7 @@ theorem Step.cl (hs : Step e e') (h : Tm.cl 0 e) : Tm.cl 0 e' := by
   | appR _ _ ih => exact ⟨h.1, ih h.2⟩
   | tappL _ ih => exact ih h
 
-/-- On term-closed terms the authors' `Step` is standard call-by-value. -/
+/-- On term-closed terms `Step` is standard call-by-value. -/
 theorem step_iff_std (h : Tm.cl 0 e) : Step e e' ↔ StepStd e e' := by
   constructor
   · intro hs; induction hs with
@@ -225,71 +233,6 @@ theorem Steps.castfree {t : Tm n} (hs : Steps t.erase e) : CastFree e := by
   | refl => exact h
   | step s _ ih => exact ih (s.castfree h)
 
-/-! ## Step is deterministic
-
-These two lemmas now also live in `SelFsub/Safety.lean` (`Value.no_step`, `Step.det`),
-so the copies here carry a prime. -/
-
-theorem Value.no_step' (hv : Value v) : ¬ Step v e := by
-  intro hs; cases hv <;> cases hs
-
-theorem Step.det' (h₁ : Step e e₁) (h₂ : Step e e₂) : e₁ = e₂ := by
-  induction h₁ generalizing e₂ with
-  | beta hv =>
-    cases h₂ with
-    | beta => rfl
-    | appL h => cases h
-    | appR _ h => exact absurd h hv.no_step
-  | tbeta => cases h₂ with
-    | tbeta => rfl
-    | tappL h => cases h
-  | appL h ih => cases h₂ with
-    | beta => cases h
-    | appL h' => rw [ih h']
-    | appR hv _ => exact absurd h hv.no_step
-  | appR hv h ih => cases h₂ with
-    | beta hv' => exact absurd h hv'.no_step
-    | appL h' => exact absurd h' hv.no_step
-    | appR _ h' => rw [ih h']
-  | tappL h ih => cases h₂ with
-    | tbeta => cases h
-    | tappL h' => rw [ih h']
-
-/-! ## Declarative preservation, from the direct proof and the two translations -/
-
-theorem fsub_preservation (h : FTy Γ [] e T) (hs : Step e e') : FTy Γ [] e' T := by
-  obtain ⟨t, rfl, ht⟩ := elaboration_complete h
-  obtain ⟨t', rfl, ht'⟩ := preservation ht hs
-  exact elaboration_typed ht'
-
-/-! ## Capture-avoidance on closed programs: the requested examples -/
-
-/-- In `X <: Top` (`X = var 0`): `v = λ(a : X). a`, body `Λ(Y <: Top). λ(z : Y). x`. -/
-def capV : Tm 1 := .lam (.var 0) (.var 0)
-def capBody : Tm 1 := .tlam .top (.lam (.var 0) (.var 1))
-def capRedex : Tm 1 := .app (.lam (.arr (.var 0) (.var 0)) capBody) capV
-/-- The capture-avoiding reduct: under `Y`, `X` is `var 1`. -/
-def capReduct : Tm 1 := .tlam .top (.lam (.var 0) (.lam (.var 1) (.var 0)))
-
-theorem cap_step : Step capRedex capReduct := .beta .lam
-theorem cap_std : Tm.substStd capBody 0 capV = capReduct := rfl
-theorem cap_typed :
-    HTy (.snoc .nil .top) [] capRedex (.all .top (.arr (.var 0) (.arr (.var 1) (.var 1)))) ∧
-    HTy (.snoc .nil .top) [] capReduct (.all .top (.arr (.var 0) (.arr (.var 1) (.var 1)))) := by
-  decide
-
-/-- Substitution under `λ` and `Λ` nested twice, with a value whose type mentions the context:
-`(λ(x : X → X). λ(p : Top). Λ(Y <: X). λ(q : Y). Λ(W <: Y). x) v`. -/
-def cap2Body : Tm 1 :=
-  .lam .top (.tlam (.var 0) (.lam (.var 0) (.tlam (.var 0) (.var 2))))
-def cap2Redex : Tm 1 := .app (.lam (.arr (.var 0) (.var 0)) cap2Body) capV
-def cap2Reduct : Tm 1 :=
-  .lam .top (.tlam (.var 0) (.lam (.var 0) (.tlam (.var 0) (.lam (.var 2) (.var 0)))))
-theorem cap2_step : Step cap2Redex cap2Reduct := .beta .lam
-theorem cap2_std : Tm.substStd cap2Body 0 capV = cap2Reduct := rfl
-theorem cap2_types : synthTm (.snoc .nil .top) [] cap2Redex = synthTm (.snoc .nil .top) [] cap2Reduct ∧
-    (synthTm (.snoc .nil .top) [] cap2Redex).isSome := by decide
-
 /-! ## Open terms: `Step` captures, and preservation fails in a nonempty term context -/
 
 /-- `x₀ : Top → Top ⊢ (λ(x : Top → Top → Top). λ(y : Top). x) (λ(z : Top). x₀)`. -/
@@ -312,8 +255,8 @@ theorem HTy.canon_var {t : Tm n} (h : HTy Γ Δ t T) (e : t.erase = .var x) :
   | cast _ hc ih => obtain ⟨T₀, c, ex, hc'⟩ := ih e; exact ⟨T₀, _, ex, .seq hc' hc⟩
   | _ => cases e
 
-/-- No annotation of the captured reduct has the redex's type: with the authors' `Step`,
-preservation is false for the term context `[Top → Top]`. -/
+/-- No annotation of the captured reduct has the type of the redex: for `Step`,
+preservation is false in the term context `[Top → Top]`. -/
 theorem open_preservation_fails :
     ¬ ∃ t' : Tm 0, t'.erase = openReduct ∧
       HTy .nil [.arr .top .top] t' (.arr .top (.arr .top (.arr .top .top))) := by
@@ -332,19 +275,5 @@ theorem open_preservation_fails :
       rcases hcod.arr_inv with he'' | ⟨_, _, he'', _, hcod''⟩
       · cases he''
       · cases he''; exact absurd (hcod''.top_inv (hcod'.top_inv rfl)) (by simp)
-
-/-! ## Axioms -/
-
-#print axioms step_iff_std
-#print axioms steps_iff_std
-#print axioms safety_std
-#print axioms Steps.castfree
-#print axioms Tm.substTy_erase
-#print axioms Step.det'
-#print axioms fsub_preservation
-#print axioms cap_typed
-#print axioms cap2_types
-#print axioms open_capture
-#print axioms open_preservation_fails
 
 end SelFsub

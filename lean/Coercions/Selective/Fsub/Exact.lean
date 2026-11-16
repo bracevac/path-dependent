@@ -8,8 +8,9 @@ rules, with the type-application rule checking the bound by `Sub`, and subsumpti
 `Sub`. It has no cast rule, so every term it types is cast-free (`FTy.erase_eq`).
 Erasure maps annotated typings to `FTy` typings, and every `FTy` typing has an annotated
 term over it: subsumption becomes a cast by `Sub.toCert`, and a bound checked by `Sub`
-becomes a cast of the callee by the bound lift `Cert.allBound`. With the direct safety
-of the annotated calculus this gives type safety of declarative full F-sub.
+becomes a cast of the callee by the bound lift `Cert.allBound`. With preservation and
+safety of the annotated calculus this gives preservation and type safety of declarative
+full F-sub.
 -/
 namespace SelFsub
 
@@ -60,5 +61,12 @@ theorem typability_iff {e : Tm n} :
 theorem fsub_safety (h : FTy Γ [] e T) (hs : Steps e e') :
     Value e' ∨ ∃ e'', Step e' e'' := by
   obtain ⟨t, rfl, ht⟩ := elaboration_complete h; exact safety ht hs
+
+/-- Preservation for declarative full F-sub, from `elaboration_complete`, `preservation`
+and `elaboration_typed`. -/
+theorem fsub_preservation (h : FTy Γ [] e T) (hs : Step e e') : FTy Γ [] e' T := by
+  obtain ⟨t, rfl, ht⟩ := elaboration_complete h
+  obtain ⟨t', rfl, ht'⟩ := preservation ht hs
+  exact elaboration_typed ht'
 
 end SelFsub

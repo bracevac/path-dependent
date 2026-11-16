@@ -1,4 +1,4 @@
-# Selective subtyping for DOT
+# Selective transitivity for DOT
 
 This directory defines a calculus for WadlerFest DOT in monadic normal form in which
 subtyping has no transitivity rule and the only coercions are
@@ -7,8 +7,8 @@ subtyping has no transitivity rule and the only coercions are
 c ::= step[S, T] | c ; d
 ```
 
-A `step` is one use of primitive subtyping `≤₀` between the two types it writes, and
-`c ; d` composes. The calculus has its own typing, its own machine and its own type
+A `step` is checked by a derivation of primitive subtyping `≤₀` between the two types
+it writes, and `c ; d` composes. The calculus has its own typing, its own machine and its own type
 safety proof. [`Vanilla/`](Vanilla) relates it to the DOT-MNF of this repository.
 
 ## Receivers
@@ -61,7 +61,7 @@ checked under its own domain.
 
 A receiver written in an endpoint can carry a composed certificate, as in the third
 example below. That evidence is written and checked like any other. So one `step` is
-one use of a rule of `≤₀` between its two endpoints; it is not a bound on the evidence
+a derivation of `≤₀` between its two endpoints; it is not a bound on the evidence
 inside them. An annotation of a program need not record every use of transitivity of
 a source derivation, and a program can have several annotations.
 
@@ -81,7 +81,7 @@ terms.
 
 ## Examples
 
-[`Probes.lean`](Probes.lean) has the derivations.
+[`Examples.lean`](Examples.lean) has the derivations.
 
 In `b : {B : ⊥..⊤}, c : {C : ⊥..⊤}, x : {A : b.B..c.C}` both `b.B ≤₀ x.A` and
 `x.A ≤₀ c.C` hold and `b.B ≤₀ c.C` does not (`gap`), so `≤₀` is not transitive
@@ -163,14 +163,12 @@ this gives the type safety of DOT-MNF without the translation to FCdot:
 dot_safety_direct : (d : ⊢DOT t : T) → Steps ⟨∅, ∅, t⟩ st → ¬ st.Stuck
 ```
 
-## What is not claimed
+## Boundaries
 
 There is no checker here: `≤₀` and the typing judgments are relations, and neither
-decidability nor an algorithm is proved. `≤₀` relates written endpoints, and the
-witness shows that it is not transitive on them. A different question is left open:
-whether, for the same three types, another choice of casts in the endpoints lets a
-single step do the conversion. A cast cannot be written in a binder annotation or a
-context entry. Paths are variables under casts; there are no field paths.
+decidability nor an algorithm is proved. A cast on a receiver is written in the
+endpoint of a step; it cannot be written in a binder annotation or a context entry.
+Paths are variables under casts; there are no field paths.
 
 ## Modules
 
@@ -179,7 +177,7 @@ context entry. Paths are variables under casts; there are no field paths.
 | `Syntax.lean` | types, paths, endpoints, certificates, terms; renaming, erasure |
 | `Typing.lean` | `PathTy`, `Wf`, `Prim`, `CertTy`, `HasTy`, `DefsTy`; `Prim.wf_left`, `Prim.wf_right` |
 | `Machine.lean` | stores, continuations, `Step`, `Steps`, `Final`, `Stuck` |
-| `Probes.lean` | the examples above; the types of a path without casts |
+| `Examples.lean` | the examples above; the types of a path without casts |
 | `RenameTy.lean`, `Rename.lean` | renaming equations; exact renaming of every judgment |
 | `Subst.lean` | substitution of typed paths for variables; narrowing; substitution of a path |
 | `Lift.lean` | certificates under each type constructor, from `step` and `;` |

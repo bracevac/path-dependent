@@ -9,7 +9,7 @@ import Coercions.Selective.Dot.Tight
 import Coercions.Selective.Dot.Lift
 import Coercions.Selective.Dot.Canonical
 import Coercions.Selective.Dot.Safety
-import Coercions.Selective.Dot.Probes
+import Coercions.Selective.Dot.Examples
 
 /-!
 # Selective DOT

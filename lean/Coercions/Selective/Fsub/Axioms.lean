@@ -149,10 +149,12 @@ open SelFsub SelFsub.Witness SelFsub.Examples
 #print axioms elaboration_complete
 #print axioms typability_iff
 #print axioms fsub_safety
+#print axioms fsub_preservation
 -- Examples
 #print axioms arg_bare_rejected
 #print axioms arg_one_step_rejected
 #print axioms arg_cast_typed
+#print axioms arg_one_written_typed
 #print axioms argRun_typed
 #print axioms argRun_steps
 #print axioms argRun_value
@@ -175,9 +177,32 @@ open SelFsub SelFsub.Witness SelFsub.Examples
 #print axioms b_min_typed
 #print axioms bReduct_erase
 #print axioms bReduct_typed
+#print axioms gProg_typed
+#print axioms g_step
+#print axioms g_bare_rejected
+#print axioms gReduct_typed
+#print axioms hProg_typed
+#print axioms h_steps
+#print axioms h_bare_rejected
+#print axioms h_one_step_rejected
+#print axioms h_two_steps_typed
+#print axioms cap_step
+#print axioms cap_std
+#print axioms cap_typed
 -- Elab
 #print axioms FDer.toFTy
 #print axioms FTy.toFDer
 #print axioms FDer.elab
 #print axioms FDer.elab_erase
 #print axioms FDer.elab_typed
+-- Reduction
+#print axioms HTy.cl
+#print axioms Step.cl
+#print axioms Tm.substStd_eq
+#print axioms step_iff_std
+#print axioms steps_iff_std
+#print axioms safety_std
+#print axioms Tm.substTy_erase
+#print axioms Steps.castfree
+#print axioms open_capture
+#print axioms open_preservation_fails

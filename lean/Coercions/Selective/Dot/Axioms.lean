@@ -3,7 +3,7 @@ import Coercions.Selective.Dot
 /-! Axiom audit of the `SelectiveDot` library. Replay with
 `lake env lean lean/Coercions/Selective/Dot/Axioms.lean`. -/
 
-open SelDot SelDot.Probes
+open SelDot SelDot.Examples
 
 #print axioms Wf.embed
 #print axioms var_inv

@@ -177,25 +177,9 @@ name = "SelectiveFsub"
 roots = ["Coercions.Selective.Fsub"]
 
 [[lean_lib]]
-name = "SelectiveFsubDeclarative"
-roots = ["Coercions.Selective.FsubDeclarative"]
-
-[[lean_lib]]
-name = "SelectiveFsubCompare"
-roots = ["Coercions.Selective.FsubCompare"]
-
-[[lean_lib]]
-name = "SelectiveBridge"
-roots = ["Coercions.Selective.Bridge"]
-
-[[lean_lib]]
 name = "SelectiveDot"
 roots = ["Coercions.Selective.Dot"]
 
 [[lean_lib]]
 name = "SelectiveDotVanilla"
 roots = ["Coercions.Selective.Dot.Vanilla"]
-
-[[lean_lib]]
-name = "SelectiveAll"
-roots = ["Coercions.Selective.All"]
