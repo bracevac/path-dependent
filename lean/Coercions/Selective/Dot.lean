@@ -2,7 +2,10 @@ import Coercions.Selective.Dot.Syntax
 import Coercions.Selective.Dot.Typing
 import Coercions.Selective.Dot.Machine
 import Coercions.Selective.Dot.RenameTy
+import Coercions.Selective.Dot.Rename
+import Coercions.Selective.Dot.Subst
 import Coercions.Selective.Dot.State
+import Coercions.Selective.Dot.Tight
 import Coercions.Selective.Dot.Probes
 
 /-!
