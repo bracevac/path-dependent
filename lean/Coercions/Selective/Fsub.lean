@@ -11,4 +11,5 @@ import Coercions.Selective.Fsub.Term
 import Coercions.Selective.Fsub.Typing
 import Coercions.Selective.Fsub.Safety
 import Coercions.Selective.Fsub.Exact
+import Coercions.Selective.Fsub.Elab
 import Coercions.Selective.Fsub.Examples

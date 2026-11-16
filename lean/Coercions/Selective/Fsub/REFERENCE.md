@@ -40,11 +40,11 @@ From the repository root:
 
 ```sh
 lake build SelectiveFsub
-lake env lean lean/Coercions/Selective/Fsub/Axioms.lean     # 159 lines
+lake env lean lean/Coercions/Selective/Fsub/Axioms.lean     # 164 lines
 lake env lean lean/Coercions/Selective/Fsub/Probes/P1_Reduction.lean   # likewise P2_Chains and P3_Size
 ```
 
-The audit has 159 lines; each reads `[propext]`, `[propext, Quot.sound]` or "does not
+The audit has 164 lines; each reads `[propext]`, `[propext, Quot.sound]` or "does not
 depend on any axioms" (`Quot.sound` enters through `funext` in the de Bruijn lemmas and
 through `simp` in the checker proofs, for example `boundIs_true`).
 The sources contain no `sorry`, `native_decide`, `partial`, `unsafe`, `axiom`,
@@ -71,6 +71,7 @@ checked by plain `decide` (`Examples.lean`).
 | `Typing.lean` | 98 | `HTy` (no subsumption; `≤₀` at the application argument and the type-application bound), `HTy.unique`, `synthTm`, `synthTm_iff` |
 | `Safety.lean` | 251 | `Value`, `Step`, `Steps`; `HTy.renTy`, `HTy.append` (29 lines of typed renaming); `HTy.subst`, `HTy.substTy`, canonical forms, `preservation`, `progress`, `safety`; determinism `Value.no_step`, `Step.det` (27 lines) |
 | `Exact.lean` | 64 | declarative F-sub term typing `FTy`, `elaboration_typed`, `elaboration_complete`, `typability_iff`, the corollary `fsub_safety` |
+| `Elab.lean` | 67 | derivations of `FTy` as data (`FDer`), the elaborator `FDer.elab` as a function, `FDer.elab_erase`, `FDer.elab_typed` |
 | `Examples.lean` | 145 | the term examples listed below |
 | `Axioms.lean` | 177 | `#print axioms` for every theorem and the main functions (not imported by the root) |
 | `../Fsub.lean` | 14 | the import root: all modules except `Axioms` |
@@ -199,6 +200,12 @@ Exactness (`Exact.lean`):
 - `elaboration_complete : FTy Γ Δ e T → ∃ t, t.erase = e ∧ HTy Γ Δ t T`.
 - `typability_iff : (∃ t, t.erase = e ∧ HTy Γ Δ t T) ↔ FTy Γ Δ e T`.
 - `fsub_safety : FTy Γ [] e T → Steps e e' → Value e' ∨ ∃ e'', Step e' e''` (from `elaboration_complete` and `safety`).
+
+The elaborator as a function (`Elab.lean`):
+
+- `FDer Γ Δ e T : Type` has the rules of `FTy`; `FDer.toFTy : FDer Γ Δ e T → FTy Γ Δ e T`, `FTy.toFDer : FTy Γ Δ e T → Nonempty (FDer Γ Δ e T)`.
+- `FDer.elab : FDer Γ Δ e T → Tm n`: subsumption becomes a cast by `Sub.toCert`, and a type application casts its callee along the lifted bound.
+- `FDer.elab_erase : (d : FDer Γ Δ e T) → d.elab.erase = e`; `FDer.elab_typed : (d : FDer Γ Δ e T) → HTy Γ Δ d.elab T`.
 
 Term examples (`Examples.lean`, namespace `SelFsub.Examples`), all by `decide` or `rfl`:
 

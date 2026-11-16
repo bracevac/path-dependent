@@ -12,9 +12,8 @@ work on it continues in this pull request.
 `lean/Coercions/Selective/Fsub` is the F-sub calculus. Its certificates are
 exactly `step` and `;`. Progress, preservation and safety are proved directly on
 erased terms. `typability_iff` shows that declarative F-sub types a term exactly
-when it is the erasure of an annotated term of the same type. The elaboration of
-terms is a theorem that such an annotated term exists; it is not yet a
-function.
+when it is the erasure of an annotated term of the same type. The elaboration is
+a function from typing derivations to annotated terms (`FDer.elab`).
 
 `lean/Coercions/Selective` holds a first design for DOT, called `H`. It preserves
 the full DOT-MNF typing and subtyping judgments up to annotation, with the same

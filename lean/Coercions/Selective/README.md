@@ -33,10 +33,9 @@ subsumption rule over subtyping with transitivity:
 ```
 
 From left to right this is an elaboration that keeps the type and the program.
-For terms it is a theorem that an annotated term exists, and not a function,
-because declarative typing is a proposition. For subtyping, `Sub.toCert` is a
-function from derivations to certificates. A computable elaborator for terms is
-not built.
+It is a function on derivations: `FDer.elab` maps a derivation of the
+declarative typing to an annotated term, with subsumption turned into a cast by
+`Sub.toCert`, the function from subtyping derivations to certificates.
 
 ## DOT: the explored design `H`
 

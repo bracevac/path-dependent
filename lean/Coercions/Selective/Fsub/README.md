@@ -33,9 +33,12 @@ reduct has an annotation; it does not compute one.
 annotated term with erasure `e` has type `T`. `FTy` is stated with a subsumption rule over `Sub`,
 which has a transitivity rule, and uses no certificate. So every declarative typing has an
 elaboration at the same type with the same erasure (`elaboration_complete`), and every typed
-annotated term erases to a declaratively typed one (`elaboration_typed`). The elaboration of terms
-is a theorem that the annotated term exists; it is not a function, because `FTy` is a proposition.
-`Sub.toCert` is a function from subtyping derivations to certificates.
+annotated term erases to a declaratively typed one (`elaboration_typed`). `FTy` is a proposition, so
+these are statements that an annotated term exists. The elaboration itself is a function on
+derivations given as data: `FDer` is the type of derivations of `FTy`, `FDer.elab` returns the
+annotated term, `FDer.elab_erase` says it erases to the source term and `FDer.elab_typed` that it
+has the same type (`Elab.lean`). For subtyping, `Sub.toCert` is the function from derivations to
+certificates.
 
 Compared with the DOT design `H` in the parent directory, F-sub needs no evidence beyond `step` and
 `;`, because a variable's bound is read from the context and never depends on the typing of a

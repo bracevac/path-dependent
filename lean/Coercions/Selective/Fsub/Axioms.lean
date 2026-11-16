@@ -175,3 +175,9 @@ open SelFsub SelFsub.Witness SelFsub.Examples
 #print axioms b_min_typed
 #print axioms bReduct_erase
 #print axioms bReduct_typed
+-- Elab
+#print axioms FDer.toFTy
+#print axioms FTy.toFDer
+#print axioms FDer.elab
+#print axioms FDer.elab_erase
+#print axioms FDer.elab_typed
