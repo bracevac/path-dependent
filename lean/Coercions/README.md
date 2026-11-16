@@ -190,6 +190,19 @@ the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writ
 and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
 checker of the Scala 3 compiler and is complete up to its recursion limit.
 
+## Selective subtyping
+
+**`Selective/`** gives DOT-MNF a second typing discipline over the same types, contexts and programs.
+Subtyping is a decidable relation without transitivity, applied implicitly at the argument of an
+application and at the subject of a cast.  Every further step is written in the term as a certificate:
+composing certificates takes the place of the transitivity rule, and a type selection carries evidence
+for its receiver.  `typability_iff` and `coercion_iff` say that annotated terms and certificates cover
+exactly DOT-MNF's typing and subtyping, the checkers are sound and complete for the annotations they
+are given, and `compiled_safety` gives safety of the erased program through `dot_safety`.  Library
+`Selective`, a default target, see [Selective/README.md](Selective/README.md).  The same directory holds
+the F-sub companion and its translation into the DOT calculus, as the libraries `SelectiveFsub`,
+`SelectiveFsubDeclarative`, `SelectiveFsubCompare` and `SelectiveBridge`, which are not default targets.
+
 ## Scala syntax
 
 **`ScalaSyntax/`** is the reader that the Scala-syntax front ends share, the library `ScalaSyntax`.
