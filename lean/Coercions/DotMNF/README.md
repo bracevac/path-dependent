@@ -4,6 +4,9 @@ DOT in monadic normal form, the source of the translation in `../DotToFCdot`.
 Recursive introduction and elimination accept arbitrary type bodies. Function
 annotations and let result types are also unrestricted.
 
+[`../CoDot`](../CoDot/README.md) proves safety of these definitions by a second
+route that does not go through FCdot.
+
 | module | contents |
 |---|---|
 | `Syntax` | paths, types (`⊤ ⊥ {A:S..T} {a:T} p.A μ ∀ ∧`), terms, values, definitions; `Decl` and its decision procedure `isDecl` classify translations only; `Distinct` excludes duplicate definitions |

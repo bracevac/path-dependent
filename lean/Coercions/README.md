@@ -1,10 +1,7 @@
 # Coercions
 
-Lean formalizations of type-preserving translations from DOT into
-explicit-coercion calculi: a source calculus with path-dependent types, a
-target calculus in which every use of subtyping is a proof term that erases
-to nothing, and a translation between them that transports the target's
-type safety back to the source.
+Lean formalizations of DOT and related coercive calculi, with safety proofs
+and type-preserving translations between them.
 
 ## The main line: DOT-MNF → FCdot
 
@@ -21,7 +18,8 @@ term members, recursive self types, unrestricted intersections, type
 selections on variables, and bad bounds admitted.  The body of a recursive
 self type may be any type.  It has subtyping, term
 and definition typing, a store machine, and an erasure into the runtime.
-It has no safety proof of its own.  Its metatheory is renaming, the erasure
+Its definitions are shared by two safety proofs: the one through FCdot on
+this line and the direct one in `CoDot/`.  Its own metatheory is renaming, the erasure
 simulation, and a correspondence with the annotated WadlerFest rules.
 
 **`FCdot/`** is the target.  Types are `⊤`, `⊥`, block names `x ∙ ℓ`,
@@ -189,6 +187,14 @@ only.  It keeps `dot_safety` and passes two of gDOT's tests, `acceptance_fig2` a
 the library `PathsFrontend` in [Paths/Frontend/](Paths/Frontend/README.md), writes, types, checks
 and runs programs in pDOT's notation, gDOT's Fig. 2 among them.  Its typer follows the subtype
 checker of the Scala 3 compiler and is complete up to its recursion limit.
+
+## DOT with coercions, proved directly
+
+**[CoDot/](CoDot/README.md)** proves safety of DOT-MNF with explicit coercions
+and derives safety of ordinary DOT-MNF and the WadlerFest presentations by
+annotation and erasure. It keeps DOT's types and carries coercions on
+references. The safety argument is independent of FCdot's. This is a separate
+use of coercions from Selective's transitivity-only calculi.
 
 ## Selective transitivity
 
